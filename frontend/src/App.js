@@ -159,17 +159,23 @@ function AppRoutes() {
           <SettingsPage />
         </ProtectedRoute>
       } />
+
+      <Route path="/documents" element={
+        <ProtectedRoute>
+          <DocumentsPage />
+        </ProtectedRoute>
+      } />
       
-      {/* Analytics routes (placeholders) */}
+      {/* Analytics routes */}
       <Route path="/analytics/cashflow" element={
         <ProtectedRoute>
-          <AnalyticsPlaceholder title="Движение средств" />
+          <CashFlowPage />
         </ProtectedRoute>
       } />
       
       <Route path="/analytics/pnl" element={
         <ProtectedRoute>
-          <AnalyticsPlaceholder title="Прибыли и убытки" />
+          <PnLPage />
         </ProtectedRoute>
       } />
       
