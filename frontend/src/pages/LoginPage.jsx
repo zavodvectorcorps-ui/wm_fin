@@ -74,11 +74,11 @@ export const LoginPage = () => {
               <TabsContent value="login" className="mt-0">
                 <form onSubmit={handleLogin} className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="login-email">Email</Label>
+                    <Label htmlFor="login-email">Логин или Email</Label>
                     <Input
                       id="login-email"
-                      type="email"
-                      placeholder="email@example.com"
+                      type="text"
+                      placeholder="admin или email@example.com"
                       value={loginData.email}
                       onChange={(e) => setLoginData({ ...loginData, email: e.target.value })}
                       data-testid="login-email-input"
