@@ -166,6 +166,26 @@ export const getPeriodDates = (period) => {
         from: new Date(year, 0, 1).toISOString().split('T')[0],
         to: today.toISOString().split('T')[0]
       };
+    case 'year_2025':
+      return {
+        from: '2025-01-01',
+        to: '2025-12-31'
+      };
+    case 'year_2024':
+      return {
+        from: '2024-01-01',
+        to: '2024-12-31'
+      };
+    case 'year_2023':
+      return {
+        from: '2023-01-01',
+        to: '2023-12-31'
+      };
+    case 'all_time':
+      return {
+        from: '2020-01-01',
+        to: '2030-12-31'
+      };
     default:
       return {
         from: new Date(year, month, 1).toISOString().split('T')[0],
