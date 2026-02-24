@@ -2775,9 +2775,6 @@ async def send_telegram_summary(
     if not settings or not settings.get("telegram_bot_token") or not settings.get("telegram_chat_id"):
         raise HTTPException(status_code=400, detail="Telegram не настроен")
     
-    # Get summary
-    token = create_token(current_user["user_id"], current_user.get("email", ""), current_user.get("role", "owner"))
-    
     # Generate summary message
     now = datetime.now(timezone.utc)
     
