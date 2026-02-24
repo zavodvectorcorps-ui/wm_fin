@@ -188,13 +188,15 @@ export const AdeskMigrationPage = () => {
         draft_ids: selectedDrafts,
         category_id: bulkCategory && bulkCategory !== '__none__' ? bulkCategory : undefined,
         direction_id: bulkDirection && bulkDirection !== '__none__' ? bulkDirection : undefined,
-        contractor_id: bulkContractor && bulkContractor !== '__none__' ? bulkContractor : undefined
+        contractor_id: bulkContractor && bulkContractor !== '__none__' ? bulkContractor : undefined,
+        account_id: bulkAccount && bulkAccount !== '__none__' ? bulkAccount : undefined
       });
       toast.success(`Обновлено ${selectedDrafts.length} черновиков`);
       setBulkDialogOpen(false);
       setBulkCategory('');
       setBulkDirection('');
       setBulkContractor('');
+      setBulkAccount('');
       setSelectedDrafts([]);
       fetchDrafts();
     } catch (error) {
