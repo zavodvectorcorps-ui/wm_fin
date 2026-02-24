@@ -85,7 +85,10 @@ export const LoginPage = () => {
 
         <div className="text-center text-sm text-muted-foreground mt-6">
           <p>Теплицы • Сауны • Купели</p>
-          <p className="mt-1">Made by Knyazev</p>
+          <p className="mt-1 flex items-center justify-center gap-1.5">
+            <span className="w-4 h-4 rounded bg-primary/20 text-primary text-[10px] font-bold flex items-center justify-center">MK</span>
+            <span>Made by Knyazev</span>
+          </p>
         </div>
       </div>
     </div>

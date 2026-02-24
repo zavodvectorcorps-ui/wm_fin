@@ -243,7 +243,10 @@ export const Layout = ({ children }) => {
         {/* Footer */}
         <footer className="border-t border-border py-4 px-6 text-center text-xs text-muted-foreground">
           <p>Теплицы • Сауны • Купели</p>
-          <p className="mt-1">Made by Knyazev</p>
+          <p className="mt-1 flex items-center justify-center gap-1.5">
+            <span className="w-4 h-4 rounded bg-primary/20 text-primary text-[10px] font-bold flex items-center justify-center">MK</span>
+            <span>Made by Knyazev</span>
+          </p>
         </footer>
       </main>
     </div>
