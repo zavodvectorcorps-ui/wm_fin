@@ -6,7 +6,7 @@ import { Badge } from '../components/ui/badge';
 import { Skeleton } from '../components/ui/skeleton';
 import { 
   TrendingUp, TrendingDown, Wallet, PiggyBank, 
-  ArrowUpRight, ArrowDownRight, Calendar
+  ArrowUpRight, ArrowDownRight, Calendar, Users
 } from 'lucide-react';
 import { formatCurrency, getPeriodDates, getDirectionClass, getChangePercent } from '../lib/utils';
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
