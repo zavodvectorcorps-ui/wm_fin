@@ -3084,37 +3084,120 @@ async def start_adesk_migration(
                             elif t.get("type") == "transfer":
                                 t_type = "transfer"
                             
-                            # Smart mapping
                             status = "ready"
                             error_reason = None
                             
-                            # Map category
-                            cat_adesk = t.get("category", {}).get("name", "") or t.get("category_name", "")
-                            mapped_cat = category_map.get(cat_adesk.lower())
+                            # === AUTO-CREATE CATEGORY ===
+                            cat_adesk = t.get("category", {}).get("name", "") or t.get("category_name", "") or ""
+                            mapped_cat = category_map.get(cat_adesk.lower()) if cat_adesk else None
                             
-                            # Map direction from project
-                            project_adesk = t.get("project", {}).get("name", "") or t.get("project_name", "")
+                            if cat_adesk and not mapped_cat:
+                                # Create new category from Adesk
+                                new_cat = {
+                                    "id": str(uuid.uuid4()),
+                                    "name": cat_adesk,
+                                    "type": t_type if t_type in ["income", "expense"] else "expense",
+                                    "group": "Импорт из Adesk",
+                                    "is_active": True,
+                                    "user_id": current_user["user_id"]
+                                }
+                                await db.categories.insert_one(new_cat)
+                                category_map[cat_adesk.lower()] = new_cat
+                                mapped_cat = new_cat
+                                logger.info(f"Created category: {cat_adesk}")
+                            
+                            # === AUTO-CREATE DIRECTION ===
+                            project_adesk = t.get("project", {}).get("name", "") or t.get("project_name", "") or ""
                             mapped_dir = None
+                            
+                            # First try smart mapping
                             for key, dir_name in project_direction_map.items():
                                 if key in project_adesk.lower():
                                     mapped_dir = direction_map.get(dir_name)
                                     break
                             
-                            # Map contractor
-                            contractor_adesk = t.get("contractor", {}).get("name", "") or t.get("contractor_name", "")
-                            mapped_contractor = contractor_map.get(contractor_adesk.lower())
+                            # If no smart mapping, try exact match
+                            if not mapped_dir and project_adesk:
+                                mapped_dir = direction_map.get(project_adesk.lower())
                             
-                            # Map account
-                            account_adesk = t.get("account", {}).get("name", "") or t.get("account_name", "")
-                            mapped_account = account_map.get(account_adesk.lower())
+                            # If still no match, create new direction
+                            if project_adesk and not mapped_dir:
+                                new_dir = {
+                                    "id": str(uuid.uuid4()),
+                                    "name": project_adesk,
+                                    "color": "gray",
+                                    "description": f"Импортировано из Adesk",
+                                    "is_active": True,
+                                    "user_id": current_user["user_id"]
+                                }
+                                await db.directions.insert_one(new_dir)
+                                direction_map[project_adesk.lower()] = new_dir
+                                mapped_dir = new_dir
+                                logger.info(f"Created direction: {project_adesk}")
                             
-                            # Determine status
-                            if not mapped_cat:
-                                status = "needs_review"
+                            # Use default direction if none
                             if not mapped_dir:
+                                mapped_dir = direction_map.get("общее") or directions[0] if directions else None
+                            
+                            # === AUTO-CREATE CONTRACTOR ===
+                            contractor_adesk = t.get("contractor", {}).get("name", "") or t.get("contractor_name", "") or ""
+                            mapped_contractor = contractor_map.get(contractor_adesk.lower()) if contractor_adesk else None
+                            
+                            if contractor_adesk and not mapped_contractor:
+                                new_contractor = {
+                                    "id": str(uuid.uuid4()),
+                                    "name": contractor_adesk,
+                                    "type": "client" if t_type == "income" else "supplier",
+                                    "group": "Импорт из Adesk",
+                                    "is_active": True,
+                                    "user_id": current_user["user_id"]
+                                }
+                                await db.contractors.insert_one(new_contractor)
+                                contractor_map[contractor_adesk.lower()] = new_contractor
+                                mapped_contractor = new_contractor
+                                logger.info(f"Created contractor: {contractor_adesk}")
+                            
+                            # === AUTO-CREATE ACCOUNT ===
+                            account_adesk = t.get("account", {}).get("name", "") or t.get("account_name", "") or ""
+                            mapped_account = account_map.get(account_adesk.lower()) if account_adesk else None
+                            
+                            if account_adesk and not mapped_account:
+                                # Determine currency from account name or transaction
+                                acc_currency = t.get("currency", "PLN")
+                                if "eur" in account_adesk.lower():
+                                    acc_currency = "EUR"
+                                elif "usd" in account_adesk.lower():
+                                    acc_currency = "USD"
+                                
+                                new_account = {
+                                    "id": str(uuid.uuid4()),
+                                    "name": account_adesk,
+                                    "type": "checking",
+                                    "currency": acc_currency,
+                                    "bank": None,
+                                    "initial_balance": 0,
+                                    "current_balance": 0,
+                                    "is_active": True,
+                                    "user_id": current_user["user_id"]
+                                }
+                                await db.accounts.insert_one(new_account)
+                                account_map[account_adesk.lower()] = new_account
+                                mapped_account = new_account
+                                logger.info(f"Created account: {account_adesk}")
+                            
+                            # Use default account if none
+                            if not mapped_account and accounts:
+                                mapped_account = accounts[0]
+                            
+                            # Determine status - should be ready now
+                            if not mapped_cat or not mapped_dir or not mapped_account:
                                 status = "needs_review"
-                            if not mapped_account:
-                                status = "needs_review"
+                                if not mapped_cat:
+                                    error_reason = "Не указана категория"
+                                elif not mapped_dir:
+                                    error_reason = "Не указано направление"
+                                elif not mapped_account:
+                                    error_reason = "Не указан счёт"
                             
                             draft = {
                                 "id": str(uuid.uuid4()),
