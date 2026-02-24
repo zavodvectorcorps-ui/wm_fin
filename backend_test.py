@@ -7,6 +7,7 @@ Tests comprehensive financial management APIs
 import requests
 import sys
 import json
+import urllib.parse
 from datetime import datetime, timedelta
 from typing import Dict, Any, List
 
