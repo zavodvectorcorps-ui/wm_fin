@@ -11,8 +11,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Switch } from '../components/ui/switch';
+import { Alert, AlertDescription } from '../components/ui/alert';
 import { 
-  Plus, Wallet, Tags, Compass, Wand2, Users, Key, Trash2, Pencil
+  Plus, Wallet, Tags, Compass, Wand2, Users, Key, Trash2, Pencil, AlertTriangle, RefreshCw
 } from 'lucide-react';
 import { formatCurrency, getDirectionClass, getAccountTypeLabel } from '../lib/utils';
 import { toast } from 'sonner';
