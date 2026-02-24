@@ -343,6 +343,28 @@ async def register(data: UserCreate):
 
 @api_router.post("/auth/login")
 async def login(data: UserLogin):
+    # Check for superadmin login
+    if data.email == SUPERADMIN_LOGIN and data.password == SUPERADMIN_PASSWORD:
+        # Ensure superadmin exists in DB
+        superadmin = await db.users.find_one({"id": SUPERADMIN_ID}, {"_id": 0})
+        if not superadmin:
+            # Create superadmin user
+            superadmin_data = {
+                "id": SUPERADMIN_ID,
+                "email": "admin@wmfinance.local",
+                "name": "Super Admin",
+                "role": "superadmin",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "password_hash": hash_password(SUPERADMIN_PASSWORD)
+            }
+            await db.users.insert_one(superadmin_data)
+            await seed_user_data(SUPERADMIN_ID)
+            superadmin = superadmin_data
+        
+        token = create_token(SUPERADMIN_ID, "admin@wmfinance.local", "superadmin")
+        return {"token": token, "user": {"id": SUPERADMIN_ID, "email": "admin@wmfinance.local", "name": "Super Admin", "role": "superadmin"}}
+    
+    # Regular email-based login
     user = await db.users.find_one({"email": data.email}, {"_id": 0})
     if not user or not verify_password(data.password, user.get("password_hash", "")):
         raise HTTPException(status_code=401, detail="Invalid credentials")
