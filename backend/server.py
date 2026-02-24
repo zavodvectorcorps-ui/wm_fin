@@ -2517,6 +2517,621 @@ async def root():
 async def health():
     return {"status": "healthy"}
 
+# ============== TELEGRAM BOT - ENHANCED SUMMARY ==============
+
+@api_router.get("/bot/summary")
+async def get_telegram_summary(
+    user_token: str,
+    period: Literal["day", "week", "month"] = "week"
+):
+    """Get AI-powered financial summary for Telegram bot"""
+    try:
+        payload = jwt.decode(user_token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        user_id = payload["user_id"]
+    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
+    now = datetime.now(timezone.utc)
+    
+    if period == "day":
+        date_from = now.strftime("%Y-%m-%d")
+        period_label = "за сегодня"
+    elif period == "week":
+        date_from = (now - timedelta(days=7)).strftime("%Y-%m-%d")
+        period_label = "за неделю"
+    else:
+        date_from = (now - timedelta(days=30)).strftime("%Y-%m-%d")
+        period_label = "за месяц"
+    
+    date_to = now.strftime("%Y-%m-%d")
+    
+    # Get transactions
+    transactions = await db.transactions.find(
+        {"user_id": user_id, "status": "fact", "date": {"$gte": date_from, "$lte": date_to}},
+        {"_id": 0}
+    ).to_list(10000)
+    
+    # Calculate totals
+    income = sum(t["amount"] for t in transactions if t["type"] == "income")
+    expense = sum(t["amount"] for t in transactions if t["type"] == "expense")
+    profit = income - expense
+    
+    # By direction
+    by_direction = {}
+    for t in transactions:
+        dir_name = t.get("direction_name", "Общее")
+        if dir_name not in by_direction:
+            by_direction[dir_name] = {"income": 0, "expense": 0}
+        if t["type"] == "income":
+            by_direction[dir_name]["income"] += t["amount"]
+        elif t["type"] == "expense":
+            by_direction[dir_name]["expense"] += t["amount"]
+    
+    # Top expense categories
+    expense_by_cat = {}
+    for t in transactions:
+        if t["type"] == "expense":
+            cat_name = t.get("category_name", "Прочее")
+            expense_by_cat[cat_name] = expense_by_cat.get(cat_name, 0) + t["amount"]
+    
+    top_expenses = sorted(expense_by_cat.items(), key=lambda x: x[1], reverse=True)[:5]
+    
+    # Get account balances
+    accounts = await db.accounts.find(
+        {"user_id": user_id, "is_active": True},
+        {"_id": 0}
+    ).to_list(20)
+    
+    total_balance = sum(a.get("current_balance", 0) for a in accounts)
+    
+    # Get upcoming payments
+    upcoming = await db.planned_payments.find(
+        {
+            "user_id": user_id,
+            "status": "pending",
+            "date": {"$gte": date_to, "$lte": (now + timedelta(days=7)).strftime("%Y-%m-%d")}
+        },
+        {"_id": 0}
+    ).to_list(10)
+    
+    upcoming_expense = sum(p["amount"] for p in upcoming if p["type"] == "expense")
+    upcoming_income = sum(p["amount"] for p in upcoming if p["type"] == "income")
+    
+    # Format message
+    emoji_profit = "📈" if profit >= 0 else "📉"
+    
+    message = f"""📊 *Финансовая сводка {period_label}*
+
+💰 *Общие показатели:*
+• Доходы: +{income:,.0f} zł
+• Расходы: -{expense:,.0f} zł
+• {emoji_profit} Прибыль: {profit:,.0f} zł
+
+🏦 *Баланс на счетах:* {total_balance:,.0f} zł
+
+"""
+    
+    if by_direction:
+        message += "📂 *По направлениям:*\n"
+        for dir_name, data in by_direction.items():
+            dir_profit = data["income"] - data["expense"]
+            message += f"• {dir_name}: {dir_profit:+,.0f} zł\n"
+        message += "\n"
+    
+    if top_expenses:
+        message += "📌 *Топ расходов:*\n"
+        for cat, amount in top_expenses:
+            message += f"• {cat}: {amount:,.0f} zł\n"
+        message += "\n"
+    
+    if upcoming_expense > 0 or upcoming_income > 0:
+        message += "⏰ *На следующей неделе:*\n"
+        if upcoming_income > 0:
+            message += f"• Ожидается: +{upcoming_income:,.0f} zł\n"
+        if upcoming_expense > 0:
+            message += f"• К оплате: -{upcoming_expense:,.0f} zł\n"
+    
+    return {
+        "message": message,
+        "data": {
+            "period": period,
+            "income": income,
+            "expense": expense,
+            "profit": profit,
+            "balance": total_balance,
+            "by_direction": by_direction,
+            "top_expenses": top_expenses,
+            "upcoming_expense": upcoming_expense,
+            "upcoming_income": upcoming_income
+        }
+    }
+
+# ============== ADESK MIGRATION API ==============
+
+import httpx
+
+@api_router.post("/adesk/test-connection")
+async def test_adesk_connection(
+    data: AdeskConnectionTest,
+    current_user: dict = Depends(get_current_user)
+):
+    """Test connection to Adesk API"""
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            headers = {"Authorization": f"Bearer {data.api_token}"}
+            response = await client.get(
+                "https://api.adesk.ru/v1/transactions",
+                headers=headers,
+                params={"limit": 1}
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                # Try to get count
+                count_response = await client.get(
+                    "https://api.adesk.ru/v1/transactions",
+                    headers=headers,
+                    params={"limit": 1000}
+                )
+                transactions_count = len(count_response.json().get("data", [])) if count_response.status_code == 200 else 0
+                
+                return {
+                    "status": "success",
+                    "message": "Подключение успешно",
+                    "transactions_count": transactions_count
+                }
+            elif response.status_code == 401:
+                return {"status": "error", "message": "Неверный API токен"}
+            else:
+                return {"status": "error", "message": f"Ошибка API: {response.status_code}"}
+                
+    except httpx.TimeoutException:
+        return {"status": "error", "message": "Таймаут подключения к Adesk"}
+    except Exception as e:
+        logger.error(f"Adesk connection error: {e}")
+        return {"status": "error", "message": f"Ошибка подключения: {str(e)}"}
+
+@api_router.post("/adesk/start-migration")
+async def start_adesk_migration(
+    data: AdeskMigrationStart,
+    current_user: dict = Depends(get_current_user)
+):
+    """Start migration from Adesk - load data into drafts"""
+    batch_id = str(uuid.uuid4())
+    
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            headers = {"Authorization": f"Bearer {data.api_token}"}
+            
+            # Get existing mappings
+            categories = await db.categories.find({"user_id": current_user["user_id"]}, {"_id": 0}).to_list(200)
+            directions = await db.directions.find({"user_id": current_user["user_id"]}, {"_id": 0}).to_list(20)
+            contractors = await db.contractors.find({"user_id": current_user["user_id"]}, {"_id": 0}).to_list(500)
+            accounts = await db.accounts.find({"user_id": current_user["user_id"]}, {"_id": 0}).to_list(50)
+            
+            # Create lookup maps
+            category_map = {c["name"].lower(): c for c in categories}
+            direction_map = {d["name"].lower(): d for d in directions}
+            contractor_map = {c["name"].lower(): c for c in contractors}
+            account_map = {a["name"].lower(): a for a in accounts}
+            
+            # Smart mapping for projects to directions
+            project_direction_map = {
+                "теплиц": "теплицы",
+                "саун": "сауны",
+                "купел": "купели",
+                "бан": "сауны",
+            }
+            
+            drafts_created = 0
+            errors = 0
+            
+            # Fetch transactions from Adesk
+            if data.migrate_transactions:
+                page = 1
+                while True:
+                    response = await client.get(
+                        "https://api.adesk.ru/v1/transactions",
+                        headers=headers,
+                        params={
+                            "date_from": data.date_from,
+                            "date_to": data.date_to,
+                            "limit": 100,
+                            "page": page
+                        }
+                    )
+                    
+                    if response.status_code != 200:
+                        break
+                    
+                    result = response.json()
+                    transactions = result.get("data", [])
+                    
+                    if not transactions:
+                        break
+                    
+                    for t in transactions:
+                        try:
+                            # Determine type
+                            t_type = "expense"
+                            if t.get("type") == "income" or t.get("is_income"):
+                                t_type = "income"
+                            elif t.get("type") == "transfer":
+                                t_type = "transfer"
+                            
+                            # Smart mapping
+                            status = "ready"
+                            error_reason = None
+                            
+                            # Map category
+                            cat_adesk = t.get("category", {}).get("name", "") or t.get("category_name", "")
+                            mapped_cat = category_map.get(cat_adesk.lower())
+                            
+                            # Map direction from project
+                            project_adesk = t.get("project", {}).get("name", "") or t.get("project_name", "")
+                            mapped_dir = None
+                            for key, dir_name in project_direction_map.items():
+                                if key in project_adesk.lower():
+                                    mapped_dir = direction_map.get(dir_name)
+                                    break
+                            
+                            # Map contractor
+                            contractor_adesk = t.get("contractor", {}).get("name", "") or t.get("contractor_name", "")
+                            mapped_contractor = contractor_map.get(contractor_adesk.lower())
+                            
+                            # Map account
+                            account_adesk = t.get("account", {}).get("name", "") or t.get("account_name", "")
+                            mapped_account = account_map.get(account_adesk.lower())
+                            
+                            # Determine status
+                            if not mapped_cat:
+                                status = "needs_review"
+                            if not mapped_dir:
+                                status = "needs_review"
+                            if not mapped_account:
+                                status = "needs_review"
+                            
+                            draft = {
+                                "id": str(uuid.uuid4()),
+                                "created_at": datetime.now(timezone.utc).isoformat(),
+                                "adesk_id": str(t.get("id", "")),
+                                "date": t.get("date", "")[:10] if t.get("date") else data.date_from,
+                                "type": t_type,
+                                "amount": abs(float(t.get("amount", 0))),
+                                "currency": t.get("currency", "PLN"),
+                                "category_adesk": cat_adesk,
+                                "category_id": mapped_cat["id"] if mapped_cat else None,
+                                "category_name": mapped_cat["name"] if mapped_cat else None,
+                                "project_adesk": project_adesk,
+                                "direction_id": mapped_dir["id"] if mapped_dir else None,
+                                "direction_name": mapped_dir["name"] if mapped_dir else None,
+                                "contractor_adesk": contractor_adesk,
+                                "contractor_id": mapped_contractor["id"] if mapped_contractor else None,
+                                "contractor_name": mapped_contractor["name"] if mapped_contractor else None,
+                                "account_adesk": account_adesk,
+                                "account_id": mapped_account["id"] if mapped_account else None,
+                                "account_name": mapped_account["name"] if mapped_account else None,
+                                "description": t.get("description", "") or t.get("comment", ""),
+                                "status": status,
+                                "error_reason": error_reason,
+                                "user_id": current_user["user_id"],
+                                "batch_id": batch_id
+                            }
+                            
+                            await db.adesk_drafts.insert_one(draft)
+                            drafts_created += 1
+                            
+                        except Exception as e:
+                            logger.error(f"Error processing Adesk transaction: {e}")
+                            errors += 1
+                    
+                    page += 1
+                    if len(transactions) < 100:
+                        break
+            
+            # Get stats
+            ready_count = await db.adesk_drafts.count_documents(
+                {"batch_id": batch_id, "status": "ready"}
+            )
+            review_count = await db.adesk_drafts.count_documents(
+                {"batch_id": batch_id, "status": "needs_review"}
+            )
+            
+            return {
+                "status": "success",
+                "batch_id": batch_id,
+                "drafts_created": drafts_created,
+                "ready": ready_count,
+                "needs_review": review_count,
+                "errors": errors
+            }
+            
+    except Exception as e:
+        logger.error(f"Migration error: {e}")
+        raise HTTPException(status_code=500, detail=f"Ошибка миграции: {str(e)}")
+
+@api_router.get("/adesk/drafts")
+async def get_adesk_drafts(
+    batch_id: Optional[str] = None,
+    status: Optional[str] = None,
+    page: int = 1,
+    limit: int = 50,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get Adesk migration drafts"""
+    query = {"user_id": current_user["user_id"]}
+    
+    if batch_id:
+        query["batch_id"] = batch_id
+    if status:
+        query["status"] = status
+    
+    total = await db.adesk_drafts.count_documents(query)
+    
+    drafts = await db.adesk_drafts.find(query, {"_id": 0}).sort("date", -1).skip((page - 1) * limit).limit(limit).to_list(limit)
+    
+    # Get stats
+    stats = {
+        "total": total,
+        "ready": await db.adesk_drafts.count_documents({**query, "status": "ready"}),
+        "needs_review": await db.adesk_drafts.count_documents({**query, "status": "needs_review"}),
+        "error": await db.adesk_drafts.count_documents({**query, "status": "error"}),
+        "imported": await db.adesk_drafts.count_documents({**query, "status": "imported"})
+    }
+    
+    return {
+        "drafts": drafts,
+        "stats": stats,
+        "page": page,
+        "limit": limit,
+        "total": total
+    }
+
+@api_router.put("/adesk/drafts/{draft_id}")
+async def update_adesk_draft(
+    draft_id: str,
+    data: AdeskDraftUpdate,
+    current_user: dict = Depends(get_current_user)
+):
+    """Update a single Adesk draft"""
+    draft = await db.adesk_drafts.find_one(
+        {"id": draft_id, "user_id": current_user["user_id"]},
+        {"_id": 0}
+    )
+    
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    
+    update_data = {}
+    
+    if data.category_id:
+        cat = await db.categories.find_one({"id": data.category_id}, {"_id": 0})
+        if cat:
+            update_data["category_id"] = cat["id"]
+            update_data["category_name"] = cat["name"]
+    
+    if data.direction_id:
+        dir_obj = await db.directions.find_one({"id": data.direction_id}, {"_id": 0})
+        if dir_obj:
+            update_data["direction_id"] = dir_obj["id"]
+            update_data["direction_name"] = dir_obj["name"]
+    
+    if data.contractor_id:
+        contractor = await db.contractors.find_one({"id": data.contractor_id}, {"_id": 0})
+        if contractor:
+            update_data["contractor_id"] = contractor["id"]
+            update_data["contractor_name"] = contractor["name"]
+    
+    if data.account_id:
+        account = await db.accounts.find_one({"id": data.account_id}, {"_id": 0})
+        if account:
+            update_data["account_id"] = account["id"]
+            update_data["account_name"] = account["name"]
+    
+    if data.description is not None:
+        update_data["description"] = data.description
+    
+    # Check if ready
+    draft_updated = {**draft, **update_data}
+    if draft_updated.get("category_id") and draft_updated.get("direction_id") and draft_updated.get("account_id"):
+        update_data["status"] = "ready"
+    
+    await db.adesk_drafts.update_one(
+        {"id": draft_id},
+        {"$set": update_data}
+    )
+    
+    return {"status": "updated"}
+
+@api_router.post("/adesk/drafts/bulk-update")
+async def bulk_update_adesk_drafts(
+    data: AdeskBulkUpdate,
+    current_user: dict = Depends(get_current_user)
+):
+    """Bulk update multiple drafts"""
+    update_data = {}
+    
+    if data.category_id:
+        cat = await db.categories.find_one({"id": data.category_id}, {"_id": 0})
+        if cat:
+            update_data["category_id"] = cat["id"]
+            update_data["category_name"] = cat["name"]
+    
+    if data.direction_id:
+        dir_obj = await db.directions.find_one({"id": data.direction_id}, {"_id": 0})
+        if dir_obj:
+            update_data["direction_id"] = dir_obj["id"]
+            update_data["direction_name"] = dir_obj["name"]
+    
+    if data.contractor_id:
+        contractor = await db.contractors.find_one({"id": data.contractor_id}, {"_id": 0})
+        if contractor:
+            update_data["contractor_id"] = contractor["id"]
+            update_data["contractor_name"] = contractor["name"]
+    
+    if update_data:
+        await db.adesk_drafts.update_many(
+            {"id": {"$in": data.draft_ids}, "user_id": current_user["user_id"]},
+            {"$set": update_data}
+        )
+    
+    return {"status": "updated", "count": len(data.draft_ids)}
+
+@api_router.post("/adesk/confirm-ready")
+async def confirm_ready_drafts(
+    batch_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Confirm and import all ready drafts into main database"""
+    query = {"user_id": current_user["user_id"], "status": "ready"}
+    if batch_id:
+        query["batch_id"] = batch_id
+    
+    ready_drafts = await db.adesk_drafts.find(query, {"_id": 0}).to_list(10000)
+    
+    imported = 0
+    duplicates = 0
+    errors = 0
+    
+    for draft in ready_drafts:
+        try:
+            # Check for duplicate
+            existing = await db.transactions.find_one({
+                "user_id": current_user["user_id"],
+                "date": draft["date"],
+                "amount": draft["amount"],
+                "account_id": draft["account_id"]
+            })
+            
+            if existing:
+                await db.adesk_drafts.update_one(
+                    {"id": draft["id"]},
+                    {"$set": {"status": "error", "error_reason": "Дубликат операции"}}
+                )
+                duplicates += 1
+                continue
+            
+            # Create transaction
+            transaction = {
+                "id": str(uuid.uuid4()),
+                "date": draft["date"],
+                "type": draft["type"],
+                "amount": draft["amount"],
+                "currency": draft["currency"],
+                "category_id": draft["category_id"],
+                "category_name": draft["category_name"],
+                "direction_id": draft["direction_id"],
+                "direction_name": draft["direction_name"],
+                "account_id": draft["account_id"],
+                "account_name": draft["account_name"],
+                "contractor_id": draft["contractor_id"],
+                "contractor_name": draft["contractor_name"],
+                "description": draft["description"],
+                "status": "fact",
+                "source": "adesk_migration",
+                "adesk_id": draft["adesk_id"],
+                "balance_after": 0,
+                "user_id": current_user["user_id"],
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+            
+            await db.transactions.insert_one(transaction)
+            
+            # Update account balance
+            if draft["account_id"]:
+                balance_change = draft["amount"] if draft["type"] == "income" else -draft["amount"]
+                await db.accounts.update_one(
+                    {"id": draft["account_id"]},
+                    {"$inc": {"current_balance": balance_change}}
+                )
+            
+            # Mark draft as imported
+            await db.adesk_drafts.update_one(
+                {"id": draft["id"]},
+                {"$set": {"status": "imported"}}
+            )
+            
+            imported += 1
+            
+        except Exception as e:
+            logger.error(f"Error importing draft {draft['id']}: {e}")
+            errors += 1
+    
+    return {
+        "status": "success",
+        "imported": imported,
+        "duplicates": duplicates,
+        "errors": errors
+    }
+
+@api_router.delete("/adesk/drafts/{draft_id}")
+async def delete_adesk_draft(
+    draft_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Delete a single draft"""
+    await db.adesk_drafts.delete_one(
+        {"id": draft_id, "user_id": current_user["user_id"]}
+    )
+    return {"status": "deleted"}
+
+@api_router.delete("/adesk/drafts")
+async def delete_all_drafts(
+    batch_id: Optional[str] = None,
+    status: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Delete drafts by filter"""
+    query = {"user_id": current_user["user_id"]}
+    if batch_id:
+        query["batch_id"] = batch_id
+    if status:
+        query["status"] = status
+    
+    result = await db.adesk_drafts.delete_many(query)
+    return {"status": "deleted", "count": result.deleted_count}
+
+@api_router.get("/adesk/export-problems")
+async def export_problem_drafts(
+    batch_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Export problematic drafts as CSV"""
+    query = {
+        "user_id": current_user["user_id"],
+        "status": {"$in": ["needs_review", "error"]}
+    }
+    if batch_id:
+        query["batch_id"] = batch_id
+    
+    drafts = await db.adesk_drafts.find(query, {"_id": 0}).to_list(10000)
+    
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "Дата", "Тип", "Сумма", "Валюта", "Категория Adesk", "Категория WM",
+        "Проект Adesk", "Направление WM", "Контрагент Adesk", "Контрагент WM",
+        "Счёт Adesk", "Счёт WM", "Описание", "Статус", "Причина ошибки"
+    ])
+    
+    for d in drafts:
+        writer.writerow([
+            d.get("date"), d.get("type"), d.get("amount"), d.get("currency"),
+            d.get("category_adesk"), d.get("category_name") or "-",
+            d.get("project_adesk"), d.get("direction_name") or "-",
+            d.get("contractor_adesk"), d.get("contractor_name") or "-",
+            d.get("account_adesk"), d.get("account_name") or "-",
+            d.get("description"), d.get("status"), d.get("error_reason") or "-"
+        ])
+    
+    output.seek(0)
+    
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=adesk_problems.csv"}
+    )
+
 # Include router
 app.include_router(api_router)
 
