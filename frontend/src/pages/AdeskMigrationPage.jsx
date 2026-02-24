@@ -777,6 +777,21 @@ export const AdeskMigrationPage = () => {
                 </SelectContent>
               </Select>
             </div>
+            
+            <div className="space-y-2">
+              <Label>Счёт</Label>
+              <Select value={bulkAccount} onValueChange={setBulkAccount}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Не менять" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Не менять</SelectItem>
+                  {accounts.map(a => (
+                    <SelectItem key={a.id} value={a.id}>{a.name} ({a.currency})</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           
           <DialogFooter>
