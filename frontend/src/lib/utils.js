@@ -55,7 +55,23 @@ export const formatDate = (dateString) => {
 };
 
 export const formatDateShort = (dateString) => {
-  const date = new Date(dateString);
+  if (!dateString) return '-';
+  
+  let date;
+  
+  if (dateString.includes('.')) {
+    const parts = dateString.split('.');
+    if (parts.length === 3) {
+      date = new Date(parts[2], parts[1] - 1, parts[0]);
+    }
+  } else {
+    date = new Date(dateString);
+  }
+  
+  if (!date || isNaN(date.getTime())) {
+    return dateString;
+  }
+  
   return new Intl.DateTimeFormat('ru-RU', {
     day: '2-digit',
     month: 'short'
