@@ -3834,8 +3834,15 @@ def setup_scheduler():
         id="telegram_summary_job",
         replace_existing=True
     )
+    # Google Sheets backup every day at 6:00 UTC (before work day)
+    scheduler.add_job(
+        scheduled_google_sheets_backup,
+        CronTrigger(hour=6, minute=0),
+        id="google_sheets_backup_job",
+        replace_existing=True
+    )
     scheduler.start()
-    logger.info("Telegram summary scheduler started")
+    logger.info("Scheduler started: Telegram summaries at 9:00 UTC, Google Sheets backup at 6:00 UTC")
 
 @app.on_event("startup")
 async def startup_event():
