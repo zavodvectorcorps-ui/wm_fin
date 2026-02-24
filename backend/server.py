@@ -2674,6 +2674,174 @@ async def get_telegram_summary(
         }
     }
 
+# ============== INTEGRATION SETTINGS API ==============
+
+@api_router.get("/settings/integrations")
+async def get_integration_settings(current_user: dict = Depends(get_current_user)):
+    """Get integration settings for current user"""
+    settings = await db.integration_settings.find_one(
+        {"user_id": current_user["user_id"]},
+        {"_id": 0}
+    )
+    
+    if not settings:
+        # Create default settings
+        settings = {
+            "id": str(uuid.uuid4()),
+            "user_id": current_user["user_id"],
+            "telegram_bot_token": None,
+            "telegram_chat_id": None,
+            "telegram_auto_summary": False,
+            "telegram_summary_schedule": "weekly",
+            "telegram_summary_time": "09:00",
+            "adesk_api_token": None,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.integration_settings.insert_one(settings)
+    
+    # Mask sensitive tokens
+    result = dict(settings)
+    if result.get("telegram_bot_token"):
+        result["telegram_bot_token"] = result["telegram_bot_token"][:10] + "..." + result["telegram_bot_token"][-4:]
+    if result.get("adesk_api_token"):
+        result["adesk_api_token"] = result["adesk_api_token"][:10] + "..." + result["adesk_api_token"][-4:]
+    
+    return result
+
+@api_router.put("/settings/integrations/telegram")
+async def update_telegram_settings(
+    data: TelegramSettingsUpdate,
+    current_user: dict = Depends(get_current_user)
+):
+    """Update Telegram integration settings"""
+    update_data = {"updated_at": datetime.now(timezone.utc).isoformat()}
+    
+    if data.telegram_bot_token is not None:
+        update_data["telegram_bot_token"] = data.telegram_bot_token
+    if data.telegram_chat_id is not None:
+        update_data["telegram_chat_id"] = data.telegram_chat_id
+    if data.telegram_auto_summary is not None:
+        update_data["telegram_auto_summary"] = data.telegram_auto_summary
+    if data.telegram_summary_schedule is not None:
+        update_data["telegram_summary_schedule"] = data.telegram_summary_schedule
+    if data.telegram_summary_time is not None:
+        update_data["telegram_summary_time"] = data.telegram_summary_time
+    
+    await db.integration_settings.update_one(
+        {"user_id": current_user["user_id"]},
+        {"$set": update_data},
+        upsert=True
+    )
+    
+    return {"status": "updated"}
+
+@api_router.post("/settings/telegram/test")
+async def test_telegram_connection(
+    data: TelegramTestMessage,
+    current_user: dict = Depends(get_current_user)
+):
+    """Test Telegram bot connection by sending a test message"""
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f"https://api.telegram.org/bot{data.bot_token}/sendMessage",
+                json={
+                    "chat_id": data.chat_id,
+                    "text": "✅ *WM Finance подключен!*\n\nТестовое сообщение отправлено успешно.",
+                    "parse_mode": "Markdown"
+                }
+            )
+            
+            if response.status_code == 200:
+                return {"status": "success", "message": "Сообщение отправлено"}
+            else:
+                error = response.json()
+                return {"status": "error", "message": error.get("description", "Ошибка отправки")}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@api_router.post("/settings/telegram/send-summary")
+async def send_telegram_summary(
+    period: Literal["day", "week", "month"] = "week",
+    current_user: dict = Depends(get_current_user)
+):
+    """Manually send financial summary to Telegram"""
+    # Get settings
+    settings = await db.integration_settings.find_one(
+        {"user_id": current_user["user_id"]},
+        {"_id": 0}
+    )
+    
+    if not settings or not settings.get("telegram_bot_token") or not settings.get("telegram_chat_id"):
+        raise HTTPException(status_code=400, detail="Telegram не настроен")
+    
+    # Get summary
+    token = create_token(current_user["user_id"], current_user.get("email", ""), current_user.get("role", "owner"))
+    
+    # Generate summary message
+    now = datetime.now(timezone.utc)
+    
+    if period == "day":
+        date_from = now.strftime("%Y-%m-%d")
+        period_label = "за сегодня"
+    elif period == "week":
+        date_from = (now - timedelta(days=7)).strftime("%Y-%m-%d")
+        period_label = "за неделю"
+    else:
+        date_from = (now - timedelta(days=30)).strftime("%Y-%m-%d")
+        period_label = "за месяц"
+    
+    date_to = now.strftime("%Y-%m-%d")
+    
+    transactions = await db.transactions.find(
+        {"user_id": current_user["user_id"], "status": "fact", "date": {"$gte": date_from, "$lte": date_to}},
+        {"_id": 0}
+    ).to_list(10000)
+    
+    income = sum(t["amount"] for t in transactions if t["type"] == "income")
+    expense = sum(t["amount"] for t in transactions if t["type"] == "expense")
+    profit = income - expense
+    
+    accounts = await db.accounts.find(
+        {"user_id": current_user["user_id"], "is_active": True},
+        {"_id": 0}
+    ).to_list(20)
+    
+    total_balance = sum(a.get("current_balance", 0) for a in accounts)
+    
+    emoji_profit = "📈" if profit >= 0 else "📉"
+    
+    message = f"""📊 *Финансовая сводка {period_label}*
+
+💰 *Показатели:*
+• Доходы: +{income:,.0f} zł
+• Расходы: -{expense:,.0f} zł
+• {emoji_profit} Прибыль: {profit:,.0f} zł
+
+🏦 *Баланс:* {total_balance:,.0f} zł
+
+_Отправлено из WM Finance_"""
+    
+    # Send to Telegram
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f"https://api.telegram.org/bot{settings['telegram_bot_token']}/sendMessage",
+                json={
+                    "chat_id": settings["telegram_chat_id"],
+                    "text": message,
+                    "parse_mode": "Markdown"
+                }
+            )
+            
+            if response.status_code == 200:
+                return {"status": "success", "message": "Сводка отправлена в Telegram"}
+            else:
+                error = response.json()
+                raise HTTPException(status_code=400, detail=error.get("description", "Ошибка отправки"))
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=500, detail="Таймаут подключения к Telegram")
+
 # ============== ADESK MIGRATION API ==============
 
 import httpx
