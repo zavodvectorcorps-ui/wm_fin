@@ -295,6 +295,61 @@ class Notification(BaseModel):
     link: Optional[str] = None
     user_id: str = ""
 
+# ============== ADESK MIGRATION MODELS ==============
+
+class AdeskMigrationDraft(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    adesk_id: str  # Original ID from Adesk
+    date: str
+    type: Literal["income", "expense", "transfer"]
+    amount: float
+    currency: str = "PLN"
+    category_adesk: Optional[str] = None  # Original category from Adesk
+    category_id: Optional[str] = None  # Mapped WM Finance category
+    category_name: Optional[str] = None
+    project_adesk: Optional[str] = None  # Original project from Adesk
+    direction_id: Optional[str] = None  # Mapped WM Finance direction
+    direction_name: Optional[str] = None
+    contractor_adesk: Optional[str] = None
+    contractor_id: Optional[str] = None
+    contractor_name: Optional[str] = None
+    account_adesk: Optional[str] = None
+    account_id: Optional[str] = None
+    account_name: Optional[str] = None
+    description: Optional[str] = None
+    status: Literal["ready", "needs_review", "error", "imported"] = "needs_review"
+    error_reason: Optional[str] = None
+    user_id: str = ""
+    batch_id: str = ""  # Migration batch ID
+
+class AdeskConnectionTest(BaseModel):
+    api_token: str
+
+class AdeskMigrationStart(BaseModel):
+    api_token: str
+    date_from: str
+    date_to: str
+    migrate_transactions: bool = True
+    migrate_contractors: bool = True
+    migrate_projects: bool = True
+    migrate_accounts: bool = True
+    migrate_planned: bool = False
+
+class AdeskDraftUpdate(BaseModel):
+    category_id: Optional[str] = None
+    direction_id: Optional[str] = None
+    contractor_id: Optional[str] = None
+    account_id: Optional[str] = None
+    description: Optional[str] = None
+
+class AdeskBulkUpdate(BaseModel):
+    draft_ids: List[str]
+    category_id: Optional[str] = None
+    direction_id: Optional[str] = None
+    contractor_id: Optional[str] = None
+
 # ============== AUTH HELPERS ==============
 
 def hash_password(password: str) -> str:
