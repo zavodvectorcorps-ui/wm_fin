@@ -470,7 +470,11 @@ export const AdeskMigrationPage = () => {
                 </Button>
                 <Button variant="outline" onClick={exportProblems} data-testid="export-problems-btn">
                   <FileSpreadsheet className="h-4 w-4 mr-2" />
-                  Экспортировать проблемные
+                  Экспорт проблемных
+                </Button>
+                <Button variant="destructive" onClick={deleteAllDrafts} disabled={loading} data-testid="delete-all-btn">
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Удалить все
                 </Button>
               </div>
             </div>
