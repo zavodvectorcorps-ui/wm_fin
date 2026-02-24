@@ -45,11 +45,16 @@ class UserCreate(BaseModel):
     email: str
     password: str
     name: str
-    role: Literal["owner", "accountant", "manager"] = "owner"
+    role: Literal["owner", "accountant", "manager", "superadmin"] = "owner"
 
 class UserLogin(BaseModel):
-    email: str
+    email: str  # Can be email or login for superadmin
     password: str
+
+# Superadmin credentials
+SUPERADMIN_LOGIN = "admin"
+SUPERADMIN_PASSWORD = "220066mm"
+SUPERADMIN_ID = "superadmin-wmfinance-001"
 
 class User(BaseModel):
     model_config = ConfigDict(extra="ignore")
