@@ -162,7 +162,7 @@ export const ContractorsPage = () => {
                 <SelectValue placeholder="Тип контрагента" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Все типы</SelectItem>
+                <SelectItem value="all">Все типы</SelectItem>
                 <SelectItem value="client">Клиенты</SelectItem>
                 <SelectItem value="supplier">Поставщики</SelectItem>
                 <SelectItem value="employee">Сотрудники</SelectItem>
