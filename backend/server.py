@@ -1444,11 +1444,11 @@ async def bot_get_report(
     if period == "week":
         date_from = (now - timedelta(days=7)).strftime("%Y-%m-%d")
     elif period == "month":
-        date_from = (today - timedelta(days=30)).strftime("%Y-%m-%d")
+        date_from = (now - timedelta(days=30)).strftime("%Y-%m-%d")
     else:
-        date_from = today.strftime("%Y-%m-01")
+        date_from = now.strftime("%Y-%m-01")
     
-    date_to = today.strftime("%Y-%m-%d")
+    date_to = now.strftime("%Y-%m-%d")
     
     query = {
         "user_id": user_id,
