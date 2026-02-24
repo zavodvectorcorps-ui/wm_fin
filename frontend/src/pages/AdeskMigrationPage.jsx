@@ -143,7 +143,15 @@ export const AdeskMigrationPage = () => {
       
       if (res.data.status === 'success') {
         setCurrentBatchId(res.data.batch_id);
-        toast.success(`Загружено ${res.data.drafts_created} операций в черновики`);
+        if (res.data.imported > 0) {
+          toast.success(`Импортировано ${res.data.imported} операций в раздел "Операции"`);
+        }
+        if (res.data.needs_review > 0) {
+          toast.info(`${res.data.needs_review} операций требуют проверки`);
+        }
+        if (res.data.errors > 0) {
+          toast.warning(`${res.data.errors} дубликатов пропущено`);
+        }
         fetchDrafts();
       }
     } catch (error) {
