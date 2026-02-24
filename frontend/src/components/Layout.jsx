@@ -122,8 +122,10 @@ const SidebarContent = ({ onClose }) => {
 
         <div className="h-px bg-border my-4" />
 
-        <NavItem icon={Settings} label="Настройки" path="/settings" />
-        <NavItem icon={HelpCircle} label="Помощь" path="/help" />
+        {settingsItems.map(item => (
+          <NavItem key={item.path} {...item} />
+        ))}
+        <NavItem icon={HelpCircle} label="Справка и FAQ" path="/faq" />
       </nav>
 
       {/* User */}
