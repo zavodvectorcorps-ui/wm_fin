@@ -764,7 +764,7 @@ export const AdeskMigrationPage = () => {
                   <SelectValue placeholder="Не менять" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Не менять</SelectItem>
+                  <SelectItem value="__none__">Не менять</SelectItem>
                   {contractors.map(c => (
                     <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                   ))}
