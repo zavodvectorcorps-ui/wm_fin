@@ -17,6 +17,10 @@ import ImportPage from './pages/ImportPage';
 import DocumentsPage from './pages/DocumentsPage';
 import CashFlowPage from './pages/CashFlowPage';
 import PnLPage from './pages/PnLPage';
+import BalancePage from './pages/BalancePage';
+import ExpenseAnalysisPage from './pages/ExpenseAnalysisPage';
+import ProfitabilityPage from './pages/ProfitabilityPage';
+import AutoRulesPage from './pages/AutoRulesPage';
 
 // Protected Route wrapper
 const ProtectedRoute = ({ children }) => {
