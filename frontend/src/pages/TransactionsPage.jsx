@@ -83,12 +83,13 @@ export const TransactionsPage = () => {
         ...(filters.search && { search: filters.search })
       };
       
-      const [transRes, accountsRes, categoriesRes, directionsRes, contractorsRes] = await Promise.all([
+      const [transRes, accountsRes, categoriesRes, directionsRes, contractorsRes, docsRes] = await Promise.all([
         api().get('/transactions', { params }),
         api().get('/accounts'),
         api().get('/categories'),
         api().get('/directions'),
-        api().get('/contractors')
+        api().get('/contractors'),
+        api().get('/documents', { params: { status: 'pending' } })
       ]);
       
       setTransactions(transRes.data);
@@ -96,6 +97,7 @@ export const TransactionsPage = () => {
       setCategories(categoriesRes.data);
       setDirections(directionsRes.data);
       setContractors(contractorsRes.data);
+      setDocuments(docsRes.data);
     } catch (error) {
       toast.error('Ошибка загрузки данных');
     } finally {
@@ -106,6 +108,60 @@ export const TransactionsPage = () => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Open document linking dialog
+  const openLinkDocDialog = async (transaction) => {
+    setSelectedTransactionForDoc(transaction);
+    setLinkDocDialogOpen(true);
+    
+    // Fetch linked documents for this transaction
+    try {
+      const res = await api().get(`/transactions/${transaction.id}/documents`);
+      setTransactionDocuments(prev => ({ ...prev, [transaction.id]: res.data }));
+    } catch (error) {
+      console.error('Error fetching transaction documents:', error);
+    }
+  };
+
+  // Link document to transaction
+  const linkDocument = async (documentId) => {
+    if (!selectedTransactionForDoc) return;
+    
+    try {
+      await api().post(`/documents/${documentId}/link-transaction?transaction_id=${selectedTransactionForDoc.id}`);
+      toast.success('Документ прикреплён');
+      
+      // Refresh documents
+      const res = await api().get(`/transactions/${selectedTransactionForDoc.id}/documents`);
+      setTransactionDocuments(prev => ({ ...prev, [selectedTransactionForDoc.id]: res.data }));
+      
+      // Refresh pending documents list
+      const docsRes = await api().get('/documents', { params: { status: 'pending' } });
+      setDocuments(docsRes.data);
+    } catch (error) {
+      toast.error('Ошибка прикрепления документа');
+    }
+  };
+
+  // Unlink document from transaction
+  const unlinkDocument = async (documentId) => {
+    if (!selectedTransactionForDoc) return;
+    
+    try {
+      await api().delete(`/documents/${documentId}/unlink`);
+      toast.success('Документ откреплён');
+      
+      // Refresh documents
+      const res = await api().get(`/transactions/${selectedTransactionForDoc.id}/documents`);
+      setTransactionDocuments(prev => ({ ...prev, [selectedTransactionForDoc.id]: res.data }));
+      
+      // Refresh pending documents list
+      const docsRes = await api().get('/documents', { params: { status: 'pending' } });
+      setDocuments(docsRes.data);
+    } catch (error) {
+      toast.error('Ошибка открепления документа');
+    }
+  };
 
   const openNewTransaction = (type) => {
     setTransactionType(type);
