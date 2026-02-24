@@ -14,7 +14,7 @@ import { Textarea } from '../components/ui/textarea';
 import { Checkbox } from '../components/ui/checkbox';
 import { 
   Plus, Minus, ArrowLeftRight, Search, Filter, Pencil, ArrowDownToLine, Bot, 
-  Trash2, Calendar, MoreHorizontal
+  Trash2, Calendar, MoreHorizontal, Paperclip, FileText, Link2, Unlink
 } from 'lucide-react';
 import { formatCurrency, formatDate, getDirectionClass, getStatusLabel, getPeriodDates, getTypeLabel } from '../lib/utils';
 import { toast } from 'sonner';
