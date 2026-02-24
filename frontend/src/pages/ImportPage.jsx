@@ -297,7 +297,7 @@ export const ImportPage = () => {
                     <SelectValue placeholder="Выберите колонку" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Не использовать</SelectItem>
+                    <SelectItem value="skip">Не использовать</SelectItem>
                     {preview.columns.map(c => (
                       <SelectItem key={c} value={c}>{c}</SelectItem>
                     ))}
