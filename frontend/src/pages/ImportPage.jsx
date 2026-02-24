@@ -122,7 +122,7 @@ export const ImportPage = () => {
         description_column: mapping.description_column,
         account_id: selectedAccount,
         direction_id: selectedDirection,
-        ...(mapping.type_column && { type_column: mapping.type_column })
+        ...(mapping.type_column && mapping.type_column !== 'skip' && { type_column: mapping.type_column })
       });
       
       const res = await api().post(`/import/process?${params.toString()}`, formData, {
