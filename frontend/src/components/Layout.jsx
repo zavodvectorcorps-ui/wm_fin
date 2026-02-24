@@ -41,6 +41,7 @@ const planningItems = [
 
 const settingsItems = [
   { icon: Settings, label: 'Настройки', path: '/settings' },
+  { icon: Link, label: 'Интеграции', path: '/settings/integrations' },
   { icon: Plug, label: 'Миграция из Adesk', path: '/settings/adesk' },
 ];
 
