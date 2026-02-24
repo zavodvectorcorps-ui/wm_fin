@@ -3480,13 +3480,63 @@ async def delete_all_adesk_drafts(
         "source": "adesk_migration"
     })
     
-    # Recalculate account balances (simplified - reset to initial)
-    # In production you'd recalculate from remaining transactions
+    # Reset account balances to initial
+    await db.accounts.update_many(
+        {"user_id": current_user["user_id"]},
+        [{"$set": {"current_balance": "$initial_balance"}}]
+    )
     
     return {
         "status": "deleted", 
         "drafts_deleted": drafts_result.deleted_count,
         "transactions_deleted": trans_result.deleted_count
+    }
+
+@api_router.delete("/settings/reset-all")
+async def reset_all_data(
+    current_user: dict = Depends(get_current_user)
+):
+    """DANGER: Delete ALL user data and reset to clean state"""
+    user_id = current_user["user_id"]
+    
+    results = {
+        "transactions": (await db.transactions.delete_many({"user_id": user_id})).deleted_count,
+        "planned_payments": (await db.planned_payments.delete_many({"user_id": user_id})).deleted_count,
+        "projects": (await db.projects.delete_many({"user_id": user_id})).deleted_count,
+        "contractors": (await db.contractors.delete_many({"user_id": user_id})).deleted_count,
+        "documents": (await db.documents.delete_many({"user_id": user_id})).deleted_count,
+        "adesk_drafts": (await db.adesk_drafts.delete_many({"user_id": user_id})).deleted_count,
+        "auto_rules": (await db.auto_rules.delete_many({"user_id": user_id})).deleted_count,
+        "notifications": (await db.notifications.delete_many({"user_id": user_id})).deleted_count,
+    }
+    
+    # Delete imported categories
+    results["categories"] = (await db.categories.delete_many({
+        "user_id": user_id, 
+        "group": "Импорт из Adesk"
+    })).deleted_count
+    
+    # Delete imported directions (not default 4)
+    results["directions"] = (await db.directions.delete_many({
+        "user_id": user_id,
+        "name": {"$nin": ["Теплицы", "Сауны", "Купели", "Общее"]}
+    })).deleted_count
+    
+    # Delete imported accounts (not default 3)
+    results["accounts"] = (await db.accounts.delete_many({
+        "user_id": user_id,
+        "name": {"$nin": ["Cash PL", "mBank PLN", "mBank EUR"]}
+    })).deleted_count
+    
+    # Reset remaining account balances to 0
+    await db.accounts.update_many(
+        {"user_id": user_id},
+        {"$set": {"current_balance": 0, "initial_balance": 0}}
+    )
+    
+    return {
+        "status": "reset_complete",
+        "deleted": results
     }
 
 @api_router.post("/adesk/confirm-ready")
