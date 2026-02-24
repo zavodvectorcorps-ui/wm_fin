@@ -28,7 +28,7 @@ export const ContractorsPage = () => {
   const [detailOpen, setDetailOpen] = useState(false);
   const [editingContractor, setEditingContractor] = useState(null);
   const [selectedContractor, setSelectedContractor] = useState(null);
-  const [filters, setFilters] = useState({ type: '', search: '' });
+  const [filters, setFilters] = useState({ type: 'all', search: '' });
   
   const [formData, setFormData] = useState({
     name: '',
