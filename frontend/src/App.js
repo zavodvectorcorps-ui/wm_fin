@@ -216,6 +216,12 @@ function AppRoutes() {
         </ProtectedRoute>
       } />
       
+      <Route path="/settings/integrations" element={
+        <ProtectedRoute>
+          <IntegrationsPage />
+        </ProtectedRoute>
+      } />
+      
       <Route path="/faq" element={
         <ProtectedRoute>
           <FAQPage />
