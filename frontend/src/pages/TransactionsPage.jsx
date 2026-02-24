@@ -41,10 +41,10 @@ export const TransactionsPage = () => {
   
   const [filters, setFilters] = useState({
     period: 'current_month',
-    type: '',
-    status: '',
-    account_id: '',
-    direction_id: '',
+    type: 'all',
+    status: 'all',
+    account_id: 'all',
+    direction_id: 'all',
     search: ''
   });
 
