@@ -1798,6 +1798,64 @@ async def delete_document(document_id: str, current_user: dict = Depends(get_cur
     await db.documents.delete_one({"id": document_id})
     return {"status": "deleted"}
 
+@api_router.post("/documents/{document_id}/link-transaction")
+async def link_document_to_transaction(
+    document_id: str,
+    transaction_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Link a document to a transaction"""
+    # Verify document exists
+    document = await db.documents.find_one(
+        {"id": document_id, "user_id": current_user["user_id"]},
+        {"_id": 0}
+    )
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    # Verify transaction exists
+    transaction = await db.transactions.find_one(
+        {"id": transaction_id, "user_id": current_user["user_id"]},
+        {"_id": 0}
+    )
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    
+    # Update document
+    await db.documents.update_one(
+        {"id": document_id},
+        {"$set": {
+            "transaction_id": transaction_id,
+            "status": "linked"
+        }}
+    )
+    
+    return {"status": "linked", "document_id": document_id, "transaction_id": transaction_id}
+
+@api_router.delete("/documents/{document_id}/unlink")
+async def unlink_document_from_transaction(
+    document_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Unlink a document from its transaction"""
+    await db.documents.update_one(
+        {"id": document_id, "user_id": current_user["user_id"]},
+        {"$set": {"transaction_id": None, "status": "pending"}}
+    )
+    return {"status": "unlinked"}
+
+@api_router.get("/transactions/{transaction_id}/documents")
+async def get_transaction_documents(
+    transaction_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get all documents linked to a transaction"""
+    documents = await db.documents.find(
+        {"transaction_id": transaction_id, "user_id": current_user["user_id"]},
+        {"_id": 0}
+    ).to_list(100)
+    return documents
+
 @api_router.get("/documents/export")
 async def export_documents(
     period: str = Query(..., description="Period in YYYY-MM format"),
