@@ -185,19 +185,25 @@ function AppRoutes() {
       
       <Route path="/analytics/balance" element={
         <ProtectedRoute>
-          <AnalyticsPlaceholder title="Баланс" />
+          <BalancePage />
         </ProtectedRoute>
       } />
       
       <Route path="/analytics/expenses" element={
         <ProtectedRoute>
-          <AnalyticsPlaceholder title="Анализ расходов" />
+          <ExpenseAnalysisPage />
         </ProtectedRoute>
       } />
       
       <Route path="/analytics/profitability" element={
         <ProtectedRoute>
-          <AnalyticsPlaceholder title="Рентабельность" />
+          <ProfitabilityPage />
+        </ProtectedRoute>
+      } />
+      
+      <Route path="/settings/rules" element={
+        <ProtectedRoute>
+          <AutoRulesPage />
         </ProtectedRoute>
       } />
       
