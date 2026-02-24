@@ -236,8 +236,18 @@ export const Layout = ({ children }) => {
       </header>
 
       {/* Main Content */}
-      <main className="lg:pl-64 pt-16 lg:pt-0 min-h-screen">
-        {children}
+      <main className="lg:pl-64 pt-16 lg:pt-0 min-h-screen flex flex-col">
+        <div className="flex-1">
+          {children}
+        </div>
+        {/* Footer */}
+        <footer className="border-t border-border py-4 px-6 text-center text-xs text-muted-foreground">
+          <p>Теплицы • Сауны • Купели</p>
+          <p className="mt-1 flex items-center justify-center gap-1.5">
+            <img src="/logo.png" alt="WM" className="h-4 w-4 opacity-60" />
+            <span>Made by Knyazev</span>
+          </p>
+        </footer>
       </main>
     </div>
   );
