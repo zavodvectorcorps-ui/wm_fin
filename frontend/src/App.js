@@ -24,6 +24,7 @@ import AutoRulesPage from './pages/AutoRulesPage';
 import AdeskMigrationPage from './pages/AdeskMigrationPage';
 import FAQPage from './pages/FAQPage';
 import IntegrationsPage from './pages/IntegrationsPage';
+import UsersPage from './pages/UsersPage';
 
 // Protected Route wrapper
 const ProtectedRoute = ({ children }) => {
