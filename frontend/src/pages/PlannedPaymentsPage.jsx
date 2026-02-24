@@ -97,7 +97,9 @@ export const PlannedPaymentsPage = () => {
     try {
       await api().post('/planned-payments', {
         ...formData,
-        amount: parseFloat(formData.amount)
+        amount: parseFloat(formData.amount),
+        category_id: formData.category_id === 'none' ? null : formData.category_id,
+        contractor_id: formData.contractor_id === 'none' ? null : formData.contractor_id
       });
       toast.success('Платёж создан');
       setDialogOpen(false);
