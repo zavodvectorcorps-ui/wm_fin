@@ -3423,6 +3423,302 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ============== GOOGLE SHEETS BACKUP ==============
+
+GOOGLE_SHEETS_SCOPES = [
+    'https://www.googleapis.com/auth/spreadsheets',
+    'https://www.googleapis.com/auth/drive'
+]
+GOOGLE_SERVICE_ACCOUNT_FILE = ROOT_DIR / 'google_service_account.json'
+GOOGLE_SPREADSHEET_ID = "1unqs6afSAc3V-M7f3keGh_M6gNpo-VpmUj50nZZKY3Q"
+
+def get_gspread_client():
+    """Get authenticated gspread client"""
+    if not GOOGLE_SERVICE_ACCOUNT_FILE.exists():
+        logger.error("Google service account file not found")
+        return None
+    
+    creds = ServiceAccountCredentials.from_service_account_file(
+        str(GOOGLE_SERVICE_ACCOUNT_FILE),
+        scopes=GOOGLE_SHEETS_SCOPES
+    )
+    return gspread.authorize(creds)
+
+async def backup_to_google_sheets(user_id: str = None):
+    """Export all data to Google Sheets"""
+    logger.info("Starting Google Sheets backup...")
+    
+    try:
+        gc = get_gspread_client()
+        if not gc:
+            logger.error("Failed to get gspread client")
+            return {"status": "error", "message": "Google Sheets не настроен"}
+        
+        spreadsheet = gc.open_by_key(GOOGLE_SPREADSHEET_ID)
+        
+        # Query filter - if user_id provided, filter by user
+        query = {"user_id": user_id} if user_id else {}
+        
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        
+        # 1. TRANSACTIONS
+        transactions = await db.transactions.find(query, {"_id": 0}).sort("date", -1).to_list(50000)
+        trans_headers = ["ID", "Дата", "Тип", "Сумма", "Валюта", "Категория", "Направление", "Счёт", "Контрагент", "Описание", "Статус", "Источник"]
+        trans_rows = [trans_headers]
+        for t in transactions:
+            trans_rows.append([
+                t.get("id", ""),
+                t.get("date", ""),
+                t.get("type", ""),
+                t.get("amount", 0),
+                t.get("currency", "PLN"),
+                t.get("category_name", ""),
+                t.get("direction_name", ""),
+                t.get("account_name", ""),
+                t.get("contractor_name", ""),
+                t.get("description", ""),
+                t.get("status", ""),
+                t.get("source", "")
+            ])
+        
+        # Get or create worksheet
+        try:
+            ws_trans = spreadsheet.worksheet("Операции")
+            ws_trans.clear()
+        except gspread.WorksheetNotFound:
+            ws_trans = spreadsheet.add_worksheet("Операции", rows=len(trans_rows)+10, cols=15)
+        
+        if trans_rows:
+            ws_trans.update(trans_rows, value_input_option='RAW')
+        
+        # 2. CONTRACTORS
+        contractors = await db.contractors.find({**query, "is_active": True}, {"_id": 0}).to_list(5000)
+        contr_headers = ["ID", "Название", "Тип", "Группа", "Email", "Телефон", "Комментарий"]
+        contr_rows = [contr_headers]
+        for c in contractors:
+            contr_rows.append([
+                c.get("id", ""),
+                c.get("name", ""),
+                c.get("type", ""),
+                c.get("group", ""),
+                c.get("email", ""),
+                c.get("phone", ""),
+                c.get("comment", "")
+            ])
+        
+        try:
+            ws_contr = spreadsheet.worksheet("Контрагенты")
+            ws_contr.clear()
+        except gspread.WorksheetNotFound:
+            ws_contr = spreadsheet.add_worksheet("Контрагенты", rows=len(contr_rows)+10, cols=10)
+        
+        if contr_rows:
+            ws_contr.update(contr_rows, value_input_option='RAW')
+        
+        # 3. ACCOUNTS
+        accounts = await db.accounts.find({**query, "is_active": True}, {"_id": 0}).to_list(100)
+        acc_headers = ["ID", "Название", "Тип", "Валюта", "Банк", "Начальный баланс", "Текущий баланс"]
+        acc_rows = [acc_headers]
+        for a in accounts:
+            acc_rows.append([
+                a.get("id", ""),
+                a.get("name", ""),
+                a.get("type", ""),
+                a.get("currency", ""),
+                a.get("bank", ""),
+                a.get("initial_balance", 0),
+                a.get("current_balance", 0)
+            ])
+        
+        try:
+            ws_acc = spreadsheet.worksheet("Счета")
+            ws_acc.clear()
+        except gspread.WorksheetNotFound:
+            ws_acc = spreadsheet.add_worksheet("Счета", rows=len(acc_rows)+10, cols=10)
+        
+        if acc_rows:
+            ws_acc.update(acc_rows, value_input_option='RAW')
+        
+        # 4. CATEGORIES
+        categories = await db.categories.find({**query, "is_active": True}, {"_id": 0}).to_list(500)
+        cat_headers = ["ID", "Название", "Тип", "Группа"]
+        cat_rows = [cat_headers]
+        for c in categories:
+            cat_rows.append([
+                c.get("id", ""),
+                c.get("name", ""),
+                c.get("type", ""),
+                c.get("group", "")
+            ])
+        
+        try:
+            ws_cat = spreadsheet.worksheet("Категории")
+            ws_cat.clear()
+        except gspread.WorksheetNotFound:
+            ws_cat = spreadsheet.add_worksheet("Категории", rows=len(cat_rows)+10, cols=6)
+        
+        if cat_rows:
+            ws_cat.update(cat_rows, value_input_option='RAW')
+        
+        # 5. DIRECTIONS
+        directions = await db.directions.find({**query, "is_active": True}, {"_id": 0}).to_list(50)
+        dir_headers = ["ID", "Название", "Цвет", "Описание"]
+        dir_rows = [dir_headers]
+        for d in directions:
+            dir_rows.append([
+                d.get("id", ""),
+                d.get("name", ""),
+                d.get("color", ""),
+                d.get("description", "")
+            ])
+        
+        try:
+            ws_dir = spreadsheet.worksheet("Направления")
+            ws_dir.clear()
+        except gspread.WorksheetNotFound:
+            ws_dir = spreadsheet.add_worksheet("Направления", rows=len(dir_rows)+10, cols=6)
+        
+        if dir_rows:
+            ws_dir.update(dir_rows, value_input_option='RAW')
+        
+        # 6. PROJECTS
+        projects = await db.projects.find(query, {"_id": 0}).to_list(5000)
+        proj_headers = ["ID", "Название", "Направление", "Контрагент", "План", "Факт", "Статус", "Начало", "Окончание"]
+        proj_rows = [proj_headers]
+        for p in projects:
+            proj_rows.append([
+                p.get("id", ""),
+                p.get("name", ""),
+                p.get("direction_name", ""),
+                p.get("contractor_name", ""),
+                p.get("planned_amount", 0),
+                p.get("actual_amount", 0),
+                p.get("status", ""),
+                p.get("start_date", ""),
+                p.get("end_date", "")
+            ])
+        
+        try:
+            ws_proj = spreadsheet.worksheet("Проекты")
+            ws_proj.clear()
+        except gspread.WorksheetNotFound:
+            ws_proj = spreadsheet.add_worksheet("Проекты", rows=len(proj_rows)+10, cols=12)
+        
+        if proj_rows:
+            ws_proj.update(proj_rows, value_input_option='RAW')
+        
+        # 7. PLANNED PAYMENTS
+        planned = await db.planned_payments.find(query, {"_id": 0}).to_list(5000)
+        plan_headers = ["ID", "Дата", "Тип", "Сумма", "Валюта", "Категория", "Контрагент", "Направление", "Счёт", "Статус", "Повтор", "Комментарий"]
+        plan_rows = [plan_headers]
+        for p in planned:
+            plan_rows.append([
+                p.get("id", ""),
+                p.get("date", ""),
+                p.get("type", ""),
+                p.get("amount", 0),
+                p.get("currency", "PLN"),
+                p.get("category_name", ""),
+                p.get("contractor_name", ""),
+                p.get("direction_name", ""),
+                p.get("account_name", ""),
+                p.get("status", ""),
+                p.get("recurrence", ""),
+                p.get("comment", "")
+            ])
+        
+        try:
+            ws_plan = spreadsheet.worksheet("Плановые платежи")
+            ws_plan.clear()
+        except gspread.WorksheetNotFound:
+            ws_plan = spreadsheet.add_worksheet("Плановые платежи", rows=len(plan_rows)+10, cols=15)
+        
+        if plan_rows:
+            ws_plan.update(plan_rows, value_input_option='RAW')
+        
+        # 8. INFO SHEET
+        info_rows = [
+            ["WM Finance - Автоматический бэкап"],
+            [""],
+            ["Последнее обновление:", now],
+            [""],
+            ["Статистика:"],
+            ["Операций:", len(transactions)],
+            ["Контрагентов:", len(contractors)],
+            ["Счетов:", len(accounts)],
+            ["Категорий:", len(categories)],
+            ["Направлений:", len(directions)],
+            ["Проектов:", len(projects)],
+            ["Плановых платежей:", len(planned)]
+        ]
+        
+        try:
+            ws_info = spreadsheet.worksheet("Инфо")
+            ws_info.clear()
+        except gspread.WorksheetNotFound:
+            ws_info = spreadsheet.add_worksheet("Инфо", rows=20, cols=5)
+        
+        ws_info.update(info_rows, value_input_option='RAW')
+        
+        logger.info(f"Google Sheets backup completed: {len(transactions)} transactions, {len(contractors)} contractors")
+        
+        return {
+            "status": "success",
+            "message": "Бэкап выполнен",
+            "timestamp": now,
+            "stats": {
+                "transactions": len(transactions),
+                "contractors": len(contractors),
+                "accounts": len(accounts),
+                "categories": len(categories),
+                "directions": len(directions),
+                "projects": len(projects),
+                "planned_payments": len(planned)
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Google Sheets backup error: {e}")
+        return {"status": "error", "message": str(e)}
+
+async def scheduled_google_sheets_backup():
+    """Scheduled job for daily Google Sheets backup"""
+    logger.info("Running scheduled Google Sheets backup")
+    result = await backup_to_google_sheets()
+    logger.info(f"Scheduled backup result: {result.get('status')}")
+
+@api_router.post("/backup/google-sheets")
+async def trigger_backup(current_user: dict = Depends(get_current_user)):
+    """Manually trigger Google Sheets backup"""
+    result = await asyncio.to_thread(lambda: asyncio.run(backup_to_google_sheets(current_user["user_id"])))
+    # Run in current event loop
+    result = await backup_to_google_sheets(current_user["user_id"])
+    return result
+
+@api_router.get("/backup/status")
+async def get_backup_status(current_user: dict = Depends(get_current_user)):
+    """Get backup configuration status"""
+    gc = get_gspread_client()
+    if not gc:
+        return {
+            "configured": False,
+            "message": "Google Sheets не настроен"
+        }
+    
+    try:
+        spreadsheet = gc.open_by_key(GOOGLE_SPREADSHEET_ID)
+        return {
+            "configured": True,
+            "spreadsheet_id": GOOGLE_SPREADSHEET_ID,
+            "spreadsheet_title": spreadsheet.title,
+            "spreadsheet_url": f"https://docs.google.com/spreadsheets/d/{GOOGLE_SPREADSHEET_ID}"
+        }
+    except Exception as e:
+        return {
+            "configured": False,
+            "message": str(e)
+        }
+
 # ============== TELEGRAM SCHEDULER ==============
 
 scheduler = AsyncIOScheduler()
