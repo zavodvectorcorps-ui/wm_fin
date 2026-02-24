@@ -160,6 +160,22 @@ export const SettingsPage = () => {
     { value: 'purple', label: 'Фиолетовый', class: 'bg-purple-500' },
   ];
 
+  const resetAllData = async () => {
+    if (!confirm('ВНИМАНИЕ! Будут удалены ВСЕ данные:\n- Транзакции\n- Плановые платежи\n- Проекты\n- Контрагенты\n- Документы\n- Импортированные категории\n- Импортированные направления\n- Импортированные счета\n\nОставшиеся счета будут обнулены.\n\nПродолжить?')) return;
+    
+    setResetting(true);
+    try {
+      const res = await api().delete('/settings/reset-all');
+      const d = res.data.deleted;
+      toast.success(`Удалено: транзакций ${d.transactions}, контрагентов ${d.contractors}, проектов ${d.projects}`);
+      fetchData();
+    } catch (error) {
+      toast.error('Ошибка сброса');
+    } finally {
+      setResetting(false);
+    }
+  };
+
   return (
     <div className="p-6 md:p-8 space-y-6">
       <div>
