@@ -451,11 +451,22 @@ class WMFinanceAPITester:
             self.log_test("AI Chat Setup", "FAIL", "No authentication token")
             return
             
-        # Test AI chat with financial question
+        # Test AI chat with financial question - AI endpoint expects query params not body
         test_message = "Покажи мне краткий отчет по финансам"
-        params = {'message': test_message}
         
-        success, response, code = self.make_request('POST', 'ai/chat', params=params)
+        # Construct URL with query params directly
+        url = f"{self.api_base}/ai/chat?message={test_message}"
+        headers = {'Authorization': f'Bearer {self.token}'}
+        
+        try:
+            response = requests.post(url, headers=headers, timeout=30)
+            response_data = response.json() if response.text else {}
+            success = response.status_code >= 200 and response.status_code < 300
+            code = response.status_code
+        except Exception as e:
+            success = False
+            response_data = {}
+            code = None
         if success and response.get('response'):
             self.log_test("AI Chat", "PASS", f"AI responded with {len(response['response'])} characters", code)
         else:
