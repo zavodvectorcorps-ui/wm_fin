@@ -152,6 +152,75 @@ export const IntegrationsPage = () => {
         </div>
       ) : (
         <>
+          {/* Google Sheets Backup */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Database className="h-5 w-5 text-green-500" />
+                Google Sheets Backup
+              </CardTitle>
+              <CardDescription>
+                Автоматический ежедневный бэкап всех данных в Google таблицу
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {backupStatus?.configured ? (
+                <>
+                  <Alert className="bg-emerald-500/10 border-emerald-500/20">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                    <AlertDescription className="text-emerald-500">
+                      <strong>Бэкап настроен!</strong> Данные автоматически выгружаются ежедневно в 6:00 UTC
+                    </AlertDescription>
+                  </Alert>
+                  
+                  <div className="space-y-2">
+                    <Label>Google Таблица</Label>
+                    <div className="flex items-center gap-2">
+                      <Input 
+                        value={backupStatus.spreadsheet_title || 'WM Finance Backup'} 
+                        readOnly 
+                        className="bg-muted"
+                      />
+                      <Button variant="outline" size="icon" asChild>
+                        <a href={backupStatus.spreadsheet_url} target="_blank" rel="noopener noreferrer">
+                          <ExternalLink className="h-4 w-4" />
+                        </a>
+                      </Button>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+                    <p className="text-sm font-medium">Выгружаемые данные:</p>
+                    <ul className="text-sm text-muted-foreground grid grid-cols-2 gap-1">
+                      <li>• Операции</li>
+                      <li>• Контрагенты</li>
+                      <li>• Счета</li>
+                      <li>• Категории</li>
+                      <li>• Направления</li>
+                      <li>• Проекты</li>
+                      <li>• Плановые платежи</li>
+                    </ul>
+                  </div>
+                  
+                  <Button onClick={runBackupNow} disabled={backingUp} data-testid="run-backup-btn">
+                    {backingUp ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                    )}
+                    Выгрузить сейчас
+                  </Button>
+                </>
+              ) : (
+                <Alert className="bg-yellow-500/10 border-yellow-500/20">
+                  <AlertDescription className="text-yellow-600">
+                    Google Sheets бэкап не настроен. Обратитесь к администратору.
+                  </AlertDescription>
+                </Alert>
+              )}
+            </CardContent>
+          </Card>
+
           {/* Telegram Integration */}
           <Card>
             <CardHeader>
