@@ -184,13 +184,15 @@ scheduler.add_job(
 
 ### P1
 - [ ] Email-уведомления
-- [ ] AI Ассистент — полная реализация бэкенда
 
 ### P2
-- [ ] Google Drive интеграция
 - [ ] Банковская интеграция (API)
 - [ ] Webhooks
-- [ ] Рефакторинг server.py на модули
+
+### Рефакторинг (начат)
+- [x] Создана структура: models/, routes/, services/
+- [x] Документация: /app/backend/ARCHITECTURE.md
+- [ ] Поэтапный перенос кода из server.py
 
 ---
 
