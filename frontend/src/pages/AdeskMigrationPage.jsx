@@ -57,6 +57,7 @@ export const AdeskMigrationPage = () => {
   const [bulkCategory, setBulkCategory] = useState('');
   const [bulkDirection, setBulkDirection] = useState('');
   const [bulkContractor, setBulkContractor] = useState('');
+  const [bulkAccount, setBulkAccount] = useState('');
   
   // Confirm dialog
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
