@@ -2666,7 +2666,6 @@ async def test_adesk_connection(
             )
             
             if response.status_code == 200:
-                result = response.json()
                 # Try to get count
                 count_response = await client.get(
                     "https://api.adesk.ru/v1/transactions",
