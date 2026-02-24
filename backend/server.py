@@ -3290,6 +3290,14 @@ async def bulk_update_adesk_drafts(
     
     return {"status": "updated", "count": len(data.draft_ids)}
 
+@api_router.delete("/adesk/drafts/all")
+async def delete_all_adesk_drafts(
+    current_user: dict = Depends(get_current_user)
+):
+    """Delete all Adesk drafts for current user"""
+    result = await db.adesk_drafts.delete_many({"user_id": current_user["user_id"]})
+    return {"status": "deleted", "count": result.deleted_count}
+
 @api_router.post("/adesk/confirm-ready")
 async def confirm_ready_drafts(
     batch_id: Optional[str] = None,
