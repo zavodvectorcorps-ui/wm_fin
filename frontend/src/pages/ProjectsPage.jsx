@@ -173,7 +173,7 @@ export const ProjectsPage = () => {
                 <SelectValue placeholder="Направление" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Все направления</SelectItem>
+                <SelectItem value="all">Все направления</SelectItem>
                 {directions.map(d => (
                   <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
                 ))}
