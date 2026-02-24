@@ -2072,6 +2072,303 @@ async def get_cashflow_report(
         "net_cashflow": sum(m["net"] for m in months)
     }
 
+# ============== ANALYTICS BALANCE ==============
+
+@api_router.get("/analytics/balance")
+async def get_balance_report(
+    date_to: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get Balance Sheet report - Assets and Liabilities"""
+    if not date_to:
+        date_to = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    
+    # Get all accounts with balances
+    accounts = await db.accounts.find(
+        {"user_id": current_user["user_id"], "is_active": True},
+        {"_id": 0}
+    ).to_list(100)
+    
+    # Group accounts by type and currency
+    assets = {
+        "cash": [],
+        "checking": [],
+        "card": [],
+        "savings": []
+    }
+    
+    total_by_currency = {}
+    
+    for account in accounts:
+        acc_type = account.get("type", "checking")
+        currency = account.get("currency", "PLN")
+        balance = account.get("current_balance", 0)
+        
+        assets[acc_type].append({
+            "name": account["name"],
+            "balance": balance,
+            "currency": currency,
+            "bank": account.get("bank")
+        })
+        
+        if currency not in total_by_currency:
+            total_by_currency[currency] = 0
+        total_by_currency[currency] += balance
+    
+    # Calculate total in PLN (simplified - no conversion)
+    total_assets = sum(a.get("current_balance", 0) for a in accounts)
+    
+    # Get pending planned payments (liabilities)
+    pending_expenses = await db.planned_payments.find(
+        {
+            "user_id": current_user["user_id"],
+            "type": "expense",
+            "status": {"$in": ["pending", "overdue"]}
+        },
+        {"_id": 0}
+    ).to_list(500)
+    
+    pending_income = await db.planned_payments.find(
+        {
+            "user_id": current_user["user_id"],
+            "type": "income",
+            "status": {"$in": ["pending", "overdue"]}
+        },
+        {"_id": 0}
+    ).to_list(500)
+    
+    total_liabilities = sum(p["amount"] for p in pending_expenses)
+    total_receivables = sum(p["amount"] for p in pending_income)
+    
+    return {
+        "date": date_to,
+        "assets": {
+            "cash": assets["cash"],
+            "checking": assets["checking"],
+            "card": assets["card"],
+            "savings": assets["savings"],
+            "total": total_assets,
+            "by_currency": total_by_currency
+        },
+        "liabilities": {
+            "pending_payments": pending_expenses[:20],
+            "total": total_liabilities
+        },
+        "receivables": {
+            "pending_income": pending_income[:20],
+            "total": total_receivables
+        },
+        "net_worth": total_assets - total_liabilities + total_receivables
+    }
+
+@api_router.get("/analytics/expense-analysis")
+async def get_expense_analysis(
+    date_from: str,
+    date_to: str,
+    direction_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Detailed expense analysis with trends"""
+    query = {
+        "user_id": current_user["user_id"],
+        "status": "fact",
+        "type": "expense",
+        "date": {"$gte": date_from, "$lte": date_to}
+    }
+    
+    if direction_id:
+        query["direction_id"] = direction_id
+    
+    transactions = await db.transactions.find(query, {"_id": 0}).to_list(10000)
+    
+    # By category
+    by_category = {}
+    by_direction = {}
+    by_contractor = {}
+    daily_expenses = {}
+    
+    for t in transactions:
+        cat_name = t.get("category_name", "Без категории")
+        dir_name = t.get("direction_name", "Общее")
+        contractor = t.get("contractor_name", "Без контрагента")
+        date = t["date"]
+        amount = t["amount"]
+        
+        # By category
+        if cat_name not in by_category:
+            by_category[cat_name] = {"amount": 0, "count": 0}
+        by_category[cat_name]["amount"] += amount
+        by_category[cat_name]["count"] += 1
+        
+        # By direction
+        if dir_name not in by_direction:
+            by_direction[dir_name] = {"amount": 0, "count": 0}
+        by_direction[dir_name]["amount"] += amount
+        by_direction[dir_name]["count"] += 1
+        
+        # By contractor
+        if contractor not in by_contractor:
+            by_contractor[contractor] = {"amount": 0, "count": 0}
+        by_contractor[contractor]["amount"] += amount
+        by_contractor[contractor]["count"] += 1
+        
+        # Daily
+        if date not in daily_expenses:
+            daily_expenses[date] = 0
+        daily_expenses[date] += amount
+    
+    total_expense = sum(t["amount"] for t in transactions)
+    
+    # Sort and limit
+    top_categories = sorted(by_category.items(), key=lambda x: x[1]["amount"], reverse=True)[:15]
+    top_contractors = sorted(by_contractor.items(), key=lambda x: x[1]["amount"], reverse=True)[:10]
+    
+    # Calculate average
+    days = (datetime.strptime(date_to, "%Y-%m-%d") - datetime.strptime(date_from, "%Y-%m-%d")).days + 1
+    daily_average = total_expense / max(days, 1)
+    
+    return {
+        "period": {"from": date_from, "to": date_to},
+        "total_expense": total_expense,
+        "daily_average": daily_average,
+        "transaction_count": len(transactions),
+        "by_category": [{"name": k, **v, "percent": (v["amount"]/total_expense*100) if total_expense > 0 else 0} for k, v in top_categories],
+        "by_direction": [{"name": k, **v, "percent": (v["amount"]/total_expense*100) if total_expense > 0 else 0} for k, v in by_direction.items()],
+        "top_contractors": [{"name": k, **v} for k, v in top_contractors],
+        "daily_trend": [{"date": k, "amount": v} for k, v in sorted(daily_expenses.items())]
+    }
+
+@api_router.get("/analytics/profitability")
+async def get_profitability_report(
+    date_from: str,
+    date_to: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Profitability analysis by business direction"""
+    query = {
+        "user_id": current_user["user_id"],
+        "status": "fact",
+        "date": {"$gte": date_from, "$lte": date_to}
+    }
+    
+    transactions = await db.transactions.find(query, {"_id": 0}).to_list(10000)
+    directions = await db.directions.find({"user_id": current_user["user_id"], "is_active": True}, {"_id": 0}).to_list(20)
+    
+    # Calculate by direction
+    by_direction = {}
+    for d in directions:
+        by_direction[d["name"]] = {
+            "id": d["id"],
+            "color": d.get("color", "gray"),
+            "income": 0,
+            "expense": 0,
+            "profit": 0,
+            "margin": 0,
+            "transactions": 0
+        }
+    
+    for t in transactions:
+        dir_name = t.get("direction_name", "Общее")
+        if dir_name not in by_direction:
+            by_direction[dir_name] = {
+                "id": None,
+                "color": "gray",
+                "income": 0,
+                "expense": 0,
+                "profit": 0,
+                "margin": 0,
+                "transactions": 0
+            }
+        
+        by_direction[dir_name]["transactions"] += 1
+        
+        if t["type"] == "income":
+            by_direction[dir_name]["income"] += t["amount"]
+        elif t["type"] == "expense":
+            by_direction[dir_name]["expense"] += t["amount"]
+    
+    # Calculate profit and margin
+    for name, data in by_direction.items():
+        data["profit"] = data["income"] - data["expense"]
+        data["margin"] = (data["profit"] / data["income"] * 100) if data["income"] > 0 else 0
+    
+    # Sort by profit
+    sorted_directions = sorted(by_direction.items(), key=lambda x: x[1]["profit"], reverse=True)
+    
+    total_income = sum(d[1]["income"] for d in sorted_directions)
+    total_expense = sum(d[1]["expense"] for d in sorted_directions)
+    total_profit = total_income - total_expense
+    overall_margin = (total_profit / total_income * 100) if total_income > 0 else 0
+    
+    return {
+        "period": {"from": date_from, "to": date_to},
+        "by_direction": [{"name": k, **v} for k, v in sorted_directions],
+        "totals": {
+            "income": total_income,
+            "expense": total_expense,
+            "profit": total_profit,
+            "margin": overall_margin
+        }
+    }
+
+@api_router.get("/analytics/top-contractors")
+async def get_top_contractors(
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    limit: int = 10,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get top contractors by transaction volume"""
+    if not date_from:
+        date_from = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%d")
+    if not date_to:
+        date_to = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    
+    query = {
+        "user_id": current_user["user_id"],
+        "status": "fact",
+        "date": {"$gte": date_from, "$lte": date_to},
+        "contractor_id": {"$ne": None}
+    }
+    
+    transactions = await db.transactions.find(query, {"_id": 0}).to_list(10000)
+    
+    # Aggregate by contractor
+    contractor_stats = {}
+    for t in transactions:
+        contractor_id = t.get("contractor_id")
+        contractor_name = t.get("contractor_name", "Неизвестный")
+        
+        if not contractor_id:
+            continue
+        
+        if contractor_id not in contractor_stats:
+            contractor_stats[contractor_id] = {
+                "id": contractor_id,
+                "name": contractor_name,
+                "income": 0,
+                "expense": 0,
+                "total": 0,
+                "transactions": 0
+            }
+        
+        contractor_stats[contractor_id]["transactions"] += 1
+        
+        if t["type"] == "income":
+            contractor_stats[contractor_id]["income"] += t["amount"]
+            contractor_stats[contractor_id]["total"] += t["amount"]
+        elif t["type"] == "expense":
+            contractor_stats[contractor_id]["expense"] += t["amount"]
+            contractor_stats[contractor_id]["total"] += t["amount"]
+    
+    # Sort by total volume
+    sorted_contractors = sorted(contractor_stats.values(), key=lambda x: x["total"], reverse=True)[:limit]
+    
+    return {
+        "period": {"from": date_from, "to": date_to},
+        "contractors": sorted_contractors
+    }
+
 # ============== HEALTH CHECK ==============
 
 @api_router.get("/")
