@@ -158,6 +158,41 @@ const SidebarContent = ({ onClose }) => {
 
 export const Layout = ({ children }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const navigate = useNavigate();
+  
+  // Global hotkeys
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Skip if user is typing in input/textarea
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
+        return;
+      }
+      
+      // N - new transaction (navigate to transactions page)
+      if (e.key === 'n' || e.key === 'N' || e.key === 'т' || e.key === 'Т') {
+        e.preventDefault();
+        navigate('/transactions');
+      }
+      
+      // F or / - focus search (if exists)
+      if (e.key === 'f' || e.key === 'F' || e.key === '/' || e.key === 'а' || e.key === 'А') {
+        const searchInput = document.querySelector('[data-testid="filter-search"]');
+        if (searchInput) {
+          e.preventDefault();
+          searchInput.focus();
+        }
+      }
+      
+      // D - dashboard
+      if (e.key === 'd' || e.key === 'D' || e.key === 'в' || e.key === 'В') {
+        e.preventDefault();
+        navigate('/');
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [navigate]);
 
   return (
     <div className="min-h-screen bg-background">
