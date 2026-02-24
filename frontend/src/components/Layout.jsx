@@ -182,9 +182,7 @@ export const Layout = ({ children }) => {
           <span className="font-semibold">WM Finance</span>
         </div>
 
-        <Button variant="ghost" size="icon" data-testid="notifications-btn">
-          <Bell className="h-5 w-5" />
-        </Button>
+        <NotificationsDropdown />
       </header>
 
       {/* Main Content */}
