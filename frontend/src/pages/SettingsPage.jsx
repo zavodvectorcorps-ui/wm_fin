@@ -184,7 +184,7 @@ export const SettingsPage = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid grid-cols-2 lg:grid-cols-5 w-full lg:w-auto">
+        <TabsList className="grid grid-cols-2 lg:grid-cols-6 w-full lg:w-auto">
           <TabsTrigger value="accounts" data-testid="tab-accounts">
             <Wallet className="h-4 w-4 mr-2" />
             Счета
@@ -204,6 +204,10 @@ export const SettingsPage = () => {
           <TabsTrigger value="api" data-testid="tab-api">
             <Key className="h-4 w-4 mr-2" />
             API
+          </TabsTrigger>
+          <TabsTrigger value="danger" data-testid="tab-danger" className="text-destructive">
+            <AlertTriangle className="h-4 w-4 mr-2" />
+            Сброс
           </TabsTrigger>
         </TabsList>
 
