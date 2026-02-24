@@ -647,7 +647,7 @@ export const SettingsPage = () => {
               <Select value={ruleForm.category_id} onValueChange={(v) => setRuleForm({ ...ruleForm, category_id: v })}>
                 <SelectTrigger><SelectValue placeholder="Выберите категорию" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Не задавать</SelectItem>
+                  <SelectItem value="none">Не задавать</SelectItem>
                   {categories.map(c => (
                     <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                   ))}
@@ -659,7 +659,7 @@ export const SettingsPage = () => {
               <Select value={ruleForm.direction_id} onValueChange={(v) => setRuleForm({ ...ruleForm, direction_id: v })}>
                 <SelectTrigger><SelectValue placeholder="Выберите направление" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Не задавать</SelectItem>
+                  <SelectItem value="none">Не задавать</SelectItem>
                   {directions.map(d => (
                     <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
                   ))}
