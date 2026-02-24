@@ -2034,7 +2034,6 @@ async def get_cashflow_report(
         query["direction_id"] = direction_id
     
     transactions = await db.transactions.find(query, {"_id": 0}).to_list(10000)
-    categories = await db.categories.find({"user_id": current_user["user_id"]}, {"_id": 0}).to_list(100)
     
     # Initialize months
     months = []
