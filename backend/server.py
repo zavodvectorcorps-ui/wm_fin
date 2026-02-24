@@ -3077,12 +3077,29 @@ async def start_adesk_migration(
                             if existing:
                                 continue  # Skip duplicate
                             
-                            # Determine type
+                            # Determine type from Adesk data
                             t_type = "expense"
-                            if t.get("type") == "income" or t.get("is_income"):
+                            
+                            # Check various Adesk fields for type
+                            adesk_type = t.get("type", "").lower()
+                            if adesk_type in ["income", "приход", "in"]:
                                 t_type = "income"
-                            elif t.get("type") == "transfer":
+                            elif adesk_type in ["expense", "расход", "out"]:
+                                t_type = "expense"
+                            elif adesk_type == "transfer":
                                 t_type = "transfer"
+                            elif t.get("is_income") == True:
+                                t_type = "income"
+                            elif t.get("is_expense") == True:
+                                t_type = "expense"
+                            
+                            # Also check amount sign - positive usually means income
+                            raw_amount = t.get("amount", 0)
+                            if isinstance(raw_amount, (int, float)) and raw_amount > 0:
+                                # If no explicit type, check category hints
+                                cat_name_lower = (t.get("category", {}).get("name", "") or t.get("category_name", "") or "").lower()
+                                if any(kw in cat_name_lower for kw in ["приход", "доход", "выручка", "оплата от", "клиент"]):
+                                    t_type = "income"
                             
                             status = "ready"
                             error_reason = None
@@ -3091,12 +3108,23 @@ async def start_adesk_migration(
                             cat_adesk = t.get("category", {}).get("name", "") or t.get("category_name", "") or ""
                             mapped_cat = category_map.get(cat_adesk.lower()) if cat_adesk else None
                             
+                            # If category exists, use its type
+                            if mapped_cat:
+                                t_type = mapped_cat.get("type", t_type)
+                            
                             if cat_adesk and not mapped_cat:
-                                # Create new category from Adesk
+                                # Create new category from Adesk - determine type from name
+                                cat_type = t_type
+                                cat_lower = cat_adesk.lower()
+                                if any(kw in cat_lower for kw in ["приход", "доход", "выручка", "оплата от", "клиент"]):
+                                    cat_type = "income"
+                                elif any(kw in cat_lower for kw in ["расход", "затрат", "оплата", "закупк"]):
+                                    cat_type = "expense"
+                                    
                                 new_cat = {
                                     "id": str(uuid.uuid4()),
                                     "name": cat_adesk,
-                                    "type": t_type if t_type in ["income", "expense"] else "expense",
+                                    "type": cat_type,
                                     "group": "Импорт из Adesk",
                                     "is_active": True,
                                     "user_id": current_user["user_id"]
@@ -3104,7 +3132,8 @@ async def start_adesk_migration(
                                 await db.categories.insert_one(new_cat)
                                 category_map[cat_adesk.lower()] = new_cat
                                 mapped_cat = new_cat
-                                logger.info(f"Created category: {cat_adesk}")
+                                t_type = cat_type  # Use category type
+                                logger.info(f"Created category: {cat_adesk} (type: {cat_type})")
                             
                             # === AUTO-CREATE DIRECTION ===
                             project_adesk = t.get("project", {}).get("name", "") or t.get("project_name", "") or ""
