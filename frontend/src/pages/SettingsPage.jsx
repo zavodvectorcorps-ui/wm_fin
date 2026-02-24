@@ -110,7 +110,11 @@ export const SettingsPage = () => {
         payload = directionForm;
       } else if (dialogType === 'rule') {
         endpoint = '/auto-rules';
-        payload = ruleForm;
+        payload = {
+          ...ruleForm,
+          category_id: ruleForm.category_id === 'none' ? null : ruleForm.category_id,
+          direction_id: ruleForm.direction_id === 'none' ? null : ruleForm.direction_id
+        };
       }
       
       if (editingItem) {
