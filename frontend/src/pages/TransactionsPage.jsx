@@ -475,7 +475,7 @@ export const TransactionsPage = () => {
                   <SelectValue placeholder="Выберите статью" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Без категории</SelectItem>
+                  <SelectItem value="none">Без категории</SelectItem>
                   {filteredCategories.map(c => (
                     <SelectItem key={c.id} value={c.id}>{c.group} → {c.name}</SelectItem>
                   ))}
