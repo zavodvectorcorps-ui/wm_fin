@@ -3421,6 +3421,129 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ============== TELEGRAM SCHEDULER ==============
+
+scheduler = AsyncIOScheduler()
+
+async def send_scheduled_telegram_summary():
+    """Background job to send automatic Telegram summaries"""
+    logger.info("Running scheduled Telegram summary job")
+    
+    try:
+        # Find all users with auto-summary enabled
+        all_settings = await db.integration_settings.find(
+            {"telegram_auto_summary": True},
+            {"_id": 0}
+        ).to_list(1000)
+        
+        for settings in all_settings:
+            if not settings.get("telegram_bot_token") or not settings.get("telegram_chat_id"):
+                continue
+            
+            user_id = settings.get("user_id")
+            if not user_id:
+                continue
+            
+            # Check schedule
+            schedule = settings.get("telegram_summary_schedule", "weekly")
+            now = datetime.now(timezone.utc)
+            
+            # Validate schedule matches current day
+            if schedule == "daily":
+                pass  # Always send
+            elif schedule == "weekly" and now.weekday() != 0:  # Monday
+                continue
+            elif schedule == "monday" and now.weekday() != 0:
+                continue
+            elif schedule == "friday" and now.weekday() != 4:
+                continue
+            
+            try:
+                # Calculate period
+                if schedule == "daily":
+                    period_days = 1
+                    period_name = "вчера"
+                else:
+                    period_days = 7
+                    period_name = "неделю"
+                
+                date_from = (now - timedelta(days=period_days)).strftime("%Y-%m-%d")
+                date_to = now.strftime("%Y-%m-%d")
+                
+                # Get transactions
+                transactions = await db.transactions.find({
+                    "user_id": user_id,
+                    "status": "fact",
+                    "date": {"$gte": date_from, "$lte": date_to}
+                }, {"_id": 0}).to_list(10000)
+                
+                total_income = sum(t["amount"] for t in transactions if t["type"] == "income")
+                total_expense = sum(t["amount"] for t in transactions if t["type"] == "expense")
+                profit = total_income - total_expense
+                
+                # Get balances
+                accounts = await db.accounts.find(
+                    {"user_id": user_id, "is_active": True},
+                    {"_id": 0}
+                ).to_list(100)
+                total_balance = sum(a.get("current_balance", 0) for a in accounts)
+                
+                # Get overdue payments
+                overdue = await db.planned_payments.count_documents({
+                    "user_id": user_id,
+                    "status": "pending",
+                    "date": {"$lt": now.strftime("%Y-%m-%d")}
+                })
+                
+                # Build message
+                message = f"""📊 *Автоматическая сводка WM Finance*
+за {period_name} ({date_from} — {date_to})
+
+💰 Доходы: {total_income:,.2f} zł
+💸 Расходы: {total_expense:,.2f} zł
+📈 Прибыль: {profit:+,.2f} zł
+
+💳 Остаток на счетах: {total_balance:,.2f} zł"""
+
+                if overdue > 0:
+                    message += f"\n\n⚠️ Просроченных платежей: {overdue}"
+                
+                # Send to Telegram
+                import httpx
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    await client.post(
+                        f"https://api.telegram.org/bot{settings['telegram_bot_token']}/sendMessage",
+                        json={
+                            "chat_id": settings["telegram_chat_id"],
+                            "text": message,
+                            "parse_mode": "Markdown"
+                        }
+                    )
+                    logger.info(f"Sent scheduled summary to user {user_id}")
+                    
+            except Exception as e:
+                logger.error(f"Error sending summary for user {user_id}: {e}")
+                
+    except Exception as e:
+        logger.error(f"Scheduler job error: {e}")
+
+def setup_scheduler():
+    """Setup the scheduler with jobs"""
+    # Run every day at 9:00 UTC (the job itself checks user schedules)
+    scheduler.add_job(
+        send_scheduled_telegram_summary,
+        CronTrigger(hour=9, minute=0),
+        id="telegram_summary_job",
+        replace_existing=True
+    )
+    scheduler.start()
+    logger.info("Telegram summary scheduler started")
+
+@app.on_event("startup")
+async def startup_event():
+    setup_scheduler()
+
 @app.on_event("shutdown")
 async def shutdown_db_client():
+    scheduler.shutdown(wait=False)
     client.close()
