@@ -1354,7 +1354,7 @@ async def bot_create_transaction(data: BotTransactionRequest):
     try:
         payload = jwt.decode(data.user_token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         user_id = payload["user_id"]
-    except:
+    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
         raise HTTPException(status_code=401, detail="Invalid token")
     
     text = data.text.lower()
@@ -1436,13 +1436,13 @@ async def bot_get_report(
     try:
         payload = jwt.decode(user_token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         user_id = payload["user_id"]
-    except:
+    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
         raise HTTPException(status_code=401, detail="Invalid token")
     
-    today = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)
     
     if period == "week":
-        date_from = (today - timedelta(days=7)).strftime("%Y-%m-%d")
+        date_from = (now - timedelta(days=7)).strftime("%Y-%m-%d")
     elif period == "month":
         date_from = (today - timedelta(days=30)).strftime("%Y-%m-%d")
     else:
