@@ -61,7 +61,7 @@ export const AIChat = () => {
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetTrigger asChild>
           <Button 
-            className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg z-[100] bg-primary hover:bg-primary/90"
+            className="fixed bottom-6 right-24 h-14 w-14 rounded-full shadow-lg z-[100] bg-primary hover:bg-primary/90"
             size="icon"
             data-testid="ai-chat-btn"
           >
