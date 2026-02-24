@@ -156,7 +156,7 @@ class Transaction(BaseModel):
     contractor_id: Optional[str] = None
     contractor_name: Optional[str] = None
     project_id: Optional[str] = None
-    source: Literal["manual", "import", "telegram_bot"] = "manual"
+    source: Literal["manual", "import", "telegram_bot", "adesk_migration"] = "manual"
     description: Optional[str] = None
     status: Literal["fact", "plan"] = "fact"
     is_recurring: bool = False
