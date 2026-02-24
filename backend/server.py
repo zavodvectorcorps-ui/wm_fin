@@ -1928,7 +1928,6 @@ async def get_notifications(current_user: dict = Depends(get_current_user)):
     notifications = []
     
     # Check for overdue payments
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     overdue_payments = await db.planned_payments.find(
         {"user_id": current_user["user_id"], "status": "overdue"},
         {"_id": 0}
