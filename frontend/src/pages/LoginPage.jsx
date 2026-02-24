@@ -78,7 +78,7 @@ export const LoginPage = () => {
                     <Input
                       id="login-email"
                       type="text"
-                      placeholder="admin или email@example.com"
+                      placeholder="email@example.com"
                       value={loginData.email}
                       onChange={(e) => setLoginData({ ...loginData, email: e.target.value })}
                       data-testid="login-email-input"
