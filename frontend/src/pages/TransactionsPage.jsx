@@ -422,6 +422,10 @@ export const TransactionsPage = () => {
                             <Pencil className="h-4 w-4 mr-2" />
                             Редактировать
                           </DropdownMenuItem>
+                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openLinkDocDialog(t); }}>
+                            <Paperclip className="h-4 w-4 mr-2" />
+                            Документы
+                          </DropdownMenuItem>
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
                               <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-destructive">
@@ -454,6 +458,89 @@ export const TransactionsPage = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Document Linking Dialog */}
+      <Dialog open={linkDocDialogOpen} onOpenChange={setLinkDocDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Paperclip className="h-5 w-5" />
+              Документы операции
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            {/* Linked documents */}
+            {selectedTransactionForDoc && transactionDocuments[selectedTransactionForDoc.id]?.length > 0 && (
+              <div>
+                <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+                  <Link2 className="h-4 w-4" />
+                  Прикреплённые документы
+                </h4>
+                <div className="space-y-2">
+                  {transactionDocuments[selectedTransactionForDoc.id].map((doc) => (
+                    <div key={doc.id} className="flex items-center justify-between p-2 rounded-lg bg-muted/50">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-muted-foreground" />
+                        <span className="truncate max-w-[200px]">{doc.file_name}</span>
+                      </div>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        onClick={() => unlinkDocument(doc.id)}
+                        data-testid={`unlink-doc-${doc.id}`}
+                      >
+                        <Unlink className="h-4 w-4 text-muted-foreground" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* Available documents to link */}
+            {documents.length > 0 && (
+              <div>
+                <h4 className="text-sm font-medium mb-2">Доступные документы</h4>
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  {documents.map((doc) => (
+                    <div key={doc.id} className="flex items-center justify-between p-2 rounded-lg border border-border hover:bg-muted/50">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-muted-foreground" />
+                        <div>
+                          <span className="truncate max-w-[200px] block">{doc.file_name}</span>
+                          <span className="text-xs text-muted-foreground">{doc.type}</span>
+                        </div>
+                      </div>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => linkDocument(doc.id)}
+                        data-testid={`link-doc-${doc.id}`}
+                      >
+                        <Link2 className="h-4 w-4 mr-1" />
+                        Прикрепить
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {documents.length === 0 && (!selectedTransactionForDoc || !transactionDocuments[selectedTransactionForDoc.id]?.length) && (
+              <p className="text-muted-foreground text-center py-4">
+                Нет доступных документов. Загрузите документы на странице "Документы".
+              </p>
+            )}
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLinkDocDialogOpen(false)}>
+              Закрыть
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Transaction Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
