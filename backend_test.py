@@ -456,7 +456,7 @@ class WMFinanceAPITester:
         test_message = "Покажи мне краткий отчет по финансам"
         
         # Construct URL with query params directly
-        url = f"{self.api_base}/ai/chat?message={test_message}"
+        url = f"{self.api_base}/ai/chat?message={urllib.parse.quote(test_message)}"
         headers = {'Authorization': f'Bearer {self.token}'}
         
         try:
