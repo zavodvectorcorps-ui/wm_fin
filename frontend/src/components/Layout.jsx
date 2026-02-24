@@ -126,6 +126,12 @@ const SidebarContent = ({ onClose }) => {
         {settingsItems.map(item => (
           <NavItem key={item.path} {...item} />
         ))}
+        
+        {/* Admin Users - only for superadmin */}
+        {user?.role === 'superadmin' && (
+          <NavItem icon={Shield} label="Пользователи" path="/admin/users" />
+        )}
+        
         <NavItem icon={HelpCircle} label="Справка и FAQ" path="/faq" />
       </nav>
 
