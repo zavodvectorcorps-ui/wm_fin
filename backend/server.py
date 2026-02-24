@@ -3456,13 +3456,26 @@ async def export_problem_drafts(
 # Include router
 app.include_router(api_router)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# CORS configuration
+cors_origins = os.environ.get('CORS_ORIGINS', '*')
+if cors_origins == '*':
+    # Allow all origins without credentials
+    app.add_middleware(
+        CORSMiddleware,
+        allow_credentials=False,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    # Specific origins with credentials
+    app.add_middleware(
+        CORSMiddleware,
+        allow_credentials=True,
+        allow_origins=cors_origins.split(','),
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 # ============== GOOGLE SHEETS BACKUP ==============
 
