@@ -243,6 +243,49 @@ class BotTransactionRequest(BaseModel):
     user_token: str
     date: Optional[str] = None
 
+# ============== DOCUMENT MODEL ==============
+
+class Document(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    document_date: Optional[str] = None
+    type: Literal["invoice", "bank_statement", "payment_order", "act", "contract", "receipt", "other"] = "other"
+    file_name: str
+    file_url: str
+    file_size: int = 0
+    mime_type: str = ""
+    transaction_id: Optional[str] = None
+    contractor_id: Optional[str] = None
+    contractor_name: Optional[str] = None
+    direction_id: Optional[str] = None
+    direction_name: Optional[str] = None
+    period: Optional[str] = None  # YYYY-MM format
+    status: Literal["linked", "pending"] = "pending"
+    source: Literal["manual", "email", "telegram_bot"] = "manual"
+    description: Optional[str] = None
+    user_id: str = ""
+
+class DocumentCreate(BaseModel):
+    document_date: Optional[str] = None
+    type: Literal["invoice", "bank_statement", "payment_order", "act", "contract", "receipt", "other"] = "other"
+    transaction_id: Optional[str] = None
+    contractor_id: Optional[str] = None
+    direction_id: Optional[str] = None
+    period: Optional[str] = None
+    description: Optional[str] = None
+
+class Notification(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    type: Literal["overdue_payment", "low_balance", "uncategorized_import", "document_pending"] = "overdue_payment"
+    title: str
+    message: str
+    is_read: bool = False
+    link: Optional[str] = None
+    user_id: str = ""
+
 # ============== AUTH HELPERS ==============
 
 def hash_password(password: str) -> str:
