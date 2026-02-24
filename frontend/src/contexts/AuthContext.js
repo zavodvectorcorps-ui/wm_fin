@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import axios from 'axios';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL + '/api';
@@ -17,6 +17,22 @@ export const AuthProvider = ({ children }) => {
       baseURL: API_URL,
       headers: token ? { Authorization: `Bearer ${token}` } : {}
     });
+    
+    // Add response interceptor for 401 errors
+    instance.interceptors.response.use(
+      response => response,
+      error => {
+        if (error.response?.status === 401) {
+          // Token expired or invalid - logout
+          localStorage.removeItem('wm_token');
+          setToken(null);
+          setUser(null);
+          window.location.href = '/login';
+        }
+        return Promise.reject(error);
+      }
+    );
+    
     return instance;
   }, [token]);
 
@@ -29,6 +45,7 @@ export const AuthProvider = ({ children }) => {
         } catch (e) {
           localStorage.removeItem('wm_token');
           setToken(null);
+          setUser(null);
         }
       }
       setLoading(false);
@@ -37,7 +54,7 @@ export const AuthProvider = ({ children }) => {
   }, [token, api]);
 
   const login = async (email, password) => {
-    const res = await api().post('/auth/login', { email, password });
+    const res = await axios.post(`${API_URL}/auth/login`, { email, password });
     localStorage.setItem('wm_token', res.data.token);
     setToken(res.data.token);
     setUser(res.data.user);
@@ -45,7 +62,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const register = async (email, password, name) => {
-    const res = await api().post('/auth/register', { email, password, name });
+    const res = await axios.post(`${API_URL}/auth/register`, { email, password, name });
     localStorage.setItem('wm_token', res.data.token);
     setToken(res.data.token);
     setUser(res.data.user);
@@ -58,8 +75,12 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
+  const value = useMemo(() => ({
+    user, token, loading, login, register, logout, api
+  }), [user, token, loading, api]);
+
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, register, logout, api }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
