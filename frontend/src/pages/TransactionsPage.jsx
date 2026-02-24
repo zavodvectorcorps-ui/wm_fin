@@ -70,10 +70,10 @@ export const TransactionsPage = () => {
       const params = {
         date_from: dates.from,
         date_to: dates.to,
-        ...(filters.type && { type: filters.type }),
-        ...(filters.status && { status: filters.status }),
-        ...(filters.account_id && { account_id: filters.account_id }),
-        ...(filters.direction_id && { direction_id: filters.direction_id }),
+        ...(filters.type && filters.type !== 'all' && { type: filters.type }),
+        ...(filters.status && filters.status !== 'all' && { status: filters.status }),
+        ...(filters.account_id && filters.account_id !== 'all' && { account_id: filters.account_id }),
+        ...(filters.direction_id && filters.direction_id !== 'all' && { direction_id: filters.direction_id }),
         ...(filters.search && { search: filters.search })
       };
       
