@@ -3226,8 +3226,65 @@ async def start_adesk_migration(
                                 "batch_id": batch_id
                             }
                             
-                            await db.adesk_drafts.insert_one(draft)
-                            drafts_created += 1
+                            # AUTO-IMPORT: Create transaction directly if all required fields are present
+                            if mapped_cat and mapped_dir and mapped_account:
+                                # Check for duplicate in transactions
+                                existing_trans = await db.transactions.find_one({
+                                    "adesk_id": adesk_id,
+                                    "user_id": current_user["user_id"]
+                                })
+                                
+                                if not existing_trans:
+                                    # Parse date to YYYY-MM-DD format
+                                    raw_date = t.get("date", "")
+                                    if raw_date and "." in raw_date:
+                                        parts = raw_date.split(".")
+                                        if len(parts) == 3:
+                                            parsed_date = f"{parts[2]}-{parts[1]}-{parts[0]}"
+                                        else:
+                                            parsed_date = raw_date[:10]
+                                    else:
+                                        parsed_date = raw_date[:10] if raw_date else data.date_from
+                                    
+                                    transaction = {
+                                        "id": str(uuid.uuid4()),
+                                        "date": parsed_date,
+                                        "type": t_type,
+                                        "amount": abs(float(t.get("amount", 0))),
+                                        "currency": t.get("currency", "PLN"),
+                                        "category_id": mapped_cat["id"],
+                                        "category_name": mapped_cat["name"],
+                                        "direction_id": mapped_dir["id"],
+                                        "direction_name": mapped_dir["name"],
+                                        "account_id": mapped_account["id"],
+                                        "account_name": mapped_account["name"],
+                                        "contractor_id": mapped_contractor["id"] if mapped_contractor else None,
+                                        "contractor_name": mapped_contractor["name"] if mapped_contractor else None,
+                                        "description": t.get("description", "") or t.get("comment", ""),
+                                        "status": "fact",
+                                        "source": "adesk_migration",
+                                        "adesk_id": adesk_id,
+                                        "balance_after": 0,
+                                        "user_id": current_user["user_id"],
+                                        "created_at": datetime.now(timezone.utc).isoformat()
+                                    }
+                                    
+                                    await db.transactions.insert_one(transaction)
+                                    
+                                    # Update account balance
+                                    balance_change = transaction["amount"] if t_type == "income" else -transaction["amount"]
+                                    await db.accounts.update_one(
+                                        {"id": mapped_account["id"]},
+                                        {"$inc": {"current_balance": balance_change}}
+                                    )
+                                    
+                                    drafts_created += 1
+                                else:
+                                    errors += 1  # Duplicate
+                            else:
+                                # Save to drafts for manual review
+                                await db.adesk_drafts.insert_one(draft)
+                                drafts_created += 1
                             
                         except Exception as e:
                             logger.error(f"Error processing Adesk transaction: {e}")
@@ -3237,10 +3294,14 @@ async def start_adesk_migration(
                     if len(transactions) < 100:
                         break
             
-            # Get stats
-            ready_count = await db.adesk_drafts.count_documents(
-                {"batch_id": batch_id, "status": "ready"}
-            )
+            # Count imported transactions
+            imported_count = await db.transactions.count_documents({
+                "user_id": current_user["user_id"],
+                "source": "adesk_migration",
+                "created_at": {"$gte": datetime.now(timezone.utc).replace(hour=0, minute=0, second=0).isoformat()}
+            })
+            
+            # Count drafts that need review
             review_count = await db.adesk_drafts.count_documents(
                 {"batch_id": batch_id, "status": "needs_review"}
             )
@@ -3248,10 +3309,11 @@ async def start_adesk_migration(
             return {
                 "status": "success",
                 "batch_id": batch_id,
+                "imported": imported_count,
                 "drafts_created": drafts_created,
-                "ready": ready_count,
                 "needs_review": review_count,
-                "errors": errors
+                "errors": errors,
+                "message": f"Импортировано {imported_count} операций"
             }
             
     except Exception as e:
