@@ -12,7 +12,7 @@ import { Alert, AlertDescription } from '../components/ui/alert';
 import { Separator } from '../components/ui/separator';
 import { 
   Send, CheckCircle2, XCircle, Loader2, Bot, Plug, Settings, 
-  Clock, Calendar, MessageSquare, Bell
+  Clock, Calendar, MessageSquare, Bell, Database, ExternalLink, RefreshCw
 } from 'lucide-react';
 import { toast } from 'sonner';
 
