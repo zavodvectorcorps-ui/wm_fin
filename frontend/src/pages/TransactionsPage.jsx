@@ -290,7 +290,11 @@ export const TransactionsPage = () => {
                 <SelectItem value="current_month">Текущий месяц</SelectItem>
                 <SelectItem value="prev_month">Прошлый месяц</SelectItem>
                 <SelectItem value="quarter">Квартал</SelectItem>
-                <SelectItem value="year">Год</SelectItem>
+                <SelectItem value="year">Текущий год</SelectItem>
+                <SelectItem value="year_2025">2025 год</SelectItem>
+                <SelectItem value="year_2024">2024 год</SelectItem>
+                <SelectItem value="year_2023">2023 год</SelectItem>
+                <SelectItem value="all_time">Всё время</SelectItem>
               </SelectContent>
             </Select>
 
