@@ -3118,20 +3118,17 @@ async def start_adesk_migration(
                             
                             # === AUTO-CREATE CATEGORY ===
                             cat_adesk = t.get("category", {}).get("name", "") or t.get("category_name", "") or ""
+                            cat_adesk_type = t.get("category", {}).get("type")  # 1=income, 2=expense
                             mapped_cat = category_map.get(cat_adesk.lower()) if cat_adesk else None
                             
-                            # If category exists, use its type
-                            if mapped_cat:
-                                t_type = mapped_cat.get("type", t_type)
-                            
                             if cat_adesk and not mapped_cat:
-                                # Create new category from Adesk - determine type from name
-                                cat_type = t_type
-                                cat_lower = cat_adesk.lower()
-                                if any(kw in cat_lower for kw in ["приход", "доход", "выручка", "оплата от", "клиент"]):
+                                # Create new category - use Adesk category.type if available
+                                if cat_adesk_type == 1:
                                     cat_type = "income"
-                                elif any(kw in cat_lower for kw in ["расход", "затрат", "оплата", "закупк"]):
+                                elif cat_adesk_type == 2:
                                     cat_type = "expense"
+                                else:
+                                    cat_type = t_type  # Use transaction type
                                     
                                 new_cat = {
                                     "id": str(uuid.uuid4()),
@@ -3144,7 +3141,6 @@ async def start_adesk_migration(
                                 await db.categories.insert_one(new_cat)
                                 category_map[cat_adesk.lower()] = new_cat
                                 mapped_cat = new_cat
-                                t_type = cat_type  # Use category type
                                 logger.info(f"Created category: {cat_adesk} (type: {cat_type})")
                             
                             # === AUTO-CREATE DIRECTION ===
