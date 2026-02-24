@@ -3077,21 +3077,24 @@ async def start_adesk_migration(
                             if existing:
                                 continue  # Skip duplicate
                             
-                            # Determine type from Adesk data
-                            t_type = "expense"
+                            # Determine type from amount sign (+ = income, - = expense)
+                            raw_amount = t.get("amount", 0)
+                            if isinstance(raw_amount, str):
+                                raw_amount = float(raw_amount.replace(",", ".").replace(" ", ""))
                             
-                            # Check various Adesk fields for type
-                            adesk_type = t.get("type", "").lower()
+                            if raw_amount >= 0:
+                                t_type = "income"
+                            else:
+                                t_type = "expense"
+                            
+                            # Override if explicit type field exists
+                            adesk_type = str(t.get("type", "")).lower()
                             if adesk_type in ["income", "приход", "in"]:
                                 t_type = "income"
                             elif adesk_type in ["expense", "расход", "out"]:
                                 t_type = "expense"
                             elif adesk_type == "transfer":
                                 t_type = "transfer"
-                            elif t.get("is_income") == True:
-                                t_type = "income"
-                            elif t.get("is_expense") == True:
-                                t_type = "expense"
                             
                             # Also check amount sign - positive usually means income
                             raw_amount = t.get("amount", 0)
