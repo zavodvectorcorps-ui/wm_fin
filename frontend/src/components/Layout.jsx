@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   LayoutDashboard, Receipt, FolderKanban, Users, BarChart3, Calendar,
   Settings, HelpCircle, LogOut, ChevronDown, Menu, X, Bell,
-  TrendingUp, Wallet, PiggyBank, FileText, Bot, Paperclip, Zap
+  TrendingUp, Wallet, PiggyBank, FileText, Bot, Paperclip, Zap, Plug
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Sheet, SheetContent, SheetTrigger } from './ui/sheet';
@@ -37,6 +37,11 @@ const planningItems = [
   { icon: Calendar, label: 'Платёжный календарь', path: '/planning/calendar' },
   { icon: FileText, label: 'Импорт выписок', path: '/import' },
   { icon: Zap, label: 'Автоправила', path: '/settings/rules' },
+];
+
+const settingsItems = [
+  { icon: Settings, label: 'Настройки', path: '/settings' },
+  { icon: Plug, label: 'Миграция из Adesk', path: '/settings/adesk' },
 ];
 
 const SidebarContent = ({ onClose }) => {
