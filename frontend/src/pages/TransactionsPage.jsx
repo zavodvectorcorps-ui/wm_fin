@@ -270,7 +270,7 @@ export const TransactionsPage = () => {
                 <SelectValue placeholder="Статус" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Все статусы</SelectItem>
+                <SelectItem value="all">Все статусы</SelectItem>
                 <SelectItem value="fact">Факт</SelectItem>
                 <SelectItem value="plan">План</SelectItem>
               </SelectContent>
