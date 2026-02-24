@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   LayoutDashboard, Receipt, FolderKanban, Users, BarChart3, Calendar,
   Settings, HelpCircle, LogOut, ChevronDown, Menu, X, Bell,
-  TrendingUp, Wallet, PiggyBank, FileText, Bot
+  TrendingUp, Wallet, PiggyBank, FileText, Bot, Paperclip
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Sheet, SheetContent, SheetTrigger } from './ui/sheet';
@@ -15,10 +15,12 @@ import {
 } from './ui/dropdown-menu';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible';
 import { cn } from './ui/utils';
+import { NotificationsDropdown } from './Notifications';
 
 const menuItems = [
   { icon: LayoutDashboard, label: 'Рабочий стол', path: '/' },
   { icon: Receipt, label: 'Операции', path: '/transactions' },
+  { icon: Paperclip, label: 'Документы', path: '/documents' },
   { icon: FolderKanban, label: 'Проекты', path: '/projects' },
   { icon: Users, label: 'Контрагенты', path: '/contractors' },
 ];
