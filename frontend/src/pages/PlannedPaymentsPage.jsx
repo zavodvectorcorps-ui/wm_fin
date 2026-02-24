@@ -445,7 +445,7 @@ export const PlannedPaymentsPage = () => {
                   <SelectValue placeholder="Выберите контрагента" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Без контрагента</SelectItem>
+                  <SelectItem value="none">Без контрагента</SelectItem>
                   {contractors.map(c => (
                     <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                   ))}
