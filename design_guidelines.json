@@ -1,0 +1,184 @@
+{
+  "project_identity": {
+    "name": "WM Finance",
+    "persona": "E1 Finance Pro",
+    "description": "A high-precision financial dashboard for a Polish manufacturing business (Greenhouses, Saunas, Hot Tubs). Prioritizes data clarity, speed, and trusted aesthetic.",
+    "emotional_tone": "Reliable, Clear, Industrial, Professional",
+    "theme_strategy": "Dark Mode Default (Industrial High-Contrast)"
+  },
+  "typography": {
+    "font_family": {
+      "headings": "Manrope, sans-serif",
+      "body": "Inter, sans-serif",
+      "data": "JetBrains Mono, monospace"
+    },
+    "font_weights": {
+      "light": 300,
+      "regular": 400,
+      "medium": 500,
+      "bold": 700
+    },
+    "scale": {
+      "h1": "text-4xl md:text-5xl font-bold tracking-tight",
+      "h2": "text-3xl font-semibold tracking-tight",
+      "h3": "text-2xl font-semibold",
+      "h4": "text-xl font-medium",
+      "body_lg": "text-lg leading-relaxed",
+      "body_base": "text-base leading-relaxed",
+      "body_sm": "text-sm leading-normal",
+      "caption": "text-xs text-muted-foreground uppercase tracking-wider"
+    },
+    "usage_rules": {
+      "headings": "Use Manrope for all page titles and section headers.",
+      "numbers": "Use JetBrains Mono for all currency values, dates, and account numbers to ensure tabular alignment.",
+      "ui_text": "Use Inter for labels, buttons, and navigation."
+    }
+  },
+  "colors": {
+    "palette": {
+      "background": "#09090b",
+      "foreground": "#fafafa",
+      "card": "#18181b",
+      "card_foreground": "#fafafa",
+      "popover": "#18181b",
+      "popover_foreground": "#fafafa",
+      "primary": "#2563eb",
+      "primary_foreground": "#fafafa",
+      "secondary": "#27272a",
+      "secondary_foreground": "#fafafa",
+      "muted": "#27272a",
+      "muted_foreground": "#a1a1aa",
+      "accent": "#27272a",
+      "accent_foreground": "#fafafa",
+      "destructive": "#ef4444",
+      "destructive_foreground": "#fafafa",
+      "border": "#27272a",
+      "input": "#27272a",
+      "ring": "#2563eb"
+    },
+    "semantic": {
+      "income": {
+        "text": "#10b981",
+        "bg": "rgba(16, 185, 129, 0.1)",
+        "border": "rgba(16, 185, 129, 0.2)"
+      },
+      "expense": {
+        "text": "#f43f5e",
+        "bg": "rgba(244, 63, 94, 0.1)",
+        "border": "rgba(244, 63, 94, 0.2)"
+      },
+      "profit": {
+        "text": "#3b82f6",
+        "bg": "rgba(59, 130, 246, 0.1)"
+      }
+    },
+    "business_directions": {
+      "greenhouses": {
+        "label": "Теплицы",
+        "color": "blue",
+        "class": "bg-blue-500/10 text-blue-500 border-blue-500/20"
+      },
+      "saunas": {
+        "label": "Сауны",
+        "color": "orange",
+        "class": "bg-orange-500/10 text-orange-500 border-orange-500/20"
+      },
+      "hot_tubs": {
+        "label": "Купели",
+        "color": "green",
+        "class": "bg-green-500/10 text-green-500 border-green-500/20"
+      },
+      "general": {
+        "label": "Общее",
+        "color": "gray",
+        "class": "bg-gray-500/10 text-gray-400 border-gray-500/20"
+      }
+    }
+  },
+  "layout": {
+    "grid_system": "Use the 'High Density Grid' (Mode B) for dashboards.",
+    "spacing": {
+      "container_padding": "p-6 md:p-8",
+      "grid_gap": "gap-4 md:gap-6",
+      "section_gap": "space-y-6"
+    },
+    "sidebar": {
+      "width": "w-64",
+      "behavior": "Fixed on desktop, drawer on mobile.",
+      "style": "Border-r border-border bg-card/50 backdrop-blur-xl"
+    },
+    "containers": {
+      "card": "bg-card border border-border rounded-xl shadow-none hover:border-primary/20 transition-colors duration-300",
+      "main": "min-h-screen bg-background text-foreground"
+    }
+  },
+  "components": {
+    "cards": {
+      "style": "Flat, 1px border, no shadow in dark mode.",
+      "padding": "p-6",
+      "header_style": "flex flex-row items-center justify-between space-y-0 pb-2"
+    },
+    "charts": {
+      "library": "Recharts (Shadcn Chart)",
+      "tooltip": "bg-popover/90 backdrop-blur-md border border-border text-popover-foreground rounded-lg shadow-xl",
+      "grid": "stroke-muted/20"
+    },
+    "tables": {
+      "style": "Compact, sticky header.",
+      "row_style": "border-b border-border/50 hover:bg-muted/50 transition-colors",
+      "header_text": "text-muted-foreground font-medium text-xs uppercase tracking-wider"
+    },
+    "badges": {
+      "style": "rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset"
+    },
+    "buttons": {
+      "primary": "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm",
+      "secondary": "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+      "ghost": "hover:bg-accent hover:text-accent-foreground",
+      "outline": "border border-input bg-background hover:bg-accent hover:text-accent-foreground"
+    }
+  },
+  "visual_enhancers": {
+    "glassmorphism": {
+      "usage": "Use for sticky headers, dropdowns, and modal overlays.",
+      "classes": "bg-background/80 backdrop-blur-xl border-b border-white/5"
+    },
+    "micro_interactions": {
+      "hover": "transform transition-all duration-200 ease-out hover:-translate-y-0.5",
+      "active": "active:scale-95"
+    },
+    "borders": {
+      "default": "border border-white/10",
+      "active": "border-primary/50"
+    }
+  },
+  "images": {
+    "greenhouses": "https://images.unsplash.com/photo-1705615502369-8489ab287fc5?q=85&w=1600&auto=format&fit=crop",
+    "saunas": "https://images.unsplash.com/photo-1759302354553-cf87ceb9135c?q=85&w=1600&auto=format&fit=crop",
+    "hot_tubs": "https://images.unsplash.com/photo-1633512424746-0cb5240e064d?q=85&w=1600&auto=format&fit=crop",
+    "bg_texture": "https://grainy-gradients.vercel.app/noise.svg",
+    "user_placeholder": "https://api.dicebear.com/7.x/avataaars/svg?seed=Felix"
+  },
+  "instructions_to_main_agent": [
+    "Implement the layout with a fixed sidebar (Adesk style) and a top header for mobile trigger/user profile.",
+    "Use 'Intl.NumberFormat' for Polish Złoty (PLN) formatting: '36 292,00 zł'. Space as thousand separator.",
+    "Ensure all text is in Russian as requested.",
+    "Use Skeleton loaders for all data fetching states. NO SPINNERS.",
+    "Default to Dark Mode. Add a toggle in Settings, but ensure Dark Mode is the primary design target.",
+    "For the 'Business Directions', always use the specific color badges defined in the 'colors.business_directions' section.",
+    "In the Transaction List, visually distinguish Income (Green) vs Expense (Red) using the semantic colors.",
+    "Use the 'sonner' library for all toast notifications.",
+    "Ensure the Dashboard uses the 'Bento Grid' (Mode B) layout for maximum data density.",
+    "Use 'lucide-react' for icons. Pick consistent line-weight icons.",
+    "All interactive elements MUST have 'data-testid' attributes."
+  ],
+  "universal_guidelines": [
+    "Do not use generic centered layouts. Use high-density grids.",
+    "Dark colors look good when used independently without gradients. DO NOT use dark colors as gradients.",
+    "Create depth through layered design elements with z-index hierarchy.",
+    "Use glass-morphism effects with backdrop filters (12-24px blur) for floating elements.",
+    "NEVER use 'transition: all'. Animate specific properties.",
+    "Every interaction needs micro-animations (hover, active, focus).",
+    "Use 2-3x more spacing than feels comfortable inside containers, but keep grids tight."
+  ]
+}
