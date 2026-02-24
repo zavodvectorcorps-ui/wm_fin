@@ -467,10 +467,11 @@ class WMFinanceAPITester:
             success = False
             response_data = {}
             code = None
-        if success and response.get('response'):
-            self.log_test("AI Chat", "PASS", f"AI responded with {len(response['response'])} characters", code)
+        
+        if success and response_data.get('response'):
+            self.log_test("AI Chat", "PASS", f"AI responded with {len(response_data['response'])} characters", code)
         else:
-            self.log_test("AI Chat", "FAIL", f"AI chat failed: {response}", code)
+            self.log_test("AI Chat", "FAIL", f"AI chat failed: {response_data}", code)
 
     def cleanup_test_data(self):
         """Clean up created test data"""
