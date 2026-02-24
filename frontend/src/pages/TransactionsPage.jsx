@@ -246,7 +246,7 @@ export const TransactionsPage = () => {
                 <SelectValue placeholder="Счёт" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Все счета</SelectItem>
+                <SelectItem value="all">Все счета</SelectItem>
                 {accounts.map(a => (
                   <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
                 ))}
