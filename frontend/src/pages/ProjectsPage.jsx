@@ -28,7 +28,7 @@ export const ProjectsPage = () => {
   
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingProject, setEditingProject] = useState(null);
-  const [filters, setFilters] = useState({ status: '', direction_id: '', search: '' });
+  const [filters, setFilters] = useState({ status: 'all', direction_id: 'all', search: '' });
   
   const [formData, setFormData] = useState({
     name: '',
