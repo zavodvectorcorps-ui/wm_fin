@@ -14,6 +14,9 @@ import ProjectsPage from './pages/ProjectsPage';
 import ContractorsPage from './pages/ContractorsPage';
 import SettingsPage from './pages/SettingsPage';
 import ImportPage from './pages/ImportPage';
+import DocumentsPage from './pages/DocumentsPage';
+import CashFlowPage from './pages/CashFlowPage';
+import PnLPage from './pages/PnLPage';
 
 // Protected Route wrapper
 const ProtectedRoute = ({ children }) => {
