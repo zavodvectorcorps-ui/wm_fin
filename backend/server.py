@@ -496,6 +496,102 @@ async def seed_user_data(user_id: str):
     ]
     await db.accounts.insert_many(accounts)
 
+# ============== ADMIN USER MANAGEMENT ==============
+
+class AdminUserCreate(BaseModel):
+    email: str
+    password: str
+    name: str
+    role: Literal["owner", "accountant", "manager"] = "owner"
+
+class AdminUserUpdate(BaseModel):
+    email: Optional[str] = None
+    password: Optional[str] = None
+    name: Optional[str] = None
+    role: Optional[Literal["owner", "accountant", "manager"]] = None
+
+async def require_superadmin(current_user: dict = Depends(get_current_user)):
+    """Dependency to check if user is superadmin"""
+    if current_user.get("role") != "superadmin":
+        raise HTTPException(status_code=403, detail="Только для супер-администратора")
+    return current_user
+
+@api_router.get("/admin/users")
+async def get_all_users(current_user: dict = Depends(require_superadmin)):
+    """Get all users (superadmin only)"""
+    users = await db.users.find({}, {"_id": 0, "password_hash": 0}).to_list(1000)
+    return users
+
+@api_router.post("/admin/users")
+async def create_user(data: AdminUserCreate, current_user: dict = Depends(require_superadmin)):
+    """Create a new user (superadmin only)"""
+    existing = await db.users.find_one({"email": data.email}, {"_id": 0})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email уже используется")
+    
+    user = User(email=data.email, name=data.name, role=data.role)
+    user_dict = user.model_dump()
+    user_dict["password_hash"] = hash_password(data.password)
+    
+    await db.users.insert_one(user_dict)
+    
+    # Seed initial data for new user
+    await seed_user_data(user.id)
+    
+    return {"id": user.id, "email": user.email, "name": user.name, "role": user.role, "created_at": user.created_at}
+
+@api_router.put("/admin/users/{user_id}")
+async def update_user(user_id: str, data: AdminUserUpdate, current_user: dict = Depends(require_superadmin)):
+    """Update a user (superadmin only)"""
+    # Prevent editing superadmin
+    if user_id == SUPERADMIN_ID:
+        raise HTTPException(status_code=403, detail="Нельзя редактировать супер-администратора")
+    
+    user = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    update_data = {}
+    if data.email:
+        # Check if email is taken by another user
+        existing = await db.users.find_one({"email": data.email, "id": {"$ne": user_id}}, {"_id": 0})
+        if existing:
+            raise HTTPException(status_code=400, detail="Email уже используется")
+        update_data["email"] = data.email
+    if data.name:
+        update_data["name"] = data.name
+    if data.role:
+        update_data["role"] = data.role
+    if data.password:
+        update_data["password_hash"] = hash_password(data.password)
+    
+    if update_data:
+        await db.users.update_one({"id": user_id}, {"$set": update_data})
+    
+    updated_user = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
+    return updated_user
+
+@api_router.delete("/admin/users/{user_id}")
+async def delete_user(user_id: str, current_user: dict = Depends(require_superadmin)):
+    """Delete a user (superadmin only)"""
+    # Prevent deleting superadmin
+    if user_id == SUPERADMIN_ID:
+        raise HTTPException(status_code=403, detail="Нельзя удалить супер-администратора")
+    
+    user = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    # Delete user and all their data
+    await db.users.delete_one({"id": user_id})
+    
+    # Optionally delete user's data (transactions, accounts, etc.)
+    # await db.transactions.delete_many({"user_id": user_id})
+    # await db.accounts.delete_many({"user_id": user_id})
+    # etc.
+    
+    return {"status": "deleted"}
+
 # ============== ACCOUNTS ROUTES ==============
 
 @api_router.get("/accounts", response_model=List[Account])
