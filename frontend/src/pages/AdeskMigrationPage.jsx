@@ -664,6 +664,15 @@ export const AdeskMigrationPage = () => {
               </div>
               
               <div className="space-y-2">
+                <Label>Описание</Label>
+                <Input 
+                  value={editingDraft.description || ''} 
+                  onChange={(e) => setEditingDraft({...editingDraft, description: e.target.value})}
+                  placeholder="Описание операции"
+                />
+              </div>
+              
+              <div className="space-y-2">
                 <Label>Направление</Label>
                 {editingDraft.project_adesk && (
                   <p className="text-xs text-muted-foreground">Adesk: {editingDraft.project_adesk}</p>
