@@ -36,6 +36,7 @@ const analyticsItems = [
 const planningItems = [
   { icon: Calendar, label: 'Платёжный календарь', path: '/planning/calendar' },
   { icon: FileText, label: 'Импорт выписок', path: '/import' },
+  { icon: Zap, label: 'Автоправила', path: '/settings/rules' },
 ];
 
 const SidebarContent = ({ onClose }) => {
