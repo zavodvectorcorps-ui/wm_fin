@@ -3687,15 +3687,13 @@ async def scheduled_google_sheets_backup():
     result = await backup_to_google_sheets()
     logger.info(f"Scheduled backup result: {result.get('status')}")
 
-@api_router.post("/backup/google-sheets")
+@app.post("/api/backup/google-sheets")
 async def trigger_backup(current_user: dict = Depends(get_current_user)):
     """Manually trigger Google Sheets backup"""
-    result = await asyncio.to_thread(lambda: asyncio.run(backup_to_google_sheets(current_user["user_id"])))
-    # Run in current event loop
     result = await backup_to_google_sheets(current_user["user_id"])
     return result
 
-@api_router.get("/backup/status")
+@app.get("/api/backup/status")
 async def get_backup_status(current_user: dict = Depends(get_current_user)):
     """Get backup configuration status"""
     gc = get_gspread_client()
