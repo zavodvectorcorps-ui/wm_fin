@@ -27,6 +27,7 @@ export const DashboardPage = () => {
   const [data, setData] = useState(null);
   const [dailyBalance, setDailyBalance] = useState([]);
   const [prevData, setPrevData] = useState(null);
+  const [topContractors, setTopContractors] = useState([]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -34,15 +35,17 @@ export const DashboardPage = () => {
       const dates = getPeriodDates(period);
       const prevDates = getPeriodDates('prev_month');
       
-      const [summaryRes, dailyRes, prevSummaryRes] = await Promise.all([
+      const [summaryRes, dailyRes, prevSummaryRes, topContractorsRes] = await Promise.all([
         api().get('/analytics/summary', { params: { date_from: dates.from, date_to: dates.to } }),
         api().get('/analytics/daily-balance', { params: { date_from: dates.from, date_to: dates.to } }),
-        api().get('/analytics/summary', { params: { date_from: prevDates.from, date_to: prevDates.to } })
+        api().get('/analytics/summary', { params: { date_from: prevDates.from, date_to: prevDates.to } }),
+        api().get('/analytics/top-contractors', { params: { date_from: dates.from, date_to: dates.to, limit: 5 } })
       ]);
       
       setData(summaryRes.data);
       setDailyBalance(dailyRes.data);
       setPrevData(prevSummaryRes.data);
+      setTopContractors(topContractorsRes.data.contractors || []);
     } catch (error) {
       console.error('Failed to fetch dashboard data:', error);
     } finally {
