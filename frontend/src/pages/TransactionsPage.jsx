@@ -234,7 +234,7 @@ export const TransactionsPage = () => {
                 <SelectValue placeholder="Тип" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Все типы</SelectItem>
+                <SelectItem value="all">Все типы</SelectItem>
                 <SelectItem value="income">Приход</SelectItem>
                 <SelectItem value="expense">Расход</SelectItem>
                 <SelectItem value="transfer">Перевод</SelectItem>
