@@ -3294,11 +3294,30 @@ async def bulk_update_adesk_drafts(
             update_data["contractor_id"] = contractor["id"]
             update_data["contractor_name"] = contractor["name"]
     
+    if data.account_id:
+        account = await db.accounts.find_one({"id": data.account_id}, {"_id": 0})
+        if account:
+            update_data["account_id"] = account["id"]
+            update_data["account_name"] = account["name"]
+    
+    # Auto-set status to "ready" if all required fields are filled
     if update_data:
+        # Check if we should update status
+        check_fields = ["category_id", "direction_id", "account_id"]
+        
         await db.adesk_drafts.update_many(
             {"id": {"$in": data.draft_ids}, "user_id": current_user["user_id"]},
             {"$set": update_data}
         )
+        
+        # Update status to "ready" for drafts that now have all required fields
+        for draft_id in data.draft_ids:
+            draft = await db.adesk_drafts.find_one({"id": draft_id}, {"_id": 0})
+            if draft and draft.get("category_id") and draft.get("direction_id") and draft.get("account_id"):
+                await db.adesk_drafts.update_one(
+                    {"id": draft_id},
+                    {"$set": {"status": "ready"}}
+                )
     
     return {"status": "updated", "count": len(data.draft_ids)}
 
