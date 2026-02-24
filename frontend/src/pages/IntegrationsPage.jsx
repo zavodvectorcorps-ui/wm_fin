@@ -22,6 +22,8 @@ export const IntegrationsPage = () => {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [sendingSummary, setSendingSummary] = useState(false);
+  const [backingUp, setBackingUp] = useState(false);
+  const [backupStatus, setBackupStatus] = useState(null);
   
   const [settings, setSettings] = useState({
     telegram_bot_token: '',
@@ -37,15 +39,19 @@ export const IntegrationsPage = () => {
   const fetchSettings = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api().get('/settings/integrations');
+      const [settingsRes, backupRes] = await Promise.all([
+        api().get('/settings/integrations'),
+        api().get('/backup/status')
+      ]);
       setSettings({
-        telegram_bot_token: res.data.telegram_bot_token || '',
-        telegram_chat_id: res.data.telegram_chat_id || '',
-        telegram_auto_summary: res.data.telegram_auto_summary || false,
-        telegram_summary_schedule: res.data.telegram_summary_schedule || 'weekly',
-        telegram_summary_time: res.data.telegram_summary_time || '09:00',
-        adesk_api_token: res.data.adesk_api_token || ''
+        telegram_bot_token: settingsRes.data.telegram_bot_token || '',
+        telegram_chat_id: settingsRes.data.telegram_chat_id || '',
+        telegram_auto_summary: settingsRes.data.telegram_auto_summary || false,
+        telegram_summary_schedule: settingsRes.data.telegram_summary_schedule || 'weekly',
+        telegram_summary_time: settingsRes.data.telegram_summary_time || '09:00',
+        adesk_api_token: settingsRes.data.adesk_api_token || ''
       });
+      setBackupStatus(backupRes.data);
     } catch (error) {
       console.error('Error fetching settings:', error);
     } finally {
@@ -56,6 +62,22 @@ export const IntegrationsPage = () => {
   useEffect(() => {
     fetchSettings();
   }, [fetchSettings]);
+
+  const runBackupNow = async () => {
+    setBackingUp(true);
+    try {
+      const res = await api().post('/backup/google-sheets');
+      if (res.data.status === 'success') {
+        toast.success(`Бэкап выполнен: ${res.data.stats?.transactions || 0} операций`);
+      } else {
+        toast.error(res.data.message || 'Ошибка бэкапа');
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Ошибка бэкапа');
+    } finally {
+      setBackingUp(false);
+    }
+  };
 
   const saveTelegramSettings = async () => {
     setSaving(true);
