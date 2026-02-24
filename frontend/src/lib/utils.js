@@ -1,3 +1,10 @@
+import { clsx } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+export function cn(...inputs) {
+  return twMerge(clsx(inputs));
+}
+
 // Currency formatting utilities for Polish Zloty
 export const formatCurrency = (amount, currency = 'PLN') => {
   const formatted = new Intl.NumberFormat('pl-PL', {
