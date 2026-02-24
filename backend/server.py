@@ -354,6 +354,7 @@ class AdeskBulkUpdate(BaseModel):
     category_id: Optional[str] = None
     direction_id: Optional[str] = None
     contractor_id: Optional[str] = None
+    account_id: Optional[str] = None
 
 # ============== INTEGRATION SETTINGS MODELS ==============
 
