@@ -557,6 +557,11 @@ export const AdeskMigrationPage = () => {
                       </span>
                     </TableCell>
                     <TableCell>
+                      <p className="text-sm text-muted-foreground truncate max-w-40" title={draft.description}>
+                        {draft.description || '-'}
+                      </p>
+                    </TableCell>
+                    <TableCell>
                       <div>
                         <p className={draft.category_name ? 'font-medium' : 'text-muted-foreground'}>
                           {draft.category_name || draft.category_adesk || '-'}
