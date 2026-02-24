@@ -358,47 +358,92 @@ export const DashboardPage = () => {
       </div>
 
       {/* Upcoming Payments */}
-      <Card data-testid="upcoming-payments">
-        <CardHeader>
-          <CardTitle>Ближайшие платежи</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="space-y-3">
-              {[1,2,3].map(i => <Skeleton key={i} className="h-12 w-full" />)}
-            </div>
-          ) : data?.upcoming_payments?.length > 0 ? (
-            <div className="space-y-3">
-              {data.upcoming_payments.map((payment) => (
-                <div key={payment.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-2 h-2 rounded-full ${payment.type === 'income' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                    <div>
-                      <p className="font-medium">{payment.category_name || 'Без категории'}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {new Date(payment.date).toLocaleDateString('ru')}
-                        {payment.contractor_name && ` • ${payment.contractor_name}`}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card data-testid="upcoming-payments">
+          <CardHeader>
+            <CardTitle>Ближайшие платежи</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="space-y-3">
+                {[1,2,3].map(i => <Skeleton key={i} className="h-12 w-full" />)}
+              </div>
+            ) : data?.upcoming_payments?.length > 0 ? (
+              <div className="space-y-3">
+                {data.upcoming_payments.map((payment) => (
+                  <div key={payment.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-2 h-2 rounded-full ${payment.type === 'income' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                      <div>
+                        <p className="font-medium">{payment.category_name || 'Без категории'}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {new Date(payment.date).toLocaleDateString('ru')}
+                          {payment.contractor_name && ` • ${payment.contractor_name}`}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className={`font-mono font-semibold ${payment.type === 'income' ? 'text-emerald-500' : 'text-rose-500'}`}>
+                        {payment.type === 'income' ? '+' : '-'}{formatCurrency(payment.amount, payment.currency)}
                       </p>
+                      {payment.direction_name && (
+                        <Badge variant="outline" className={`text-xs ${getDirectionClass(payment.direction_name)}`}>
+                          {payment.direction_name}
+                        </Badge>
+                      )}
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className={`font-mono font-semibold ${payment.type === 'income' ? 'text-emerald-500' : 'text-rose-500'}`}>
-                      {payment.type === 'income' ? '+' : '-'}{formatCurrency(payment.amount, payment.currency)}
-                    </p>
-                    {payment.direction_name && (
-                      <Badge variant="outline" className={`text-xs ${getDirectionClass(payment.direction_name)}`}>
-                        {payment.direction_name}
-                      </Badge>
-                    )}
+                ))}
+              </div>
+            ) : (
+              <p className="text-muted-foreground text-center py-4">Нет запланированных платежей</p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Top Contractors */}
+        <Card data-testid="top-contractors">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Топ контрагентов
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="space-y-3">
+                {[1,2,3,4,5].map(i => <Skeleton key={i} className="h-12 w-full" />)}
+              </div>
+            ) : topContractors.length > 0 ? (
+              <div className="space-y-3">
+                {topContractors.map((contractor, idx) => (
+                  <div key={contractor.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                    <div className="flex items-center gap-3">
+                      <span className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold">
+                        {idx + 1}
+                      </span>
+                      <div>
+                        <p className="font-medium">{contractor.name}</p>
+                        <p className="text-xs text-muted-foreground">{contractor.transactions} операций</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      {contractor.income > 0 && (
+                        <p className="font-mono text-sm text-emerald-500">+{formatCurrency(contractor.income)}</p>
+                      )}
+                      {contractor.expense > 0 && (
+                        <p className="font-mono text-sm text-rose-500">-{formatCurrency(contractor.expense)}</p>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-muted-foreground text-center py-4">Нет запланированных платежей</p>
-          )}
-        </CardContent>
-      </Card>
+                ))}
+              </div>
+            ) : (
+              <p className="text-muted-foreground text-center py-4">Нет данных о контрагентах</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 };
