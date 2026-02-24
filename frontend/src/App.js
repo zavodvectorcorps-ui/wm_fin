@@ -209,9 +209,21 @@ function AppRoutes() {
         </ProtectedRoute>
       } />
       
+      <Route path="/settings/adesk" element={
+        <ProtectedRoute>
+          <AdeskMigrationPage />
+        </ProtectedRoute>
+      } />
+      
+      <Route path="/faq" element={
+        <ProtectedRoute>
+          <FAQPage />
+        </ProtectedRoute>
+      } />
+      
       <Route path="/help" element={
         <ProtectedRoute>
-          <HelpPage />
+          <FAQPage />
         </ProtectedRoute>
       } />
       
