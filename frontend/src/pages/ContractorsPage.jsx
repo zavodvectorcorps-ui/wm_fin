@@ -42,7 +42,7 @@ export const ContractorsPage = () => {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const params = filters.type ? { type: filters.type } : {};
+      const params = filters.type && filters.type !== 'all' ? { type: filters.type } : {};
       const res = await api().get('/contractors', { params });
       setContractors(res.data);
     } catch (error) {
