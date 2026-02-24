@@ -242,6 +242,20 @@ export const AdeskMigrationPage = () => {
     }
   };
 
+  const deleteAllDrafts = async () => {
+    if (!confirm('Удалить ВСЕ черновики миграции? Это действие необратимо.')) return;
+    setLoading(true);
+    try {
+      const res = await api().delete('/adesk/drafts/all');
+      toast.success(`Удалено ${res.data.count} черновиков`);
+      fetchDrafts();
+    } catch (error) {
+      toast.error('Ошибка удаления');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const getStatusBadge = (status) => {
     switch (status) {
       case 'ready':
