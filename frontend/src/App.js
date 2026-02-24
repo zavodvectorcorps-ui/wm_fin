@@ -23,6 +23,7 @@ import ProfitabilityPage from './pages/ProfitabilityPage';
 import AutoRulesPage from './pages/AutoRulesPage';
 import AdeskMigrationPage from './pages/AdeskMigrationPage';
 import FAQPage from './pages/FAQPage';
+import IntegrationsPage from './pages/IntegrationsPage';
 
 // Protected Route wrapper
 const ProtectedRoute = ({ children }) => {
