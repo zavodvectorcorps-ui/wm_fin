@@ -408,21 +408,8 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
 @api_router.post("/auth/register")
 async def register(data: UserCreate):
-    existing = await db.users.find_one({"email": data.email}, {"_id": 0})
-    if existing:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    
-    user = User(email=data.email, name=data.name, role=data.role)
-    user_dict = user.model_dump()
-    user_dict["password_hash"] = hash_password(data.password)
-    
-    await db.users.insert_one(user_dict)
-    
-    # Seed initial data for new user
-    await seed_user_data(user.id)
-    
-    token = create_token(user.id, user.email, user.role)
-    return {"token": token, "user": {"id": user.id, "email": user.email, "name": user.name, "role": user.role}}
+    """Registration is disabled. Use admin panel to create users."""
+    raise HTTPException(status_code=403, detail="Регистрация отключена. Обратитесь к администратору.")
 
 @api_router.post("/auth/login")
 async def login(data: UserLogin):
