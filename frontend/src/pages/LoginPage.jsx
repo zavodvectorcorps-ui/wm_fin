@@ -83,9 +83,13 @@ export const LoginPage = () => {
           </CardContent>
         </Card>
 
-        <p className="text-center text-sm text-muted-foreground mt-6">
-          Теплицы • Сауны • Купели
-        </p>
+        <div className="text-center text-sm text-muted-foreground mt-6">
+          <p>Теплицы • Сауны • Купели</p>
+          <p className="mt-1 flex items-center justify-center gap-1.5">
+            <img src="/logo.png" alt="WM" className="h-4 w-4 opacity-60" />
+            <span>Made by Knyazev</span>
+          </p>
+        </div>
       </div>
     </div>
   );
