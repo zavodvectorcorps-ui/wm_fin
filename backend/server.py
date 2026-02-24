@@ -3077,24 +3077,33 @@ async def start_adesk_migration(
                             if existing:
                                 continue  # Skip duplicate
                             
-                            # Determine type from amount sign (+ = income, - = expense)
-                            raw_amount = t.get("amount", 0)
-                            if isinstance(raw_amount, str):
-                                raw_amount = float(raw_amount.replace(",", ".").replace(" ", ""))
+                            # Determine type from Adesk API fields
+                            # type: 1 = income, type: 2 = expense
+                            # isTransfer: true = transfer
+                            t_type = "expense"  # default
                             
-                            if raw_amount >= 0:
-                                t_type = "income"
-                            else:
-                                t_type = "expense"
-                            
-                            # Override if explicit type field exists
-                            adesk_type = str(t.get("type", "")).lower()
-                            if adesk_type in ["income", "приход", "in"]:
-                                t_type = "income"
-                            elif adesk_type in ["expense", "расход", "out"]:
-                                t_type = "expense"
-                            elif adesk_type == "transfer":
+                            if t.get("isTransfer") == True:
                                 t_type = "transfer"
+                            elif t.get("type") == 1:
+                                t_type = "income"
+                            elif t.get("type") == 2:
+                                t_type = "expense"
+                            else:
+                                # Fallback: check category.type
+                                cat_type = t.get("category", {}).get("type")
+                                if cat_type == 1:
+                                    t_type = "income"
+                                elif cat_type == 2:
+                                    t_type = "expense"
+                                else:
+                                    # Last fallback: check amount sign
+                                    raw_amount = t.get("amount", 0)
+                                    if isinstance(raw_amount, str):
+                                        raw_amount = float(raw_amount.replace(",", ".").replace(" ", ""))
+                                    if raw_amount > 0:
+                                        t_type = "income"
+                                    else:
+                                        t_type = "expense"
                             
                             # Also check amount sign - positive usually means income
                             raw_amount = t.get("amount", 0)
