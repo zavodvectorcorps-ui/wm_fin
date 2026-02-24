@@ -350,6 +350,34 @@ class AdeskBulkUpdate(BaseModel):
     direction_id: Optional[str] = None
     contractor_id: Optional[str] = None
 
+# ============== INTEGRATION SETTINGS MODELS ==============
+
+class IntegrationSettings(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str = ""
+    # Telegram settings
+    telegram_bot_token: Optional[str] = None
+    telegram_chat_id: Optional[str] = None
+    telegram_auto_summary: bool = False
+    telegram_summary_schedule: Literal["daily", "weekly", "monday", "friday"] = "weekly"
+    telegram_summary_time: str = "09:00"  # HH:MM format
+    # Adesk settings
+    adesk_api_token: Optional[str] = None
+    # Other integrations can be added here
+    updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+class TelegramSettingsUpdate(BaseModel):
+    telegram_bot_token: Optional[str] = None
+    telegram_chat_id: Optional[str] = None
+    telegram_auto_summary: Optional[bool] = None
+    telegram_summary_schedule: Optional[Literal["daily", "weekly", "monday", "friday"]] = None
+    telegram_summary_time: Optional[str] = None
+
+class TelegramTestMessage(BaseModel):
+    bot_token: str
+    chat_id: str
+
 # ============== AUTH HELPERS ==============
 
 def hash_password(password: str) -> str:
