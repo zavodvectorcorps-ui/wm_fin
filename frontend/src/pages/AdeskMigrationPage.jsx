@@ -532,6 +532,7 @@ export const AdeskMigrationPage = () => {
                   </TableHead>
                   <TableHead>Дата</TableHead>
                   <TableHead>Сумма</TableHead>
+                  <TableHead>Описание</TableHead>
                   <TableHead>Статья</TableHead>
                   <TableHead>Направление</TableHead>
                   <TableHead>Контрагент</TableHead>
