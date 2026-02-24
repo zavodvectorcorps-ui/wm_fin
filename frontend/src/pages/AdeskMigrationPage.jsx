@@ -257,11 +257,14 @@ export const AdeskMigrationPage = () => {
   };
 
   const deleteAllDrafts = async () => {
-    if (!confirm('Удалить ВСЕ черновики миграции? Это действие необратимо.')) return;
+    if (!confirm('Удалить ВСЕ данные миграции из Adesk (черновики + импортированные операции)? Это действие необратимо.')) return;
     setLoading(true);
     try {
       const res = await api().delete('/adesk/drafts/all');
-      toast.success(`Удалено ${res.data.count} черновиков`);
+      const msg = [];
+      if (res.data.drafts_deleted > 0) msg.push(`черновиков: ${res.data.drafts_deleted}`);
+      if (res.data.transactions_deleted > 0) msg.push(`операций: ${res.data.transactions_deleted}`);
+      toast.success(`Удалено ${msg.join(', ') || '0 записей'}`);
       fetchDrafts();
     } catch (error) {
       toast.error('Ошибка удаления');
