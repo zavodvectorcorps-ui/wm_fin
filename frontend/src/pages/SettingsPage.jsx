@@ -491,6 +491,50 @@ export const SettingsPage = () => {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* Danger Zone Tab */}
+        <TabsContent value="danger">
+          <Card className="border-destructive">
+            <CardHeader>
+              <CardTitle className="text-destructive flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5" />
+                Опасная зона
+              </CardTitle>
+              <CardDescription>Необратимые действия с данными</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <Alert className="border-destructive bg-destructive/10">
+                <AlertTriangle className="h-4 w-4 text-destructive" />
+                <AlertDescription className="text-destructive">
+                  Внимание! Действия в этом разделе необратимы. Данные будут удалены без возможности восстановления.
+                </AlertDescription>
+              </Alert>
+              
+              <div className="space-y-4">
+                <div className="p-4 border rounded-lg space-y-3">
+                  <h3 className="font-semibold">Полный сброс данных</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Удаляет все транзакции, плановые платежи, проекты, контрагенты, документы,
+                    импортированные категории/направления/счета. Оставшиеся счета обнуляются.
+                  </p>
+                  <Button 
+                    variant="destructive" 
+                    onClick={resetAllData}
+                    disabled={resetting}
+                    data-testid="reset-all-btn"
+                  >
+                    {resetting ? (
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4 mr-2" />
+                    )}
+                    Удалить все данные
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
 
       {/* Account Dialog */}
