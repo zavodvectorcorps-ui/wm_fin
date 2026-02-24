@@ -25,7 +25,28 @@ export const formatAmount = (amount, type, currency = 'PLN') => {
 
 // Date formatting
 export const formatDate = (dateString) => {
-  const date = new Date(dateString);
+  if (!dateString) return '-';
+  
+  let date;
+  
+  // Handle different date formats
+  if (dateString.includes('.')) {
+    // Format: DD.MM.YYYY
+    const parts = dateString.split('.');
+    if (parts.length === 3) {
+      date = new Date(parts[2], parts[1] - 1, parts[0]);
+    }
+  } else if (dateString.includes('-')) {
+    // Format: YYYY-MM-DD
+    date = new Date(dateString);
+  } else {
+    date = new Date(dateString);
+  }
+  
+  if (!date || isNaN(date.getTime())) {
+    return dateString; // Return original if can't parse
+  }
+  
   return new Intl.DateTimeFormat('ru-RU', {
     day: '2-digit',
     month: '2-digit',
