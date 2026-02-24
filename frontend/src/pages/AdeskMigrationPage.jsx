@@ -185,12 +185,15 @@ export const AdeskMigrationPage = () => {
     try {
       await api().post('/adesk/drafts/bulk-update', {
         draft_ids: selectedDrafts,
-        category_id: bulkCategory || undefined,
-        direction_id: bulkDirection || undefined,
-        contractor_id: bulkContractor || undefined
+        category_id: bulkCategory && bulkCategory !== '__none__' ? bulkCategory : undefined,
+        direction_id: bulkDirection && bulkDirection !== '__none__' ? bulkDirection : undefined,
+        contractor_id: bulkContractor && bulkContractor !== '__none__' ? bulkContractor : undefined
       });
       toast.success(`Обновлено ${selectedDrafts.length} черновиков`);
       setBulkDialogOpen(false);
+      setBulkCategory('');
+      setBulkDirection('');
+      setBulkContractor('');
       setSelectedDrafts([]);
       fetchDrafts();
     } catch (error) {
