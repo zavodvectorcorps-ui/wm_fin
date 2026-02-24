@@ -3065,6 +3065,17 @@ async def start_adesk_migration(
                     
                     for t in transactions:
                         try:
+                            # Get Adesk ID for duplicate checking
+                            adesk_id = str(t.get("id", ""))
+                            
+                            # Check for duplicate
+                            existing = await db.adesk_drafts.find_one({
+                                "adesk_id": adesk_id,
+                                "user_id": current_user["user_id"]
+                            })
+                            if existing:
+                                continue  # Skip duplicate
+                            
                             # Determine type
                             t_type = "expense"
                             if t.get("type") == "income" or t.get("is_income"):
