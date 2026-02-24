@@ -44,8 +44,8 @@ export const ProjectsPage = () => {
     setLoading(true);
     try {
       const params = {
-        ...(filters.status && { status: filters.status }),
-        ...(filters.direction_id && { direction_id: filters.direction_id })
+        ...(filters.status && filters.status !== 'all' && { status: filters.status }),
+        ...(filters.direction_id && filters.direction_id !== 'all' && { direction_id: filters.direction_id })
       };
       
       const [projectsRes, directionsRes, contractorsRes] = await Promise.all([
