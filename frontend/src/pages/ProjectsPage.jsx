@@ -161,7 +161,7 @@ export const ProjectsPage = () => {
                 <SelectValue placeholder="Статус" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Все статусы</SelectItem>
+                <SelectItem value="all">Все статусы</SelectItem>
                 <SelectItem value="active">Активные</SelectItem>
                 <SelectItem value="completed">Завершённые</SelectItem>
                 <SelectItem value="cancelled">Отменённые</SelectItem>
