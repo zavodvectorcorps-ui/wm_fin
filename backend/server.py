@@ -2992,8 +2992,6 @@ async def start_adesk_migration(
     
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
-            headers = {"Authorization": f"Bearer {data.api_token}"}
-            
             # Get existing mappings
             categories = await db.categories.find({"user_id": current_user["user_id"]}, {"_id": 0}).to_list(200)
             directions = await db.directions.find({"user_id": current_user["user_id"]}, {"_id": 0}).to_list(20)
@@ -3017,26 +3015,50 @@ async def start_adesk_migration(
             drafts_created = 0
             errors = 0
             
-            # Fetch transactions from Adesk
+            # Fetch transactions from Adesk - token as query param
             if data.migrate_transactions:
                 page = 1
                 while True:
+                    # Convert dates to Adesk format (DD.MM.YYYY)
+                    start_date = data.date_from.replace("-", ".") if "-" in data.date_from else data.date_from
+                    end_date = data.date_to.replace("-", ".") if "-" in data.date_to else data.date_to
+                    
+                    # Reformat if needed (YYYY-MM-DD -> DD.MM.YYYY)
+                    if len(start_date) == 10 and start_date[4] == ".":
+                        parts = start_date.split(".")
+                        start_date = f"{parts[2]}.{parts[1]}.{parts[0]}"
+                    if len(end_date) == 10 and end_date[4] == ".":
+                        parts = end_date.split(".")
+                        end_date = f"{parts[2]}.{parts[1]}.{parts[0]}"
+                    
                     response = await client.get(
                         "https://api.adesk.ru/v1/transactions",
-                        headers=headers,
                         params={
-                            "date_from": data.date_from,
-                            "date_to": data.date_to,
+                            "api_token": data.api_token,
+                            "startDate": start_date,
+                            "endDate": end_date,
                             "limit": 100,
                             "page": page
                         }
                     )
                     
+                    logger.info(f"Adesk migration page {page}: status={response.status_code}")
+                    
                     if response.status_code != 200:
+                        logger.error(f"Adesk API error: {response.text[:500]}")
                         break
                     
                     result = response.json()
-                    transactions = result.get("data", [])
+                    
+                    # Handle different response formats
+                    if isinstance(result, list):
+                        transactions = result
+                    elif isinstance(result, dict):
+                        transactions = result.get("data", result.get("items", result.get("transactions", [])))
+                    else:
+                        transactions = []
+                    
+                    logger.info(f"Adesk page {page}: found {len(transactions)} transactions")
                     
                     if not transactions:
                         break
