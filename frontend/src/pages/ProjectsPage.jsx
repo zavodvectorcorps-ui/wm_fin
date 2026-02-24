@@ -105,7 +105,8 @@ export const ProjectsPage = () => {
     try {
       const payload = {
         ...formData,
-        planned_amount: formData.planned_amount ? parseFloat(formData.planned_amount) : 0
+        planned_amount: formData.planned_amount ? parseFloat(formData.planned_amount) : 0,
+        contractor_id: formData.contractor_id === 'none' ? null : formData.contractor_id
       };
 
       if (editingProject) {
