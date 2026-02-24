@@ -34,10 +34,16 @@ export const TransactionsPage = () => {
   const [categories, setCategories] = useState([]);
   const [directions, setDirections] = useState([]);
   const [contractors, setContractors] = useState([]);
+  const [documents, setDocuments] = useState([]);
   
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState(null);
   const [transactionType, setTransactionType] = useState('expense');
+  
+  // Document linking state
+  const [linkDocDialogOpen, setLinkDocDialogOpen] = useState(false);
+  const [selectedTransactionForDoc, setSelectedTransactionForDoc] = useState(null);
+  const [transactionDocuments, setTransactionDocuments] = useState({});
   
   const [filters, setFilters] = useState({
     period: 'current_month',
