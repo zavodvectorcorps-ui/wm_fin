@@ -21,6 +21,7 @@ import { toast } from 'sonner';
 export const SettingsPage = () => {
   const { api, user } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [resetting, setResetting] = useState(false);
   const [activeTab, setActiveTab] = useState('accounts');
   
   const [accounts, setAccounts] = useState([]);
