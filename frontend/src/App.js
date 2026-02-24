@@ -223,6 +223,12 @@ function AppRoutes() {
         </ProtectedRoute>
       } />
       
+      <Route path="/admin/users" element={
+        <ProtectedRoute>
+          <UsersPage />
+        </ProtectedRoute>
+      } />
+      
       <Route path="/faq" element={
         <ProtectedRoute>
           <FAQPage />
