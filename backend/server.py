@@ -2939,50 +2939,42 @@ async def test_adesk_connection(
     """Test connection to Adesk API"""
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
-            # Adesk API uses different auth format
-            headers = {
-                "Authorization": f"Bearer {data.api_token}",
-                "Content-Type": "application/json"
+            # Adesk API uses token as query parameter, not header
+            params = {
+                "api_token": data.api_token,
+                "limit": 100,
+                "startDate": "01.01.2020",
+                "endDate": "31.12.2026"
             }
             
-            # Try different API base URLs
-            base_urls = [
-                "https://api.adesk.ru/v1",
-                "https://adesk.ru/api/v1", 
-                "https://app.adesk.ru/api/v1"
-            ]
+            response = await client.get(
+                "https://api.adesk.ru/v1/transactions",
+                params=params
+            )
+            logger.info(f"Adesk API response: status={response.status_code}")
             
-            for base_url in base_urls:
-                try:
-                    response = await client.get(
-                        f"{base_url}/operations",
-                        headers=headers,
-                        params={"limit": 100}
-                    )
-                    logger.info(f"Adesk API {base_url}: status={response.status_code}")
-                    
-                    if response.status_code == 200:
-                        data_response = response.json()
-                        # Adesk may return data in different formats
-                        if isinstance(data_response, list):
-                            transactions_count = len(data_response)
-                        elif isinstance(data_response, dict):
-                            transactions_count = len(data_response.get("data", data_response.get("items", data_response.get("operations", []))))
-                        else:
-                            transactions_count = 0
-                        
-                        return {
-                            "status": "success", 
-                            "message": "Подключение успешно",
-                            "transactions_count": transactions_count,
-                            "api_url": base_url
-                        }
-                except Exception as e:
-                    logger.warning(f"Adesk API {base_url} failed: {e}")
-                    continue
-            
-            # If all URLs failed, return last response status
-            return {"status": "error", "message": f"Не удалось подключиться к API Adesk. Проверьте токен."}
+            if response.status_code == 200:
+                data_response = response.json()
+                logger.info(f"Adesk response type: {type(data_response)}, keys: {data_response.keys() if isinstance(data_response, dict) else 'list'}")
+                
+                # Adesk returns data in different formats
+                if isinstance(data_response, list):
+                    transactions_count = len(data_response)
+                elif isinstance(data_response, dict):
+                    transactions_count = len(data_response.get("data", data_response.get("items", data_response.get("transactions", []))))
+                else:
+                    transactions_count = 0
+                
+                return {
+                    "status": "success", 
+                    "message": "Подключение успешно",
+                    "transactions_count": transactions_count
+                }
+            elif response.status_code == 401 or response.status_code == 403:
+                return {"status": "error", "message": "Неверный API токен"}
+            else:
+                logger.error(f"Adesk API error: {response.status_code} - {response.text[:500]}")
+                return {"status": "error", "message": f"Ошибка API: {response.status_code}"}
                 
     except httpx.TimeoutException:
         return {"status": "error", "message": "Таймаут подключения к Adesk"}
