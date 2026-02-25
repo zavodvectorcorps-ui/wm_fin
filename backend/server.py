@@ -3325,14 +3325,65 @@ async def start_adesk_migration(
                                         "created_at": datetime.now(timezone.utc).isoformat()
                                     }
                                     
+                                    # Handle transfers - need to_account
+                                    if t_type == "transfer":
+                                        # Get target account from Adesk
+                                        to_account_adesk = t.get("toAccount", {}).get("name", "") or t.get("to_account", {}).get("name", "") or t.get("accountTo", {}).get("name", "")
+                                        to_account_currency = t.get("toAccount", {}).get("currency") or t.get("to_account", {}).get("currency") or adesk_account_currency
+                                        
+                                        mapped_to_account = account_map.get(to_account_adesk.lower()) if to_account_adesk else None
+                                        
+                                        # Create target account if needed
+                                        if to_account_adesk and not mapped_to_account:
+                                            to_acc_currency = to_account_currency.upper() if isinstance(to_account_currency, str) else "PLN"
+                                            if to_acc_currency not in ["PLN", "EUR", "USD"]:
+                                                to_acc_currency = "PLN"
+                                            if "eur" in to_account_adesk.lower():
+                                                to_acc_currency = "EUR"
+                                            elif "usd" in to_account_adesk.lower():
+                                                to_acc_currency = "USD"
+                                            
+                                            new_to_account = {
+                                                "id": str(uuid.uuid4()),
+                                                "name": to_account_adesk,
+                                                "type": "checking",
+                                                "currency": to_acc_currency,
+                                                "bank": None,
+                                                "initial_balance": 0,
+                                                "current_balance": 0,
+                                                "is_active": True,
+                                                "user_id": current_user["user_id"]
+                                            }
+                                            await db.accounts.insert_one(new_to_account)
+                                            account_map[to_account_adesk.lower()] = new_to_account
+                                            mapped_to_account = new_to_account
+                                            logger.info(f"Created to_account: {to_account_adesk}")
+                                        
+                                        if mapped_to_account:
+                                            transaction["to_account_id"] = mapped_to_account["id"]
+                                            transaction["to_account_name"] = mapped_to_account["name"]
+                                    
                                     await db.transactions.insert_one(transaction)
                                     
-                                    # Update account balance
-                                    balance_change = transaction["amount"] if t_type == "income" else -transaction["amount"]
-                                    await db.accounts.update_one(
-                                        {"id": mapped_account["id"]},
-                                        {"$inc": {"current_balance": balance_change}}
-                                    )
+                                    # Update account balances
+                                    if t_type == "transfer":
+                                        # Transfer: subtract from source, add to target
+                                        await db.accounts.update_one(
+                                            {"id": mapped_account["id"]},
+                                            {"$inc": {"current_balance": -transaction["amount"]}}
+                                        )
+                                        if transaction.get("to_account_id"):
+                                            await db.accounts.update_one(
+                                                {"id": transaction["to_account_id"]},
+                                                {"$inc": {"current_balance": transaction["amount"]}}
+                                            )
+                                    else:
+                                        # Income/Expense
+                                        balance_change = transaction["amount"] if t_type == "income" else -transaction["amount"]
+                                        await db.accounts.update_one(
+                                            {"id": mapped_account["id"]},
+                                            {"$inc": {"current_balance": balance_change}}
+                                        )
                                     
                                     drafts_created += 1
                                 else:
