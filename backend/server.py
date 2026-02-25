@@ -3299,12 +3299,15 @@ async def start_adesk_migration(
                                     else:
                                         parsed_date = raw_date[:10] if raw_date else data.date_from
                                     
+                                    # Use account currency or Adesk transaction currency
+                                    trans_currency = mapped_account.get("currency", "PLN") if mapped_account else adesk_account_currency
+                                    
                                     transaction = {
                                         "id": str(uuid.uuid4()),
                                         "date": parsed_date,
                                         "type": t_type,
                                         "amount": abs(float(t.get("amount", 0))),
-                                        "currency": t.get("currency", "PLN"),
+                                        "currency": trans_currency,
                                         "category_id": mapped_cat["id"],
                                         "category_name": mapped_cat["name"],
                                         "direction_id": mapped_dir["id"],
