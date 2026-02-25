@@ -3064,6 +3064,14 @@ async def start_adesk_migration(
                     if not transactions:
                         break
                     
+                    # Limit to prevent infinite loops (max 50 pages = 5000 transactions)
+                    if page > 50:
+                        logger.warning("Migration stopped: reached page limit (50)")
+                        break
+                    
+                    # Track how many new transactions we process on this page
+                    new_on_this_page = 0
+                    
                     for t in transactions:
                         try:
                             # Get Adesk ID for duplicate checking
