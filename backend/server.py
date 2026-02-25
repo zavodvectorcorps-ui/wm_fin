@@ -3196,15 +3196,31 @@ async def start_adesk_migration(
                             
                             # === AUTO-CREATE ACCOUNT ===
                             account_adesk = t.get("account", {}).get("name", "") or t.get("account_name", "") or ""
+                            # Get currency from Adesk account object or transaction
+                            adesk_account_currency = t.get("account", {}).get("currency") or t.get("currency")
+                            # Normalize currency
+                            if isinstance(adesk_account_currency, str):
+                                adesk_account_currency = adesk_account_currency.upper()
+                                if adesk_account_currency in ["PLN", "ZŁ", "ZL", "ZLOTY"]:
+                                    adesk_account_currency = "PLN"
+                                elif adesk_account_currency in ["EUR", "EURO", "€"]:
+                                    adesk_account_currency = "EUR"
+                                elif adesk_account_currency in ["USD", "DOLLAR", "$"]:
+                                    adesk_account_currency = "USD"
+                            else:
+                                adesk_account_currency = "PLN"
+                            
                             mapped_account = account_map.get(account_adesk.lower()) if account_adesk else None
                             
                             if account_adesk and not mapped_account:
-                                # Determine currency from account name or transaction
-                                acc_currency = t.get("currency", "PLN")
+                                # Determine currency from Adesk or account name
+                                acc_currency = adesk_account_currency
                                 if "eur" in account_adesk.lower():
                                     acc_currency = "EUR"
                                 elif "usd" in account_adesk.lower():
                                     acc_currency = "USD"
+                                elif "pln" in account_adesk.lower() or "zł" in account_adesk.lower():
+                                    acc_currency = "PLN"
                                 
                                 new_account = {
                                     "id": str(uuid.uuid4()),
@@ -3220,7 +3236,7 @@ async def start_adesk_migration(
                                 await db.accounts.insert_one(new_account)
                                 account_map[account_adesk.lower()] = new_account
                                 mapped_account = new_account
-                                logger.info(f"Created account: {account_adesk}")
+                                logger.info(f"Created account: {account_adesk} (currency: {acc_currency})")
                             
                             # Use default account if none
                             if not mapped_account and accounts:
