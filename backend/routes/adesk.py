@@ -82,25 +82,16 @@ async def start_adesk_migration(
             start_offset = 0
             page_size = 1000
 
-            # Format dates for Adesk: DD.MM.YYYY
-            start_date = data.date_from
-            end_date = data.date_to
-            # Convert YYYY-MM-DD -> DD.MM.YYYY
-            if len(start_date) == 10 and start_date[4] == "-":
-                parts = start_date.split("-")
-                start_date = f"{parts[2]}.{parts[1]}.{parts[0]}"
-            if len(end_date) == 10 and end_date[4] == "-":
-                parts = end_date.split("-")
-                end_date = f"{parts[2]}.{parts[1]}.{parts[0]}"
+            # Date filter applied after fetching (range=all_time works reliably)
+            filter_date_from = data.date_from
+            filter_date_to = data.date_to
 
             while True:
                 response = await client.get(
                     "https://api.adesk.ru/v1/transactions",
                     params={
                         "api_token": data.api_token,
-                        "range": "custom",
-                        "startDate": start_date,
-                        "endDate": end_date,
+                        "range": "all_time",
                         "length": page_size,
                         "start": start_offset
                     }
