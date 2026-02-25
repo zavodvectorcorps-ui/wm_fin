@@ -220,7 +220,14 @@ async def start_adesk_migration(
                             # Type
                             is_transfer = tx.get("isTransfer") == True
                             if is_transfer:
-                                t_type = "transfer"
+                                # Adesk provides transfers as TWO separate operations:
+                                # - Debit side (type=2): money leaves the account → expense
+                                # - Credit side (type=1): money enters the account → income
+                                # We map them to income/expense for correct balance calculation
+                                if tx.get("type") == 1:
+                                    t_type = "income"
+                                else:
+                                    t_type = "expense"
                             elif tx.get("type") == 1:
                                 t_type = "income"
                             else:
