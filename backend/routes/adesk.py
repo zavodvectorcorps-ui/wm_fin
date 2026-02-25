@@ -281,19 +281,44 @@ async def start_adesk_migration(
                                 mapped_contractor = new_contractor
                                 logger.info(f"Created contractor: {contractor_adesk}")
 
-                            # AUTO-CREATE ACCOUNT
+                            # AUTO-CREATE ACCOUNT + CURRENCY DETECTION
                             account_adesk = t.get("account", {}).get("name", "") or t.get("account_name", "") or ""
-                            adesk_account_currency = t.get("account", {}).get("currency") or t.get("currency")
-                            if isinstance(adesk_account_currency, str):
-                                adesk_account_currency = adesk_account_currency.upper()
-                                if adesk_account_currency in ["PLN", "ZŁ", "ZL", "ZLOTY"]:
+
+                            # Extract currency from multiple possible Adesk fields
+                            raw_currency = (
+                                t.get("account", {}).get("currency")
+                                or t.get("account", {}).get("currency_code")
+                                or t.get("currency")
+                                or t.get("currency_code")
+                                or t.get("currencyCode")
+                                or ""
+                            )
+                            # Also check if currency is numeric ID in Adesk
+                            if isinstance(raw_currency, (int, float)):
+                                # Adesk may use numeric currency IDs
+                                raw_currency = {1: "RUB", 2: "USD", 3: "EUR", 4: "PLN"}.get(int(raw_currency), "PLN")
+
+                            adesk_account_currency = "PLN"  # default
+                            if isinstance(raw_currency, str) and raw_currency.strip():
+                                norm = raw_currency.strip().upper()
+                                if norm in ["PLN", "ZŁ", "ZL", "ZLOTY", "ZŁ"]:
                                     adesk_account_currency = "PLN"
-                                elif adesk_account_currency in ["EUR", "EURO", "€"]:
+                                elif norm in ["EUR", "EURO", "€"]:
                                     adesk_account_currency = "EUR"
-                                elif adesk_account_currency in ["USD", "DOLLAR", "$"]:
+                                elif norm in ["USD", "DOLLAR", "$"]:
                                     adesk_account_currency = "USD"
-                            else:
-                                adesk_account_currency = "PLN"
+                                else:
+                                    adesk_account_currency = norm if norm in ["PLN", "EUR", "USD"] else "PLN"
+
+                            # Fallback: detect currency from account name
+                            if adesk_account_currency == "PLN" and account_adesk:
+                                acn = account_adesk.lower()
+                                if "eur" in acn or "евро" in acn or "€" in acn:
+                                    adesk_account_currency = "EUR"
+                                elif "usd" in acn or "доллар" in acn or "$" in acn:
+                                    adesk_account_currency = "USD"
+
+                            logger.info(f"Adesk tx {t.get('id')}: account='{account_adesk}', raw_currency='{raw_currency}', resolved='{adesk_account_currency}'")
 
                             mapped_account = account_map.get(account_adesk.lower()) if account_adesk else None
 
