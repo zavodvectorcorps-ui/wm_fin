@@ -51,7 +51,7 @@ async def test_adesk_connection(
                 result = response.json()
                 total = 0
                 if isinstance(result, dict):
-                    total = result.get("recordsTotal", result.get("recordsFiltered", 0))
+                    total = result.get("recordsFiltered", result.get("recordsTotal", 0))
                 elif isinstance(result, list):
                     total = len(result)
                 return {"status": "success", "message": f"Подключение успешно. Всего операций: {total}", "transactions_count": total}
