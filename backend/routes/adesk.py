@@ -407,6 +407,7 @@ async def start_adesk_migration(
                                     "amount": amount,
                                     "currency": currency,
                                     "exchange_rate": exchange_rate,
+                                    "is_transfer": is_transfer,
                                     "category_id": mapped_cat["id"],
                                     "category_name": mapped_cat["name"],
                                     "direction_id": mapped_dir["id"],
