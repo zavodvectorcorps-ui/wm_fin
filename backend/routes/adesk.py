@@ -141,6 +141,14 @@ async def start_adesk_migration(
 
                     logger.info(f"Adesk page {page}: found {len(transactions)} transactions")
 
+                    # Log raw structure of first transaction for debugging currency/transfer fields
+                    if page == 1 and transactions:
+                        sample = transactions[0]
+                        logger.info(f"Adesk sample transaction keys: {list(sample.keys())}")
+                        logger.info(f"Adesk sample: account={sample.get('account')}, currency={sample.get('currency')}, "
+                                    f"isTransfer={sample.get('isTransfer')}, toAccount={sample.get('toAccount')}, "
+                                    f"accountTo={sample.get('accountTo')}, to_account={sample.get('to_account')}")
+
                     if not transactions:
                         break
 
