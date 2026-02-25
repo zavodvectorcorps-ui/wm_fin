@@ -323,14 +323,6 @@ async def start_adesk_migration(
                             mapped_account = account_map.get(account_adesk.lower()) if account_adesk else None
 
                             if account_adesk and not mapped_account:
-                                acc_currency = adesk_account_currency
-                                if "eur" in account_adesk.lower():
-                                    acc_currency = "EUR"
-                                elif "usd" in account_adesk.lower():
-                                    acc_currency = "USD"
-                                elif "pln" in account_adesk.lower() or "zł" in account_adesk.lower():
-                                    acc_currency = "PLN"
-
                                 new_account = {
                                     "id": str(uuid.uuid4()),
                                     "name": account_adesk,
