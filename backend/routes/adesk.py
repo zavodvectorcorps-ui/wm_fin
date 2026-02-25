@@ -183,6 +183,11 @@ async def start_adesk_migration(
                         else:
                             parsed_date = date_iso[:10] if date_iso else data.date_from
 
+                        # Filter by date range
+                        if parsed_date < filter_date_from or parsed_date > filter_date_to:
+                            continue
+
+
                         # Bank account + currency
                         bank = tx.get("bankAccount") or {}
                         account_name = bank.get("name", "") if isinstance(bank, dict) else ""
