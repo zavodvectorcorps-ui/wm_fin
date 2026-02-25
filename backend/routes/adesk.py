@@ -218,7 +218,8 @@ async def start_adesk_migration(
                                 elif cat_adesk_type == 2:
                                     cat_type = "expense"
                                 else:
-                                    cat_type = t_type
+                                    # Categories can only be income or expense, not transfer
+                                    cat_type = "expense" if t_type == "transfer" else t_type
 
                                 new_cat = {
                                     "id": str(uuid.uuid4()),
