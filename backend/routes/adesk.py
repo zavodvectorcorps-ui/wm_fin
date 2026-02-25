@@ -358,7 +358,7 @@ async def start_adesk_migration(
                                 "date": t.get("date", "")[:10] if t.get("date") else data.date_from,
                                 "type": t_type,
                                 "amount": abs(float(t.get("amount", 0))),
-                                "currency": t.get("currency", "PLN"),
+                                "currency": adesk_account_currency,
                                 "category_adesk": cat_adesk,
                                 "category_id": mapped_cat["id"] if mapped_cat else None,
                                 "category_name": mapped_cat["name"] if mapped_cat else None,
