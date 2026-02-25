@@ -422,20 +422,42 @@ async def start_adesk_migration(
                                         "created_at": datetime.now(timezone.utc).isoformat()
                                     }
 
-                                    # FIX: Proper transfer handling — two-sided balance update
+                                    # TRANSFER HANDLING — find target account and create two-sided entry
                                     if t_type == "transfer":
-                                        to_account_adesk = t.get("toAccount", {}).get("name", "") or t.get("to_account", {}).get("name", "") or t.get("accountTo", {}).get("name", "")
-                                        to_account_currency = t.get("toAccount", {}).get("currency") or t.get("to_account", {}).get("currency") or adesk_account_currency
+                                        # Try multiple Adesk field names for target account
+                                        to_acc_raw = (
+                                            t.get("toAccount") or t.get("to_account")
+                                            or t.get("accountTo") or t.get("account_to")
+                                            or t.get("targetAccount") or t.get("target_account")
+                                            or {}
+                                        )
+                                        if isinstance(to_acc_raw, dict):
+                                            to_account_adesk = to_acc_raw.get("name", "")
+                                            to_account_raw_currency = (
+                                                to_acc_raw.get("currency") or to_acc_raw.get("currency_code") or ""
+                                            )
+                                        else:
+                                            to_account_adesk = str(to_acc_raw) if to_acc_raw else ""
+                                            to_account_raw_currency = ""
+
+                                        logger.info(f"Transfer target: account='{to_account_adesk}', raw_currency='{to_account_raw_currency}'")
 
                                         mapped_to_account = account_map.get(to_account_adesk.lower()) if to_account_adesk else None
 
                                         if to_account_adesk and not mapped_to_account:
-                                            to_acc_currency = to_account_currency.upper() if isinstance(to_account_currency, str) else "PLN"
-                                            if to_acc_currency not in ["PLN", "EUR", "USD"]:
-                                                to_acc_currency = "PLN"
-                                            if "eur" in to_account_adesk.lower():
+                                            # Determine target account currency
+                                            to_acc_currency = "PLN"
+                                            if isinstance(to_account_raw_currency, str) and to_account_raw_currency.strip():
+                                                to_norm = to_account_raw_currency.strip().upper()
+                                                if to_norm in ["EUR", "EURO", "€"]:
+                                                    to_acc_currency = "EUR"
+                                                elif to_norm in ["USD", "DOLLAR", "$"]:
+                                                    to_acc_currency = "USD"
+                                            # Fallback: detect from name
+                                            ta_lower = to_account_adesk.lower()
+                                            if "eur" in ta_lower or "евро" in ta_lower:
                                                 to_acc_currency = "EUR"
-                                            elif "usd" in to_account_adesk.lower():
+                                            elif "usd" in ta_lower or "доллар" in ta_lower:
                                                 to_acc_currency = "USD"
 
                                             new_to_account = {
