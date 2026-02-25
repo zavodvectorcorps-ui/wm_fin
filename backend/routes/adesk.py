@@ -327,7 +327,7 @@ async def start_adesk_migration(
                                     "id": str(uuid.uuid4()),
                                     "name": account_adesk,
                                     "type": "checking",
-                                    "currency": acc_currency,
+                                    "currency": adesk_account_currency,
                                     "bank": None,
                                     "initial_balance": 0,
                                     "current_balance": 0,
