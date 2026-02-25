@@ -105,11 +105,11 @@ async def start_adesk_migration(
 
                 result = response.json()
 
-                # Parse DataTables response
+                # Parse response — Adesk uses {success, transactions, recordsFiltered}
                 if isinstance(result, list):
                     transactions = result
                 elif isinstance(result, dict):
-                    transactions = result.get("data", result.get("items", []))
+                    transactions = result.get("transactions", result.get("data", result.get("items", [])))
                 else:
                     transactions = []
 
