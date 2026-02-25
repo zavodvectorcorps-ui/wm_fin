@@ -426,10 +426,6 @@ async def start_adesk_migration(
                                     "created_at": datetime.now(timezone.utc).isoformat()
                                 }
 
-                                # For transfers: Adesk already provides two separate operations
-                                # (debit from source, credit to target), so we import as-is.
-                                # The type stays "transfer" and balance recalc handles the rest.
-
                                 await db.transactions.insert_one(transaction)
                                 await update_account_balance(mapped_account["id"], user_id)
                                 auto_imported += 1
