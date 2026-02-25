@@ -1,0 +1,154 @@
+<analysis>**original_problem_statement:**
+The initial goal was to create WM Finance, a web application for a Polish business that sells greenhouses, saunas, and hot tubs. The app serves as a specialized financial accounting tool.
+
+**PRODUCT REQUIREMENTS:**
+-   **Application:** WM Finance, a web-based accounting tool.
+-   **Target Business:** A producer and seller of high-value goods in Poland.
+-   **Core Features:**
+    -   Multi-currency support (PLN, EUR, USD).
+    -   Role-based access with a Superadmin () who manages all other users. Public registration is disabled.
+    -   **Modules:**
+        -   **Completed:** Authentication, Analytics (P&L, Cash Flow, etc.), Document Management, CSV Import, Payment Planning, a comprehensive FAQ page, User Management, and an AI Assistant.
+        -   **In Progress:** Migration from a legacy system (Adesk) via its API.
+        -   **Future:** Webhooks, advanced notifications, and automated AI-driven weekly digests.
+    -   **Integrations:**
+        -   **Telegram Bot:** For sending manual and automated financial summaries.
+        -   **Google Sheets:** For daily automated backups of all financial data.
+        -   **AI Assistant:** Powered by Claude Sonnet 4.5 using the Emergent LLM Key.
+-   **Tech Stack:** React frontend with Shadcn/UI, FastAPI backend, MongoDB database.
+-   **UI/UX:** The interface is in Russian, supports dark/light themes (defaulting to dark), and uses a sidebar for navigation.
+
+**User's preferred language**: Русский
+
+**what currently exists?**
+A sophisticated full-stack financial application where most core features are implemented and functional. The application includes superadmin user management, a suite of analytics pages, document uploads, and integration settings for Telegram and Google Sheets. An AI assistant is integrated and working. The primary ongoing development revolves around a complex and error-prone data migration feature from an external service, Adesk. The backend is a large monolithic FastAPI file (), and the frontend is a React single-page application.
+
+**Last working item**:
+The user reported that the login page became unresponsive. The agent diagnosed the issue, finding that the Adesk migration process was stuck in an infinite loop, overwhelming the server. This was because the Adesk API consistently returned the same set of transactions on every paginated request, and the loop's exit condition was never met. The agent killed the hanging process to restore access and identified the code section responsible for the infinite loop.
+
+-   Last item agent was working: Fixing the infinite loop in the Adesk migration's pagination logic within .
+-   Status: IN PROGRESS
+-   Agent Testing Done: N
+-   Which testing method agent to use? manual testing by curl
+-   User Testing Done: N
+
+**All Pending/In progress Issue list**:
+-   **Issue 1: Adesk Migration Infinite Loop (P0)**: The data migration from Adesk gets stuck in an infinite loop, causing the server to become unresponsive and blocking all other requests, including login. This happens because the pagination logic doesn't correctly handle the API's behavior of returning the same data on subsequent pages.
+-   **Issue 2: Adesk Migration - Incomplete Transfer Logic (P1)**: The migration identifies transfer transactions but doesn't correctly process them. A transfer should create two entries: a debit from the source account and a credit to the destination account. This logic is missing.
+-   **Issue 3: Recurring CORS Errors (P2)**: The user frequently encounters CORS (Cross-Origin Resource Sharing) errors, especially when accessing the application from their custom domain (). Despite several fixes (adding the domain to the allowlist, using wildcards), the issue persists, indicating a potentially deeper configuration problem at the proxy or platform level.
+
+**In progress Task List**:
+-   **Task 1: Stabilize Adesk Migration (P0)**
+    -   Where to resume: . Implement the proposed fix to break the pagination loop when no new, unique transactions are found on a page.
+    -   What will be achieved with this?: This will prevent the server from locking up and make the migration process stable enough for further testing and development.
+    -   Status: IN PROGRESS
+    -   Blocked on something: No.
+
+**Upcoming and Future Tasks**
+-   **Upcoming Tasks:**
+    -   **Refactor  (P0):** The user has approved the refactoring of the monolithic  file (currently ~3850 lines). This is a critical technical debt item. The plan is to break the file into a modular structure with separate directories for routes, models, and services (e.g., , ).
+-   **Future Tasks:**
+    -   **Automation Rules (P1):** Implement the backend logic to apply user-defined automation rules during data imports.
+    -   **Webhooks and Notifications (P1):** Build out the full functionality for the webhooks and user notifications systems.
+    -   **Google Drive Integration (P2):** Add Google Drive as a document storage option.
+    -   **AI Weekly Digests (P2):** Implement the scheduled task to generate and send AI-powered weekly financial summaries.
+
+**Completed work in this session**
+-   **Google Sheets Backup:** Successfully integrated the Google Sheets API for daily automated backups. This included adding the  library, creating a backend scheduler with , and adding a control panel on the Integrations page.
+-   **AI Assistant:** Verified and confirmed that the AI assistant, powered by Claude Sonnet 4.5 via the  library, is fully functional.
+-   **Adesk Migration (Numerous Fixes):**
+    -   Corrected transaction type mapping (income vs. expense).
+    -   Added logic to handle multiple currencies (PLN, EUR).
+    -   Implemented automatic creation of missing categories, projects, and accounts during import to streamline the process.
+    -   Added a Full Data Reset feature to allow for clean-slate migrations.
+    -   Fixed multiple frontend bugs, including date parsing errors and select component crashes.
+-   **Dashboard & UI:**
+    -   Added an expanded year filter (including All Time) to the Dashboard and Transactions pages.
+    -   Added a company plaque to the footer.
+    -   Added a custom dollar-sign favicon.
+
+**Earlier issues found/mentioned but not fixed**
+-   **Adesk Transfer Logic:** The logic to handle transfers between accounts remains incomplete.
+-   **CORS Issues:** The root cause of the recurring CORS errors has not been definitively resolved.
+
+**Known issue recurrence from previous fork**
+-   **CORS errors** have been a persistent problem throughout this session, being fixed temporarily only to reappear under different circumstances.
+
+**Code Architecture**
+
+
+**Key Technical Concepts**
+-   **Background Scheduler:**  is integrated into the FastAPI application to run daily automated tasks (e.g., Google Sheets backup).
+-   **Google Sheets API:** The  library is used with a service account (JSON key) to write data to a user-specified Google Sheet.
+-   **Adesk API Interaction:** The system now communicates with , handling its specific authentication (token in query param) and pagination nuances.
+-   **Monolithic Backend:** The entire backend logic resides in a single  file, which has become a significant maintenance challenge.
+
+**key DB schema**
+-   **transactions:** This collection was updated to include a  field (e.g., 'adesk_migration') and  to track the origin of transactions and prevent duplicates during migration.
+
+**changes in tech stack**
+-   **Added:** , ,  to .
+
+**All files of reference**
+-   : The central point of all recent work, containing logic for Adesk migration, Google Sheets backup, data reset, and the AI chat.
+-   : The UI for the migration feature; heavily modified to handle errors and new user flows.
+-   : Updated with the Google Sheets backup status and controls.
+-   : Updated with the Full Reset data-wiping functionality.
+-   : New file containing credentials for the Google Sheets service account.
+
+**Areas that need refactoring**:
+-   ** (URGENT):** This file is extremely large and complex, making it difficult to maintain and debug. The user has approved its refactoring into a modular structure, which should be the highest priority technical task after the Adesk migration is stabilized.
+-   **:** This React component has grown very large and handles a lot of state and logic. It should be broken down into smaller, more manageable sub-components.
+
+**key api endpoints**
+-   : The main endpoint for the Adesk migration, which has been heavily modified to fix numerous bugs.
+-   : A new destructive endpoint that wipes all financial data for the current user.
+-   : A new endpoint to manually trigger the Google Sheets backup.
+-   : The endpoint that powers the AI assistant.
+
+**Critical Info for New Agent**
+-   **Adesk Migration is the Blocker:** The immediate priority is to fix the Adesk migration. Start by implementing the fix for the infinite pagination loop in . This issue freezes the entire application.
+-   **Data Reset is Your Friend:** For testing the migration, use the Сброс (Reset) tab in the Настройки (Settings) page. This will give you a clean slate and avoid issues with duplicated or corrupted data from previous failed attempts.
+-   **Refactoring is Approved and Needed:** Once the migration is stable, the next major task should be the refactoring of . This has been discussed with and approved by the user.
+-   **Watch for CORS:** Be aware that CORS errors may reappear. The issue seems tied to requests originating from the user's custom domain ().
+
+**documents and test reports created in this job**
+-    (Updated)
+-    (Generated by testing agent)
+
+**Last 10 User Messages and any pending HUMAN messages**
+1.  **login stopped working** - User reported being unable to log in. (Status: **Resolved**. The agent identified a migration-induced server freeze and killed the process.)
+2.  **the transfer operation works like this, the amount is subtracted from one account and added to another** - User provided clarification on how transfer transactions should be handled. (Status: **To-Do**. The logic is not yet fully implemented.)
+3.  **in adesk there are operations in zlotys and there are in euros, this must be taken into account during migration** - User requested multi-currency support for migration. (Status: **Done**.)
+4.  **in the dashboard you also need to add filtering for 23, 23 and the ability to show all periods at once** - User requested more date filter options. (Status: **Done**.)
+5.  **Adesk API  mapping** - User provided technical details on how to map transaction types. (Status: **Done**.)
+6.  **in adesk, in income operations there is a + and they are green** - User provided UI/UX context for identifying income transactions. (Status: **Done**.)
+7.  **why did all operations end up as an expense with a minus?** - User reported a critical bug where all migrated transactions were incorrect. (Status: **Resolved**.)
+8.  **i did all this. But the operations did not appear...** - User reported that successfully migrated transactions were not visible in the UI. (Status: **Resolved**.)
+9.  **i want automatic import and add from year 23 onwards** - User requested changes to the migration workflow and date filters. (Status: **Done**.)
+10. **i deleted everything, ran the migration, the operations did not appear, but the balance changed...** - User described the core data inconsistency issue with the migration. (Status: **In Progress**.)
+
+**Project Health Check:**
+-   **Working:** The core application, including analytics, user management, AI assistant, and Google Sheets backups.
+-   **Broken:** The **Adesk Migration** feature is fundamentally unstable. It causes the entire server to hang due to an infinite loop and has data consistency issues.
+-   **Mocked:** The logic for handling transfer type transactions from Adesk is incomplete.
+
+**3rd Party Integrations**
+-   **Claude Sonnet 4.5** — uses Emergent LLM Key.
+-   **Google Sheets API** — requires User-provided Service Account JSON key.
+-   **Adesk API** — requires User-provided API Key.
+
+**Testing status**
+-   **Testing agent used after significant changes:** YES, but many manual fixes were implemented afterward. The most critical bug (infinite loop) has not been tested since the last code change proposal.
+-   **Troubleshoot agent used after agent stuck in loop:** NO.
+-   **Test files created:** None.
+-   **Known regressions:** The login functionality broke due to a server freeze caused by the unstable migration feature.
+
+**Credentials to test flow:**
+-   **Role:** Superadmin
+-   **Username:** 
+-   **Password:** 
+
+**What agent forgot to execute**
+-   The agent has not fully implemented the two-sided logic for transfer transactions, where funds move between two accounts.
+-   The agent planned and created directories for a major refactoring of  but postponed the actual implementation.</analysis>
