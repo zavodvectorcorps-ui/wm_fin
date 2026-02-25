@@ -396,7 +396,8 @@ async def start_adesk_migration(
                                     else:
                                         parsed_date = raw_date[:10] if raw_date else data.date_from
 
-                                    trans_currency = mapped_account.get("currency", "PLN") if mapped_account else adesk_account_currency
+                                    # Use Adesk-determined currency, not account's stored currency
+                                    trans_currency = adesk_account_currency
 
                                     transaction = {
                                         "id": str(uuid.uuid4()),
