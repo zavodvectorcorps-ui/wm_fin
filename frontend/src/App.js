@@ -25,6 +25,7 @@ import AdeskMigrationPage from './pages/AdeskMigrationPage';
 import FAQPage from './pages/FAQPage';
 import IntegrationsPage from './pages/IntegrationsPage';
 import UsersPage from './pages/UsersPage';
+import ExpensePlanPage from './pages/ExpensePlanPage';
 
 // Protected Route wrapper
 const ProtectedRoute = ({ children }) => {
@@ -226,6 +227,12 @@ function AppRoutes() {
       <Route path="/admin/users" element={
         <ProtectedRoute>
           <UsersPage />
+        </ProtectedRoute>
+      } />
+      
+      <Route path="/planning/expenses" element={
+        <ProtectedRoute>
+          <ExpensePlanPage />
         </ProtectedRoute>
       } />
       

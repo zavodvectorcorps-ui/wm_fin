@@ -1,0 +1,114 @@
+{
+  "summary": "Expense Plan (План расходов) feature fully tested - all backend CRUD endpoints and frontend UI working correctly",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Month/Year selectors",
+        "issues": ["Month and Year dropdown triggers appear dark/black - may need better contrast or visible values in dark theme"]
+      }
+    ]
+  },
+  "passed_tests": [
+    "Backend: Login with admin/220066mm returns 200 with token",
+    "Backend: GET /api/expense-plans?year=2026&month=3 returns plans list",
+    "Backend: POST /api/expense-plans?year=2026&month=4 creates new plan with correct name 'Апрель 2026'",
+    "Backend: GET /api/expense-plans/{plan_id} returns plan by ID",
+    "Backend: POST /api/expense-plans/{plan_id}/items adds expense item with all fields",
+    "Backend: GET /api/expense-plans/{plan_id}/items returns items list",
+    "Backend: PUT /api/expense-plans/items/{item_id} updates item correctly",
+    "Backend: DELETE /api/expense-plans/items/{item_id} deletes item",
+    "Backend: DELETE /api/expense-plans/{plan_id} deletes plan and its items",
+    "Backend: GET /api/expense-plans/categories/list returns category labels (rent, salary, subscriptions, etc.)",
+    "Backend: POST /api/expense-plans/{plan_id}/copy-previous returns 404 when no previous month",
+    "Backend: POST /api/expense-plans/{plan_id}/extend-recurring returns 400 when no recurring items",
+    "Backend: GET /api/expense-plans/summary/all returns summaries with totals",
+    "Frontend: Navigation to /planning/expenses via sidebar (Планирование -> План расходов) works",
+    "Frontend: Month selector [data-testid='select-month'] clickable and opens dropdown",
+    "Frontend: Year selector [data-testid='select-year'] clickable and opens dropdown",
+    "Frontend: Quick-add 'Аренда склада' [data-testid='quick-rent'] opens inline add row with pre-filled description",
+    "Frontend: Quick-add 'Зарплата сотрудника' [data-testid='quick-salary'] button present",
+    "Frontend: Quick-add 'Подписка/Сервис' [data-testid='quick-sub'] button present",
+    "Frontend: 'Добавить строку' [data-testid='add-custom-btn'] opens blank inline add row",
+    "Frontend: Inline add row shows type, category, description, project, day, amount, recurring checkbox",
+    "Frontend: Save button [data-testid='save-new-btn'] creates new item",
+    "Frontend: Toast notification 'Строка добавлена' appears on successful add",
+    "Frontend: Edit mode triggered by pencil icon on row hover",
+    "Frontend: Delete triggered by trash icon on row hover",
+    "Frontend: Summary footer shows 'Постоянные расходы', 'Переменные расходы', 'Итого за месяц'",
+    "Frontend: 'Скопировать прошлый месяц' [data-testid='copy-prev-btn'] button present",
+    "Frontend: 'Протянуть постоянные' [data-testid='extend-btn'] appears when recurring items exist",
+    "Frontend: Russian language UI throughout the page"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_expense_plans.py",
+    "/app/test_reports/pytest/pytest_results_expense_plans.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Month/Year selectors in dark theme show values as dark text on dark background - consider adding visible text or lighter styling"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_expense_plans.py"
+  ],
+  "success_rate": {
+    "backend": "100% (13/13 tests passed)",
+    "frontend": "100%"
+  },
+  "test_credentials": {
+    "login": "admin",
+    "password": "220066mm",
+    "note": "Login field is named 'email' in API but accepts 'admin' as username"
+  },
+  "seed_data_creation": "Test created expense plan for March 2026 with 'Аренда склада' item (2500 PLN)",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "mocked_apis": {
+    "has_mocked_apis": false,
+    "mocked_apis_list": []
+  },
+  "context_for_next_testing_agent": "Expense Plan feature fully working. Backend endpoints all pass (13 tests). Frontend quick-add buttons, inline add/edit/delete, month/year selectors, and summary totals all working. Note: Login endpoint expects field name 'email' but value is 'admin' (not email format).",
+  "features_tested": {
+    "expense_plans_crud": {
+      "status": "PASS",
+      "endpoints_tested": [
+        "GET /api/expense-plans",
+        "GET /api/expense-plans/{plan_id}",
+        "POST /api/expense-plans",
+        "DELETE /api/expense-plans/{plan_id}",
+        "GET /api/expense-plans/{plan_id}/items",
+        "POST /api/expense-plans/{plan_id}/items",
+        "PUT /api/expense-plans/items/{item_id}",
+        "DELETE /api/expense-plans/items/{item_id}",
+        "GET /api/expense-plans/categories/list",
+        "POST /api/expense-plans/{plan_id}/copy-previous",
+        "POST /api/expense-plans/{plan_id}/extend-recurring",
+        "GET /api/expense-plans/summary/all"
+      ]
+    },
+    "frontend_expense_plan_page": {
+      "status": "PASS",
+      "route": "/planning/expenses",
+      "ui_elements": {
+        "page_container": "[data-testid='expense-plan-page']",
+        "month_selector": "[data-testid='select-month']",
+        "year_selector": "[data-testid='select-year']",
+        "quick_rent_btn": "[data-testid='quick-rent']",
+        "quick_salary_btn": "[data-testid='quick-salary']",
+        "quick_sub_btn": "[data-testid='quick-sub']",
+        "add_custom_btn": "[data-testid='add-custom-btn']",
+        "copy_prev_btn": "[data-testid='copy-prev-btn']",
+        "extend_btn": "[data-testid='extend-btn']",
+        "new_description": "[data-testid='new-description']",
+        "new_amount": "[data-testid='new-amount']",
+        "new_recurring": "[data-testid='new-recurring']",
+        "save_new_btn": "[data-testid='save-new-btn']"
+      }
+    }
+  }
+}

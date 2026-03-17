@@ -4,7 +4,8 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   LayoutDashboard, Receipt, FolderKanban, Users, BarChart3, Calendar,
   Settings, HelpCircle, LogOut, ChevronDown, Menu, X, Bell,
-  TrendingUp, Wallet, PiggyBank, FileText, Bot, Paperclip, Zap, Plug, Link2, Shield
+  TrendingUp, Wallet, PiggyBank, FileText, Bot, Paperclip, Zap, Plug, Link2, Shield,
+  ClipboardList
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Sheet, SheetContent, SheetTrigger } from './ui/sheet';
@@ -35,6 +36,7 @@ const analyticsItems = [
 
 const planningItems = [
   { icon: Calendar, label: 'Платёжный календарь', path: '/planning/calendar' },
+  { icon: ClipboardList, label: 'План расходов', path: '/planning/expenses' },
   { icon: FileText, label: 'Импорт выписок', path: '/import' },
   { icon: Zap, label: 'Автоправила', path: '/settings/rules' },
 ];
@@ -49,7 +51,7 @@ const SidebarContent = ({ onClose }) => {
   const location = useLocation();
   const { user, logout } = useAuth();
   const [analyticsOpen, setAnalyticsOpen] = useState(location.pathname.startsWith('/analytics'));
-  const [planningOpen, setPlanningOpen] = useState(location.pathname.startsWith('/planning') || location.pathname === '/import');
+  const [planningOpen, setPlanningOpen] = useState(location.pathname.startsWith('/planning') || location.pathname === '/import' || location.pathname === '/settings/rules');
 
   const NavItem = ({ icon: Icon, label, path }) => (
     <Link

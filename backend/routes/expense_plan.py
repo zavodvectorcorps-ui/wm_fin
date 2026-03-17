@@ -73,6 +73,7 @@ async def create_expense_plan(
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
     await db.expense_plans.insert_one(plan)
+    plan.pop("_id", None)
     return plan
 
 
@@ -129,15 +130,15 @@ async def create_plan_item(
     }
 
     await db.expense_plan_items.insert_one(item)
+    item.pop("_id", None)
 
     await db.expense_plans.update_one(
         {"id": plan_id},
         {"$set": {"updated_at": datetime.now(timezone.utc).isoformat()}}
     )
 
+    item.pop("_id", None)
     return item
-
-
 @router.put("/expense-plans/items/{item_id}")
 async def update_plan_item(
     item_id: str,
