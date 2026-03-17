@@ -10,7 +10,7 @@ import { Checkbox } from '../components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import {
   Plus, Trash2, Building2, Users, CreditCard, Copy,
-  CalendarRange, Loader2, Pencil, Check, X
+  CalendarRange, Loader2, Pencil, Check, X, Download
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -182,6 +182,36 @@ export default function ExpensePlanPage() {
 
   const dirName = (id) => directions.find(d => d.id === id)?.name || '';
 
+  const exportCSV = () => {
+    if (!items.length) { toast.error('Нет данных для экспорта'); return; }
+    const header = ['Тип', 'Категория', 'Описание', 'Проект', 'День', 'Сумма', 'Валюта', 'Ежемесячный'];
+    const rows = items.map(i => [
+      i.type === 'fixed' ? 'Постоянный' : 'Переменный',
+      CATEGORIES[i.category] || i.category,
+      i.description,
+      dirName(i.project_id) || '',
+      i.day_in_month || '',
+      i.amount_planned,
+      i.currency,
+      i.is_recurring_every_month ? 'Да' : 'Нет'
+    ]);
+    rows.push([]);
+    rows.push(['', '', 'Постоянные итого', '', '', fixedTotal, 'PLN', '']);
+    rows.push(['', '', 'Переменные итого', '', '', variableTotal, 'PLN', '']);
+    rows.push(['', '', 'ИТОГО', '', '', grandTotal, 'PLN', '']);
+
+    const bom = '\uFEFF';
+    const csv = bom + [header, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `план_расходов_${MONTH_NAMES[month]}_${year}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success('Экспорт завершён');
+  };
+
   return (
     <div className="p-6 md:p-8 space-y-6" data-testid="expense-plan-page">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -195,7 +225,7 @@ export default function ExpensePlanPage() {
       <div className="flex flex-wrap gap-3 items-end">
         <div className="w-36">
           <Select value={String(month)} onValueChange={v => setMonth(Number(v))}>
-            <SelectTrigger data-testid="select-month"><SelectValue /></SelectTrigger>
+            <SelectTrigger data-testid="select-month" className="text-foreground border-border bg-card"><SelectValue /></SelectTrigger>
             <SelectContent>
               {MONTH_NAMES.slice(1).map((m, i) => (
                 <SelectItem key={i + 1} value={String(i + 1)}>{m}</SelectItem>
@@ -205,7 +235,7 @@ export default function ExpensePlanPage() {
         </div>
         <div className="w-24">
           <Select value={String(year)} onValueChange={v => setYear(Number(v))}>
-            <SelectTrigger data-testid="select-year"><SelectValue /></SelectTrigger>
+            <SelectTrigger data-testid="select-year" className="text-foreground border-border bg-card"><SelectValue /></SelectTrigger>
             <SelectContent>
               {[2023, 2024, 2025, 2026, 2027].map(y => (
                 <SelectItem key={y} value={String(y)}>{y}</SelectItem>
@@ -213,12 +243,17 @@ export default function ExpensePlanPage() {
             </SelectContent>
           </Select>
         </div>
-        <Button variant="outline" size="sm" onClick={copyPrevious} data-testid="copy-prev-btn">
+        <Button variant="outline" size="sm" onClick={copyPrevious} data-testid="copy-prev-btn" className="text-foreground border-border">
           <Copy className="h-4 w-4 mr-2" />Скопировать прошлый месяц
         </Button>
         {recurringCount > 0 && (
-          <Button variant="outline" size="sm" onClick={() => setShowExtend(true)} data-testid="extend-btn">
+          <Button variant="outline" size="sm" onClick={() => setShowExtend(true)} data-testid="extend-btn" className="text-foreground border-border">
             <CalendarRange className="h-4 w-4 mr-2" />Протянуть постоянные ({recurringCount})
+          </Button>
+        )}
+        {items.length > 0 && (
+          <Button variant="outline" size="sm" onClick={exportCSV} data-testid="export-csv-btn" className="text-foreground border-border">
+            <Download className="h-4 w-4 mr-2" />Экспорт CSV
           </Button>
         )}
       </div>
@@ -234,7 +269,7 @@ export default function ExpensePlanPage() {
         <Button variant="secondary" size="sm" onClick={() => quickAdd('subscriptions', 'Подписка/Сервис')} data-testid="quick-sub">
           <CreditCard className="h-4 w-4 mr-1.5" />Подписка/Сервис
         </Button>
-        <Button variant="outline" size="sm" onClick={() => { setAdding(true); setNewItem({ type: 'variable', category: 'other', description: '', amount_planned: '', currency: 'PLN', day_in_month: '', is_recurring_every_month: false, project_id: null }); }} data-testid="add-custom-btn">
+        <Button variant="outline" size="sm" onClick={() => { setAdding(true); setNewItem({ type: 'variable', category: 'other', description: '', amount_planned: '', currency: 'PLN', day_in_month: '', is_recurring_every_month: false, project_id: null }); }} data-testid="add-custom-btn" className="text-foreground border-border">
           <Plus className="h-4 w-4 mr-1.5" />Добавить строку
         </Button>
       </div>
