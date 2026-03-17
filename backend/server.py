@@ -33,6 +33,7 @@ from routes.adesk import router as adesk_router
 from routes.integrations import router as integrations_router
 from routes.ai import router as ai_router
 from routes.bot import router as bot_router
+from routes.expense_plan import router as expense_plan_router
 
 # Import service routers
 from services.google_sheets import router as google_sheets_router
@@ -72,6 +73,7 @@ all_routers = [
     integrations_router,
     ai_router,
     bot_router,
+    expense_plan_router,
     google_sheets_router,
 ]
 
