@@ -108,7 +108,15 @@ export const DashboardPage = () => {
     };
   })();
 
-  const incomeChange = prevData ? getChangePercent(data?.total_income || 0, prevData.total_income) : 0;
+  // Computed metrics based on selected accounts with EUR conversion
+  const selectedIncome = currencyBreakdown.plnIncome + (eurPlnRate > 0 ? currencyBreakdown.eurIncome * eurPlnRate : currencyBreakdown.eurIncome);
+  const selectedExpense = currencyBreakdown.plnExpense + (eurPlnRate > 0 ? currencyBreakdown.eurExpense * eurPlnRate : currencyBreakdown.eurExpense);
+  const selectedProfit = selectedIncome - selectedExpense;
+
+  const hasEurSelected = currencyBreakdown.eur !== 0 || currencyBreakdown.eurIncome !== 0 || currencyBreakdown.eurExpense !== 0;
+  const eurSubtitle = (val, eurVal) => hasEurSelected && eurPlnRate > 0 ? `в т.ч. ${formatCurrency(eurVal, 'EUR')} (×${eurPlnRate})` : undefined;
+
+  const incomeChange = prevData ? getChangePercent(selectedIncome, prevData.total_income) : 0;
   const expenseChange = prevData ? getChangePercent(data?.total_expense || 0, prevData.total_expense) : 0;
 
   const MetricCard = ({ title, value, icon: Icon, change, isExpense = false, subtitle }) => (
@@ -197,27 +205,29 @@ export const DashboardPage = () => {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <MetricCard 
           title="Доходы" 
-          value={data?.total_income} 
+          value={selectedIncome} 
           icon={TrendingUp} 
           change={incomeChange}
+          subtitle={eurSubtitle(selectedIncome, currencyBreakdown.eurIncome)}
         />
         <MetricCard 
           title="Расходы" 
-          value={data?.total_expense} 
+          value={selectedExpense} 
           icon={TrendingDown} 
           change={expenseChange}
           isExpense
+          subtitle={eurSubtitle(selectedExpense, currencyBreakdown.eurExpense)}
         />
         <MetricCard 
           title="Прибыль" 
-          value={data?.profit} 
+          value={selectedProfit} 
           icon={PiggyBank}
         />
         <MetricCard 
           title="Деньги бизнеса" 
           value={selectedBalance} 
           icon={Wallet}
-          subtitle={currencyBreakdown.eur > 0 && eurPlnRate > 0
+          subtitle={hasEurSelected && eurPlnRate > 0
             ? `${formatCurrency(currencyBreakdown.pln)} + ${formatCurrency(currencyBreakdown.eur, 'EUR')} (×${eurPlnRate})`
             : undefined
           }
