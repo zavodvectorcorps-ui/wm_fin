@@ -27,10 +27,110 @@ const sourceIcons = {
   telegram_bot: Bot
 };
 
+const PeriodSummary = ({ transactions, eurPlnRate }) => {
+  // Group by currency
+  const byCurrency = {};
+  for (const t of transactions) {
+    const cur = t.currency || 'PLN';
+    if (!byCurrency[cur]) byCurrency[cur] = { income: 0, expense: 0 };
+    if (t.type === 'income') byCurrency[cur].income += t.amount;
+    else if (t.type === 'expense') byCurrency[cur].expense += t.amount;
+  }
+
+  const currencies = Object.keys(byCurrency);
+  const hasMultiCurrency = currencies.length > 1;
+
+  // Total in PLN
+  let totalIncomePln = 0, totalExpensePln = 0;
+  for (const [cur, v] of Object.entries(byCurrency)) {
+    const rate = cur === 'EUR' && eurPlnRate > 0 ? eurPlnRate : 1;
+    totalIncomePln += v.income * rate;
+    totalExpensePln += v.expense * rate;
+  }
+  const totalNetPln = totalIncomePln - totalExpensePln;
+
+  return (
+    <div className="space-y-2" data-testid="period-summary">
+      {/* Per-currency rows */}
+      {currencies.map(cur => {
+        const v = byCurrency[cur];
+        const net = v.income - v.expense;
+        return (
+          <div key={cur} className="grid gap-3 grid-cols-4">
+            <Card className="border-emerald-500/20">
+              <CardContent className="py-3 px-4">
+                <p className="text-xs text-muted-foreground">Доходы {hasMultiCurrency ? cur : ''}</p>
+                <p className="text-lg font-bold font-mono text-emerald-500">
+                  +{formatCurrency(v.income, cur)}
+                </p>
+              </CardContent>
+            </Card>
+            <Card className="border-rose-500/20">
+              <CardContent className="py-3 px-4">
+                <p className="text-xs text-muted-foreground">Расходы {hasMultiCurrency ? cur : ''}</p>
+                <p className="text-lg font-bold font-mono text-rose-500">
+                  -{formatCurrency(v.expense, cur)}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="py-3 px-4">
+                <p className="text-xs text-muted-foreground">Баланс {hasMultiCurrency ? cur : ''}</p>
+                <p className={`text-lg font-bold font-mono ${net >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                  {net >= 0 ? '+' : ''}{formatCurrency(net, cur)}
+                </p>
+              </CardContent>
+            </Card>
+            {!hasMultiCurrency && (
+              <Card>
+                <CardContent className="py-3 px-4">
+                  <p className="text-xs text-muted-foreground">Операций</p>
+                  <p className="text-lg font-bold font-mono">{transactions.length}</p>
+                </CardContent>
+              </Card>
+            )}
+            {hasMultiCurrency && (
+              <Card>
+                <CardContent className="py-3 px-4">
+                  <p className="text-xs text-muted-foreground">Операций {cur}</p>
+                  <p className="text-lg font-bold font-mono">
+                    {transactions.filter(t => (t.currency || 'PLN') === cur).length}
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        );
+      })}
+      {/* Combined total in PLN when multi-currency */}
+      {hasMultiCurrency && eurPlnRate > 0 && (
+        <Card className="border-primary/20">
+          <CardContent className="py-3 px-4">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <span className="text-xs text-muted-foreground">
+                Итого в PLN (EUR × {eurPlnRate}):
+              </span>
+              <div className="flex gap-4 font-mono text-sm">
+                <span className="text-emerald-500 font-semibold">+{formatCurrency(totalIncomePln)}</span>
+                <span className="text-rose-500 font-semibold">-{formatCurrency(totalExpensePln)}</span>
+                <span className={`font-bold ${totalNetPln >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                  = {formatCurrency(totalNetPln)}
+                </span>
+              </div>
+              <span className="text-xs text-muted-foreground">Всего: {transactions.length}</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+};
+
 export const TransactionsPage = () => {
   const { api } = useAuth();
   const [loading, setLoading] = useState(true);
   const [transactions, setTransactions] = useState([]);
+  const [eurPlnRate, setEurPlnRate] = useState(0);
   const [accounts, setAccounts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [directions, setDirections] = useState([]);
@@ -86,13 +186,14 @@ export const TransactionsPage = () => {
         ...(filters.search && { search: filters.search })
       };
       
-      const [transRes, accountsRes, categoriesRes, directionsRes, contractorsRes, docsRes] = await Promise.all([
+      const [transRes, accountsRes, categoriesRes, directionsRes, contractorsRes, docsRes, rateRes] = await Promise.all([
         api().get('/transactions', { params }),
         api().get('/accounts'),
         api().get('/categories'),
         api().get('/directions'),
         api().get('/contractors'),
-        api().get('/documents', { params: { status: 'pending' } })
+        api().get('/documents', { params: { status: 'pending' } }),
+        api().get('/exchange-rate').catch(() => ({ data: { eur_pln: 0 } })),
       ]);
       
       setTransactions(transRes.data);
@@ -101,6 +202,7 @@ export const TransactionsPage = () => {
       setDirections(directionsRes.data);
       setContractors(contractorsRes.data);
       setDocuments(docsRes.data);
+      setEurPlnRate(rateRes.data.eur_pln || 0);
     } catch (error) {
       toast.error('Ошибка загрузки данных');
     } finally {
@@ -385,51 +487,7 @@ export const TransactionsPage = () => {
 
       {/* Period Summary */}
       {!loading && transactions.length > 0 && (
-        <div className="grid gap-3 grid-cols-2 md:grid-cols-4" data-testid="period-summary">
-          <Card className="border-emerald-500/20">
-            <CardContent className="py-3 px-4">
-              <p className="text-xs text-muted-foreground">Доходы</p>
-              <p className="text-lg font-bold font-mono text-emerald-500" data-testid="summary-income">
-                +{formatCurrency(
-                  transactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0),
-                  transactions[0]?.currency
-                )}
-              </p>
-            </CardContent>
-          </Card>
-          <Card className="border-rose-500/20">
-            <CardContent className="py-3 px-4">
-              <p className="text-xs text-muted-foreground">Расходы</p>
-              <p className="text-lg font-bold font-mono text-rose-500" data-testid="summary-expense">
-                -{formatCurrency(
-                  transactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0),
-                  transactions[0]?.currency
-                )}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="py-3 px-4">
-              <p className="text-xs text-muted-foreground">Баланс за период</p>
-              {(() => {
-                const inc = transactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-                const exp = transactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-                const net = inc - exp;
-                return (
-                  <p className={`text-lg font-bold font-mono ${net >= 0 ? 'text-emerald-500' : 'text-rose-500'}`} data-testid="summary-net">
-                    {net >= 0 ? '+' : ''}{formatCurrency(net, transactions[0]?.currency)}
-                  </p>
-                );
-              })()}
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="py-3 px-4">
-              <p className="text-xs text-muted-foreground">Операций</p>
-              <p className="text-lg font-bold font-mono" data-testid="summary-count">{transactions.length}</p>
-            </CardContent>
-          </Card>
-        </div>
+        <PeriodSummary transactions={transactions} eurPlnRate={eurPlnRate} />
       )}
 
       {/* Transactions Table */}

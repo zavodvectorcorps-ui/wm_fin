@@ -17,6 +17,66 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
+const ExchangeRateSettings = ({ api }) => {
+  const [rateData, setRateData] = useState(null);
+  const [manualInput, setManualInput] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api().get('/exchange-rate').then(r => {
+      setRateData(r.data);
+      setManualInput(r.data.manual_rate ? String(r.data.manual_rate) : '');
+    }).catch(() => {});
+  }, [api]);
+
+  const saveManualRate = async () => {
+    setSaving(true);
+    try {
+      const val = manualInput.trim() ? parseFloat(manualInput.replace(',', '.')) : null;
+      await api().put('/exchange-rate', { manual_rate: val });
+      const res = await api().get('/exchange-rate');
+      setRateData(res.data);
+      toast.success(val ? `Курс установлен: ${val}` : 'Курс сброшен на автоматический (NBP)');
+    } catch {
+      toast.error('Ошибка сохранения');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-4">
+        <div className="bg-muted/50 rounded-lg p-3 flex-1">
+          <p className="text-xs text-muted-foreground">Курс NBP (авто)</p>
+          <p className="text-xl font-mono font-bold">{rateData?.nbp_rate || '—'}</p>
+        </div>
+        <div className="bg-muted/50 rounded-lg p-3 flex-1">
+          <p className="text-xs text-muted-foreground">Используется</p>
+          <p className="text-xl font-mono font-bold">{rateData?.eur_pln || '—'}</p>
+          <Badge variant="outline" className="text-xs mt-1">
+            {rateData?.source === 'manual' ? 'Ручной' : 'NBP авто'}
+          </Badge>
+        </div>
+      </div>
+      <div className="flex items-end gap-2">
+        <div className="flex-1 space-y-1">
+          <Label className="text-xs">Ручной курс (оставьте пустым для авто)</Label>
+          <Input
+            value={manualInput}
+            onChange={e => setManualInput(e.target.value)}
+            placeholder="Например: 4.30"
+            data-testid="manual-rate-input"
+          />
+        </div>
+        <Button onClick={saveManualRate} disabled={saving} size="sm" data-testid="save-rate-btn">
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Сохранить'}
+        </Button>
+      </div>
+    </div>
+  );
+};
+
 export const IntegrationsPage = () => {
   const { api } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -558,6 +618,22 @@ export const IntegrationsPage = () => {
                   Отправить сводку сейчас
                 </Button>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Exchange Rate */}
+          <Card data-testid="exchange-rate-card">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <RefreshCw className="h-5 w-5 text-blue-500" />
+                Курс EUR/PLN
+              </CardTitle>
+              <CardDescription>
+                Автоматический курс от NBP (Национальный банк Польши) с возможностью ручной корректировки
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <ExchangeRateSettings api={api} />
             </CardContent>
           </Card>
 

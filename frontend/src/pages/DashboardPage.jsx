@@ -30,6 +30,7 @@ export const DashboardPage = () => {
   const [prevData, setPrevData] = useState(null);
   const [topContractors, setTopContractors] = useState([]);
   const [selectedAccountIds, setSelectedAccountIds] = useState(new Set());
+  const [eurPlnRate, setEurPlnRate] = useState(0);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -52,6 +53,11 @@ export const DashboardPage = () => {
       if (summaryRes.data?.accounts?.length > 0 && selectedAccountIds.size === 0) {
         setSelectedAccountIds(new Set(summaryRes.data.accounts.map(a => a.id)));
       }
+      // Fetch exchange rate
+      try {
+        const rateRes = await api().get('/exchange-rate');
+        setEurPlnRate(rateRes.data.eur_pln || 0);
+      } catch { /* ignore */ }
     } catch (error) {
       console.error('Failed to fetch dashboard data:', error);
     } finally {
@@ -81,13 +87,31 @@ export const DashboardPage = () => {
   };
 
   const selectedBalance = data?.accounts
-    ? data.accounts.filter(a => selectedAccountIds.has(a.id)).reduce((sum, a) => sum + (a.current_balance || 0), 0)
+    ? data.accounts.filter(a => selectedAccountIds.has(a.id)).reduce((sum, a) => {
+        const bal = a.current_balance || 0;
+        if (a.currency === 'EUR' && eurPlnRate > 0) return sum + bal * eurPlnRate;
+        return sum + bal;
+      }, 0)
     : (data?.total_balance || 0);
+
+  // Multi-currency breakdown for selected accounts
+  const currencyBreakdown = (() => {
+    if (!data?.accounts) return { pln: 0, eur: 0, plnIncome: 0, plnExpense: 0, eurIncome: 0, eurExpense: 0 };
+    const sel = data.accounts.filter(a => selectedAccountIds.has(a.id));
+    return {
+      pln: sel.filter(a => a.currency !== 'EUR').reduce((s, a) => s + (a.current_balance || 0), 0),
+      eur: sel.filter(a => a.currency === 'EUR').reduce((s, a) => s + (a.current_balance || 0), 0),
+      plnIncome: sel.filter(a => a.currency !== 'EUR').reduce((s, a) => s + (a.period_income || 0), 0),
+      plnExpense: sel.filter(a => a.currency !== 'EUR').reduce((s, a) => s + (a.period_expense || 0), 0),
+      eurIncome: sel.filter(a => a.currency === 'EUR').reduce((s, a) => s + (a.period_income || 0), 0),
+      eurExpense: sel.filter(a => a.currency === 'EUR').reduce((s, a) => s + (a.period_expense || 0), 0),
+    };
+  })();
 
   const incomeChange = prevData ? getChangePercent(data?.total_income || 0, prevData.total_income) : 0;
   const expenseChange = prevData ? getChangePercent(data?.total_expense || 0, prevData.total_expense) : 0;
 
-  const MetricCard = ({ title, value, icon: Icon, change, isExpense = false }) => (
+  const MetricCard = ({ title, value, icon: Icon, change, isExpense = false, subtitle }) => (
     <Card className="card-hover" data-testid={`metric-${title.toLowerCase().replace(/\s/g, '-')}`}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
@@ -101,6 +125,9 @@ export const DashboardPage = () => {
             <div className={`text-2xl font-bold font-mono ${isExpense ? 'text-rose-500' : value < 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
               {formatCurrency(value || 0)}
             </div>
+            {subtitle && (
+              <p className="text-xs text-muted-foreground mt-0.5 font-mono">{subtitle}</p>
+            )}
             {change !== undefined && (
               <div className="flex items-center gap-1 mt-1">
                 {change >= 0 ? (
@@ -190,6 +217,10 @@ export const DashboardPage = () => {
           title="Деньги бизнеса" 
           value={selectedBalance} 
           icon={Wallet}
+          subtitle={currencyBreakdown.eur > 0 && eurPlnRate > 0
+            ? `${formatCurrency(currencyBreakdown.pln)} + ${formatCurrency(currencyBreakdown.eur, 'EUR')} (×${eurPlnRate})`
+            : undefined
+          }
         />
       </div>
 
@@ -348,15 +379,38 @@ export const DashboardPage = () => {
 
                 {/* Selected totals */}
                 {data?.accounts?.length > 1 && selectedAccountIds.size > 0 && (
-                  <div className="mt-3 pt-3 border-t border-border">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Итого ({selectedAccountIds.size}):</span>
+                  <div className="mt-3 pt-3 border-t border-border space-y-1">
+                    {/* Per-currency breakdown */}
+                    {currencyBreakdown.pln !== 0 && (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">PLN:</span>
+                        <span className="font-mono font-semibold">{formatCurrency(currencyBreakdown.pln)}</span>
+                      </div>
+                    )}
+                    {currencyBreakdown.eur !== 0 && (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">EUR:</span>
+                        <span className="font-mono font-semibold">{formatCurrency(currencyBreakdown.eur, 'EUR')}</span>
+                      </div>
+                    )}
+                    {/* Combined total in PLN */}
+                    <div className="flex items-center justify-between text-sm pt-1">
+                      <span className="text-muted-foreground font-medium">
+                        Итого в PLN{eurPlnRate > 0 ? ` (EUR×${eurPlnRate})` : ''}:
+                      </span>
                       <span className="font-mono font-bold">{formatCurrency(selectedBalance)}</span>
                     </div>
+                    {/* Period income/expense breakdown */}
                     {(() => {
                       const selAccs = (data?.accounts || []).filter(a => selectedAccountIds.has(a.id));
-                      const totInc = selAccs.reduce((s, a) => s + (a.period_income || 0), 0);
-                      const totExp = selAccs.reduce((s, a) => s + (a.period_expense || 0), 0);
+                      const totInc = selAccs.reduce((s, a) => {
+                        const inc = a.period_income || 0;
+                        return s + (a.currency === 'EUR' && eurPlnRate > 0 ? inc * eurPlnRate : inc);
+                      }, 0);
+                      const totExp = selAccs.reduce((s, a) => {
+                        const exp = a.period_expense || 0;
+                        return s + (a.currency === 'EUR' && eurPlnRate > 0 ? exp * eurPlnRate : exp);
+                      }, 0);
                       if (totInc === 0 && totExp === 0) return null;
                       return (
                         <div className="flex gap-4 text-xs mt-1">
