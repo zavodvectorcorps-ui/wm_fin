@@ -34,6 +34,7 @@ from routes.integrations import router as integrations_router
 from routes.ai import router as ai_router
 from routes.bot import router as bot_router
 from routes.expense_plan import router as expense_plan_router
+from routes.bank_import import router as bank_import_router
 
 # Import service routers
 from services.google_sheets import router as google_sheets_router
@@ -74,6 +75,7 @@ all_routers = [
     ai_router,
     bot_router,
     expense_plan_router,
+    bank_import_router,
     google_sheets_router,
 ]
 

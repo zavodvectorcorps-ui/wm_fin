@@ -1,0 +1,123 @@
+{
+  "summary": "Bank Statement PDF Import feature fully tested - all backend endpoints (15 tests) and frontend UI flows working correctly. PDF parsing extracts 86 transactions with 14 groups, import confirmation saves transactions to database.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "BankImportModal - Groups section",
+        "issues": ["Groups section could benefit from visual distinction between income/expense groups"]
+      }
+    ]
+  },
+  "passed_tests": [
+    "Backend: Login with admin/220066mm returns 200 with token",
+    "Backend: POST /api/bank-import/parse with PDF file returns 200",
+    "Backend: Parse returns correct transaction count (86 for test PDF)",
+    "Backend: Parse returns correct currency (PLN)",
+    "Backend: Parse returns account number from statement (36 1020 1169 0000 8502 0848 7755)",
+    "Backend: Parse returns groups of similar transactions (14 groups)",
+    "Backend: Parse returns transaction structure with all required fields (date, operation_type, description, amount, type, currency)",
+    "Backend: Parse rejects non-PDF files with 400",
+    "Backend: Parse requires authentication (returns 403 without token)",
+    "Backend: POST /api/bank-import/confirm requires account_id",
+    "Backend: POST /api/bank-import/confirm requires direction_id",
+    "Backend: POST /api/bank-import/confirm requires non-empty transactions",
+    "Backend: POST /api/bank-import/confirm imports transactions successfully",
+    "Backend: POST /api/bank-import/confirm returns account_name in response",
+    "Backend: POST /api/bank-import/confirm requires authentication",
+    "Backend: Full import flow (parse -> select -> confirm) works end-to-end",
+    "Frontend: Navigate to /import page works",
+    "Frontend: 'Импорт PDF выписки' button [data-testid='open-pdf-import-btn'] opens BankImportModal",
+    "Frontend: Modal step 1 shows file upload area [data-testid='pdf-upload-area']",
+    "Frontend: Modal step 1 shows account selector [data-testid='import-account-select']",
+    "Frontend: Modal step 1 shows direction selector [data-testid='import-direction-select']",
+    "Frontend: Uploading PDF transitions to step 2 (review)",
+    "Frontend: Step 2 shows summary badges (account number, income, expenses, selected count)",
+    "Frontend: Groups section [data-testid='toggle-groups-btn'] is collapsible",
+    "Frontend: Groups show label, count, total amount, and 'Назначить' button",
+    "Frontend: Transactions table shows all parsed transactions with checkboxes",
+    "Frontend: Each transaction shows date, type badge (Приход/Расход), counterparty, description, amount",
+    "Frontend: Select-all checkbox [data-testid='select-all-checkbox'] works",
+    "Frontend: Individual checkboxes toggle selection",
+    "Frontend: Clicking pencil icon on a transaction opens inline editing",
+    "Frontend: Edit mode shows input fields for counterparty and description",
+    "Frontend: Edit mode shows direction and category dropdowns",
+    "Frontend: Edit mode has save (checkmark) and cancel (X) buttons",
+    "Frontend: 'Назад' button [data-testid='back-to-upload'] returns to step 1",
+    "Frontend: 'Импортировать N операций' button [data-testid='confirm-import-btn'] triggers import",
+    "Frontend: After import, success toast 'Операции импортированы!' appears",
+    "Frontend: After import, modal closes automatically",
+    "Frontend: Imported transactions appear in the system (verified via API)"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_bank_import.py",
+    "/app/test_reports/pytest/pytest_results_bank_import.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "BankImportModal.jsx uses proper data-testid attributes for all interactive elements",
+    "PDF parsing correctly handles PKO BP statement format with Polish number formatting",
+    "Transaction grouping logic identifies common patterns (TikTok Ads, Google Ads, etc.)",
+    "Duplicate detection works by comparing date+amount combinations"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_bank_import.py"
+  ],
+  "success_rate": {
+    "backend": "100% (15/15 tests passed)",
+    "frontend": "100% (all UI flows working)"
+  },
+  "test_credentials": {
+    "login": "admin",
+    "password": "220066mm",
+    "note": "Login field is named 'email' in API but accepts 'admin' as username"
+  },
+  "seed_data_creation": "Imported 78+ transactions from test PDF (/tmp/test_statement.pdf) for July 2025",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "mocked_apis": {
+    "has_mocked_apis": false,
+    "mocked_apis_list": []
+  },
+  "context_for_next_testing_agent": "Bank Statement PDF Import feature fully working. Backend endpoints /api/bank-import/parse and /api/bank-import/confirm both pass all tests. Frontend BankImportModal works with file upload, transaction review, inline editing, group batch editing, and import confirmation. Test PDF at /tmp/test_statement.pdf contains 86 PKO BP PLN transactions from July 2025. Pencil edit button uses opacity-0 group-hover:opacity-100 - need to hover the row first to see it.",
+  "features_tested": {
+    "bank_import_parse": {
+      "status": "PASS",
+      "endpoint": "POST /api/bank-import/parse",
+      "test_file": "/tmp/test_statement.pdf",
+      "results": {
+        "transactions_count": 86,
+        "groups_count": 14,
+        "currency": "PLN",
+        "account_number": "36 1020 1169 0000 8502 0848 7755",
+        "period": "01.07.2025 - 31.07.2025"
+      }
+    },
+    "bank_import_confirm": {
+      "status": "PASS",
+      "endpoint": "POST /api/bank-import/confirm",
+      "verified_imports": true
+    },
+    "frontend_bank_import_modal": {
+      "status": "PASS",
+      "ui_elements": {
+        "open_button": "[data-testid='open-pdf-import-btn']",
+        "modal": "[data-testid='bank-import-modal']",
+        "upload_area": "[data-testid='pdf-upload-area']",
+        "file_input": "[data-testid='pdf-file-input']",
+        "account_select": "[data-testid='import-account-select']",
+        "direction_select": "[data-testid='import-direction-select']",
+        "toggle_groups": "[data-testid='toggle-groups-btn']",
+        "select_all": "[data-testid='select-all-checkbox']",
+        "confirm_btn": "[data-testid='confirm-import-btn']",
+        "back_btn": "[data-testid='back-to-upload']",
+        "transaction_rows": "[data-testid='import-tx-{idx}']"
+      }
+    }
+  }
+}

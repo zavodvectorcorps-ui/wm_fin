@@ -9,10 +9,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Progress } from '../components/ui/progress';
 import { 
-  Upload, FileSpreadsheet, CheckCircle2, AlertCircle, ArrowRight
+  Upload, FileSpreadsheet, CheckCircle2, AlertCircle, ArrowRight, FileText
 } from 'lucide-react';
 import { formatCurrency, getDirectionClass } from '../lib/utils';
 import { toast } from 'sonner';
+import BankImportModal from '../components/BankImportModal';
 
 const POLISH_BANKS = [
   { id: 'mbank', name: 'mBank' },
@@ -41,6 +42,7 @@ export const ImportPage = () => {
   const [selectedAccount, setSelectedAccount] = useState('');
   const [selectedDirection, setSelectedDirection] = useState('');
   const [importResult, setImportResult] = useState(null);
+  const [showBankImport, setShowBankImport] = useState(false);
 
   const fetchSettings = useCallback(async () => {
     try {
@@ -150,10 +152,18 @@ export const ImportPage = () => {
 
   return (
     <div className="p-6 md:p-8 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Импорт выписок</h1>
-        <p className="text-muted-foreground">Загрузка банковских операций из CSV/XLSX</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Импорт выписок</h1>
+          <p className="text-muted-foreground">Загрузка банковских операций из CSV/XLSX или PDF</p>
+        </div>
+        <Button onClick={() => setShowBankImport(true)} data-testid="open-pdf-import-btn" className="gap-2">
+          <FileText className="h-4 w-4" />
+          Импорт PDF выписки
+        </Button>
       </div>
+
+      <BankImportModal open={showBankImport} onOpenChange={setShowBankImport} onImported={() => toast.success('Операции импортированы!')} />
 
       {/* Progress Steps */}
       <div className="flex items-center gap-4">
