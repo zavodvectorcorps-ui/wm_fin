@@ -462,8 +462,22 @@ async def parse_bank_statement(
         for t in result["transactions"]:
             t["is_duplicate"] = False
 
-    # Generate groups
+    # Generate groups and mark which need rules
     result["groups"] = group_similar_transactions(result["transactions"])
+
+    # Mark groups that already have auto-rules
+    rule_patterns = {ar["pattern"].lower() for ar in auto_rules}
+    for g in result["groups"]:
+        label_lower = g["label"].lower()
+        g["has_rule"] = any(p in label_lower or label_lower in p for p in rule_patterns)
+        # Also check if all items in group already have category assigned
+        g["all_categorized"] = all(
+            result["transactions"][i].get("auto_category_id") for i in g["indices"]
+        )
+    result["suggested_rules"] = [
+        g for g in result["groups"]
+        if g["count"] >= 3 and not g["has_rule"] and not g["all_categorized"]
+    ]
 
     return result
 

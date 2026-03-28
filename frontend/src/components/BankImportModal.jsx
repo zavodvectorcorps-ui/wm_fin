@@ -155,8 +155,8 @@ export default function BankImportModal({ open, onOpenChange, onImported }) {
     setExpandedGroups(next);
   };
 
-  // Apply group edit to all transactions in the group
-  const applyGroupEdit = (group) => {
+  // Apply group edit to all transactions in the group AND create auto-rule
+  const applyGroupEdit = async (group) => {
     const updated = [...transactions];
     for (const idx of group.indices) {
       if (groupEdit.direction_id) updated[idx] = { ...updated[idx], direction_id: groupEdit.direction_id };
@@ -164,9 +164,26 @@ export default function BankImportModal({ open, onOpenChange, onImported }) {
       if (groupEdit.contractor_id) updated[idx] = { ...updated[idx], contractor_id: groupEdit.contractor_id };
     }
     setTransactions(updated);
+
+    // Auto-create rule if category was assigned
+    if (groupEdit.category_id && groupEdit.create_rule !== false) {
+      try {
+        await api().post('/auto-rules', {
+          pattern: group.label,
+          category_id: groupEdit.category_id,
+          direction_id: groupEdit.direction_id || null,
+          contractor_id: groupEdit.contractor_id || null,
+        });
+        toast.success(`Правило "${group.label}" создано и применено к ${group.indices.length} операциям`);
+      } catch {
+        toast.success(`Применено к ${group.indices.length} операциям (правило не создано)`);
+      }
+    } else {
+      toast.success(`Применено к ${group.indices.length} операциям`);
+    }
+
     setEditingGroup(null);
     setGroupEdit({});
-    toast.success(`Обновлено ${group.indices.length} операций`);
   };
 
   // Save individual edit
@@ -357,38 +374,36 @@ export default function BankImportModal({ open, onOpenChange, onImported }) {
               )}
             </div>
 
-            {/* Groups - collapsible */}
+            {/* Suggested rules + Groups */}
             {groups.length > 0 && (
               <Card className="border-amber-500/20">
                 <CardContent className="py-2 px-4">
                   <button className="flex items-center gap-2 w-full text-left"
                     onClick={() => setShowGroups(!showGroups)} data-testid="toggle-groups-btn">
                     {showGroups ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                    <Layers className="h-4 w-4 text-amber-500" />
-                    <span className="text-sm font-medium">Группы ({groups.length}) — пакетное назначение</span>
+                    <Zap className="h-4 w-4 text-amber-500" />
+                    <span className="text-sm font-medium">
+                      Рекомендуемые правила ({groups.filter(g => !g.has_rule && !g.all_categorized && g.count >= 3).length})
+                      {' '}и группы ({groups.length})
+                    </span>
                   </button>
                   {showGroups && (
-                    <div className="space-y-1 mt-2 max-h-[200px] overflow-y-auto">
-                      {groups.map(g => (
-                        <div key={g.group_key} className="rounded-lg bg-muted/30 p-2">
+                    <div className="space-y-1.5 mt-2 max-h-[250px] overflow-y-auto">
+                      {/* Suggested rules first (3+ items, no existing rule) */}
+                      {groups.filter(g => !g.has_rule && !g.all_categorized && g.count >= 3).length > 0 && (
+                        <p className="text-xs text-amber-500 font-medium px-1">Рекомендуем создать правила:</p>
+                      )}
+                      {groups.filter(g => !g.has_rule && !g.all_categorized && g.count >= 3).map(g => (
+                        <div key={g.group_key} className="rounded-lg bg-amber-500/5 border border-amber-500/20 p-2">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-medium flex-1 min-w-[120px]">{g.label}</span>
-                            <Badge variant="outline" className="text-xs">{g.count} оп.</Badge>
+                            <Zap className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" />
+                            <span className="text-sm font-medium flex-1 min-w-[100px]">{g.label}</span>
+                            <Badge variant="outline" className="text-xs text-amber-500 border-amber-500/30">{g.count} оп.</Badge>
                             <span className={`text-sm font-mono ${g.type === 'income' ? 'text-emerald-500' : 'text-rose-500'}`}>
                               {fmtMoney(g.total_amount, parseResult?.currency)}
                             </span>
                             {editingGroup === g.group_key ? (
                               <div className="flex items-center gap-1.5">
-                                <Select value={groupEdit.direction_id || '__none__'}
-                                  onValueChange={v => setGroupEdit({ ...groupEdit, direction_id: v === '__none__' ? '' : v })}>
-                                  <SelectTrigger className="h-7 w-32 text-xs text-foreground border-border bg-card"><SelectValue placeholder="Направл." /></SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="__none__">— по умолч.</SelectItem>
-                                    {directions.filter(d => d.is_active).map(d => (
-                                      <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
                                 <Select value={groupEdit.category_id || '__none__'}
                                   onValueChange={v => setGroupEdit({ ...groupEdit, category_id: v === '__none__' ? '' : v })}>
                                   <SelectTrigger className="h-7 w-32 text-xs text-foreground border-border bg-card"><SelectValue placeholder="Категория" /></SelectTrigger>
@@ -396,6 +411,16 @@ export default function BankImportModal({ open, onOpenChange, onImported }) {
                                     <SelectItem value="__none__">— нет</SelectItem>
                                     {categories.filter(c => c.type === g.type).map(c => (
                                       <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <Select value={groupEdit.direction_id || '__none__'}
+                                  onValueChange={v => setGroupEdit({ ...groupEdit, direction_id: v === '__none__' ? '' : v })}>
+                                  <SelectTrigger className="h-7 w-28 text-xs text-foreground border-border bg-card"><SelectValue placeholder="Направл." /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="__none__">— по умолч.</SelectItem>
+                                    {directions.filter(d => d.is_active).map(d => (
+                                      <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
                                     ))}
                                   </SelectContent>
                                 </Select>
@@ -407,11 +432,74 @@ export default function BankImportModal({ open, onOpenChange, onImported }) {
                                 </Button>
                               </div>
                             ) : (
-                              <Button variant="outline" size="sm" className="h-7 text-xs text-foreground border-border"
+                              <Button size="sm" className="h-7 text-xs bg-amber-500/20 hover:bg-amber-500/30 text-amber-500 border-0"
                                 onClick={() => { setEditingGroup(g.group_key); setGroupEdit({}); }}
-                                data-testid={`group-edit-${g.group_key}`}>
-                                <Pencil className="h-3 w-3 mr-1" /> Назначить
+                                data-testid={`suggest-rule-${g.group_key}`}>
+                                <Zap className="h-3 w-3 mr-1" /> Создать правило
                               </Button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* Other groups (already ruled or <3 items) */}
+                      {groups.filter(g => g.has_rule || g.all_categorized || g.count < 3).length > 0 && (
+                        <p className="text-xs text-muted-foreground font-medium px-1 mt-2">Остальные группы:</p>
+                      )}
+                      {groups.filter(g => g.has_rule || g.all_categorized || g.count < 3).map(g => (
+                        <div key={g.group_key} className="rounded-lg bg-muted/30 p-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {g.has_rule ? (
+                              <Check className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />
+                            ) : (
+                              <Layers className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                            )}
+                            <span className="text-sm font-medium flex-1 min-w-[100px]">{g.label}</span>
+                            <Badge variant="outline" className="text-xs">{g.count} оп.</Badge>
+                            <span className={`text-sm font-mono ${g.type === 'income' ? 'text-emerald-500' : 'text-rose-500'}`}>
+                              {fmtMoney(g.total_amount, parseResult?.currency)}
+                            </span>
+                            {g.has_rule && (
+                              <Badge variant="outline" className="text-xs text-emerald-500 border-emerald-500/30">
+                                <Check className="h-3 w-3 mr-1" />Правило есть
+                              </Badge>
+                            )}
+                            {!g.has_rule && (
+                              editingGroup === g.group_key ? (
+                                <div className="flex items-center gap-1.5">
+                                  <Select value={groupEdit.category_id || '__none__'}
+                                    onValueChange={v => setGroupEdit({ ...groupEdit, category_id: v === '__none__' ? '' : v })}>
+                                    <SelectTrigger className="h-7 w-32 text-xs text-foreground border-border bg-card"><SelectValue placeholder="Категория" /></SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="__none__">— нет</SelectItem>
+                                      {categories.filter(c => c.type === g.type).map(c => (
+                                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                  <Select value={groupEdit.direction_id || '__none__'}
+                                    onValueChange={v => setGroupEdit({ ...groupEdit, direction_id: v === '__none__' ? '' : v })}>
+                                    <SelectTrigger className="h-7 w-28 text-xs text-foreground border-border bg-card"><SelectValue placeholder="Направл." /></SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="__none__">— по умолч.</SelectItem>
+                                      {directions.filter(d => d.is_active).map(d => (
+                                        <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                  <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => applyGroupEdit(g)}>
+                                    <Check className="h-3.5 w-3.5 text-emerald-500" />
+                                  </Button>
+                                  <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditingGroup(null)}>
+                                    <X className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                <Button variant="outline" size="sm" className="h-7 text-xs text-foreground border-border"
+                                  onClick={() => { setEditingGroup(g.group_key); setGroupEdit({}); }}>
+                                  <Pencil className="h-3 w-3 mr-1" /> Назначить
+                                </Button>
+                              )
                             )}
                           </div>
                         </div>
