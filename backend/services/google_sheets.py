@@ -96,11 +96,37 @@ async def backup_to_google_sheets(user_id: str, spreadsheet_url: str, service_ac
             ])
         ws_accounts.update(range_name="A1", values=acc_rows)
 
+        # Backup cash transactions to separate sheet
+        cash_txs = [t for t in transactions if t.get("source") in ("telegram_cash", "cash_import")
+                     or (t.get("account_name") or "").lower().startswith("cash")]
+
+        try:
+            ws_cash = sh.worksheet("Наличные")
+            ws_cash.clear()
+        except Exception:
+            ws_cash = sh.add_worksheet(title="Наличные", rows=str(max(len(cash_txs) + 1, 2)), cols="12")
+
+        cash_headers = [
+            "Дата", "Тип", "Сумма", "Валюта", "Категория", "Направление",
+            "Счёт", "Контрагент", "Описание", "Комментарий", "Источник"
+        ]
+        cash_rows = [cash_headers]
+        for t in cash_txs:
+            cash_rows.append([
+                t.get("date", ""), t.get("type", ""), str(t.get("amount", 0)),
+                t.get("currency", "PLN"), t.get("category_name", ""),
+                t.get("direction_name", ""), t.get("account_name", ""),
+                t.get("contractor_name", ""), t.get("description", ""),
+                t.get("comment", ""), t.get("source", "")
+            ])
+        ws_cash.update(range_name="A1", values=cash_rows)
+
         return {
             "status": "success",
-            "message": f"Бэкап выполнен: {len(transactions)} операций, {len(accounts)} счетов",
+            "message": f"Бэкап выполнен: {len(transactions)} операций, {len(accounts)} счетов, {len(cash_txs)} наличных",
             "transactions_count": len(transactions),
             "accounts_count": len(accounts),
+            "cash_count": len(cash_txs),
         }
     except Exception as e:
         logger.error(f"Google Sheets backup error: {e}")

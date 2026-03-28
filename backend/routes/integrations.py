@@ -140,6 +140,11 @@ async def send_telegram_summary(
 
     emoji_profit = "📈" if profit >= 0 else "📉"
 
+    accounts_lines = "\n".join(
+        f"• {a.get('name', '')}: {a.get('current_balance', 0):,.2f} {a.get('currency', 'PLN')}"
+        for a in accounts
+    )
+
     message = f"""📊 *Финансовая сводка {period_label}*
 
 💰 *Показатели:*
@@ -147,7 +152,9 @@ async def send_telegram_summary(
 • Расходы: -{expense:,.0f} zł
 • {emoji_profit} Прибыль: {profit:,.0f} zł
 
-🏦 *Баланс:* {total_balance:,.0f} zł
+🏦 *Счета:*
+{accounts_lines}
+💰 *Итого:* {total_balance:,.2f} zł
 
 _Отправлено из WM Finance_"""
 

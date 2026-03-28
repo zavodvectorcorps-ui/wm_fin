@@ -138,7 +138,10 @@ async def bot_get_report(
 💸 Расходы: {total_expense:,.2f} zł
 📈 Прибыль: {profit:,.2f} zł
 
-💳 Остаток на счетах: {total_balance:,.2f} zł"""
+🏦 Счета:"""
+    for a in accounts:
+        report += f"\n• {a.get('name', '')}: {a.get('current_balance', 0):,.2f} {a.get('currency', 'PLN')}"
+    report += f"\n💰 Итого: {total_balance:,.2f} zł"
 
     return {"report": report}
 
@@ -219,9 +222,11 @@ async def get_telegram_summary(
 • Расходы: -{expense:,.0f} zł
 • {emoji_profit} Прибыль: {profit:,.0f} zł
 
-🏦 *Баланс на счетах:* {total_balance:,.0f} zł
-
+🏦 *Счета:*
 """
+    for a in accounts:
+        message += f"• {a.get('name', '')}: {a.get('current_balance', 0):,.2f} {a.get('currency', 'PLN')}\n"
+    message += f"💰 *Итого:* {total_balance:,.2f} zł\n\n"
 
     if by_direction:
         message += "📂 *По направлениям:*\n"
