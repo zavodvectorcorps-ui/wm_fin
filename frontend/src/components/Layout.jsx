@@ -21,7 +21,6 @@ import { NotificationsDropdown } from './Notifications';
 const menuItems = [
   { icon: LayoutDashboard, label: 'Рабочий стол', path: '/' },
   { icon: Receipt, label: 'Операции', path: '/transactions' },
-  { icon: Paperclip, label: 'Документы', path: '/documents' },
   { icon: FolderKanban, label: 'Проекты', path: '/projects' },
   { icon: Users, label: 'Контрагенты', path: '/contractors' },
 ];
@@ -34,11 +33,15 @@ const analyticsItems = [
   { icon: BarChart3, label: 'Рентабельность', path: '/analytics/profitability' },
 ];
 
+const documentItems = [
+  { icon: Paperclip, label: 'Все документы', path: '/documents' },
+  { icon: FileText, label: 'Импорт выписок', path: '/import' },
+  { icon: Zap, label: 'Автоправила', path: '/settings/rules' },
+];
+
 const planningItems = [
   { icon: Calendar, label: 'Платёжный календарь', path: '/planning/calendar' },
   { icon: ClipboardList, label: 'План расходов', path: '/planning/expenses' },
-  { icon: FileText, label: 'Импорт выписок', path: '/import' },
-  { icon: Zap, label: 'Автоправила', path: '/settings/rules' },
 ];
 
 const settingsItems = [
@@ -51,7 +54,8 @@ const SidebarContent = ({ onClose }) => {
   const location = useLocation();
   const { user, logout } = useAuth();
   const [analyticsOpen, setAnalyticsOpen] = useState(location.pathname.startsWith('/analytics'));
-  const [planningOpen, setPlanningOpen] = useState(location.pathname.startsWith('/planning') || location.pathname === '/import' || location.pathname === '/settings/rules');
+  const [documentsOpen, setDocumentsOpen] = useState(location.pathname === '/documents' || location.pathname === '/import' || location.pathname === '/settings/rules');
+  const [planningOpen, setPlanningOpen] = useState(location.pathname.startsWith('/planning'));
 
   const NavItem = ({ icon: Icon, label, path }) => (
     <Link
@@ -90,6 +94,22 @@ const SidebarContent = ({ onClose }) => {
         ))}
 
         <div className="h-px bg-border my-4" />
+
+        {/* Documents Section */}
+        <Collapsible open={documentsOpen} onOpenChange={setDocumentsOpen}>
+          <CollapsibleTrigger className="sidebar-item w-full justify-between" data-testid="nav-documents-toggle">
+            <div className="flex items-center gap-3">
+              <Paperclip className="h-5 w-5" />
+              <span>Документы</span>
+            </div>
+            <ChevronDown className={cn('h-4 w-4 transition-transform', documentsOpen && 'rotate-180')} />
+          </CollapsibleTrigger>
+          <CollapsibleContent className="pl-4 space-y-1 mt-1">
+            {documentItems.map(item => (
+              <NavItem key={item.path} {...item} />
+            ))}
+          </CollapsibleContent>
+        </Collapsible>
 
         {/* Analytics Section */}
         <Collapsible open={analyticsOpen} onOpenChange={setAnalyticsOpen}>

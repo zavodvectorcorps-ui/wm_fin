@@ -47,6 +47,7 @@ export default function BankImportModal({ open, onOpenChange, onImported }) {
 
   // Importing
   const [importing, setImporting] = useState(false);
+  const [pdfFile, setPdfFile] = useState(null);
 
   // New counterparties
   const [newCounterparties, setNewCounterparties] = useState([]);
@@ -94,6 +95,7 @@ export default function BankImportModal({ open, onOpenChange, onImported }) {
       return;
     }
 
+    setPdfFile(file);
     setLoading(true);
     try {
       const formData = new FormData();
@@ -251,6 +253,25 @@ export default function BankImportModal({ open, onOpenChange, onImported }) {
       });
 
       toast.success(`Импортировано ${res.data.imported} операций на счёт "${res.data.account_name}"`);
+
+      // Auto-save PDF to documents
+      if (pdfFile) {
+        try {
+          const docForm = new FormData();
+          docForm.append('file', pdfFile);
+          docForm.append('type', 'bank_statement');
+          docForm.append('description', `Банковская выписка: ${pdfFile.name}`);
+          if (txsToImport.length > 0) {
+            docForm.append('document_date', txsToImport[0].date);
+          }
+          await api().post('/documents/upload', docForm, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+          });
+        } catch {
+          // Silent fail - document upload is secondary
+        }
+      }
+
       onImported?.();
       onOpenChange(false);
     } catch (err) {

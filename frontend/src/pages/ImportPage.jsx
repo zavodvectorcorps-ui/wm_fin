@@ -9,11 +9,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Progress } from '../components/ui/progress';
 import { 
-  Upload, FileSpreadsheet, CheckCircle2, AlertCircle, ArrowRight, FileText
+  Upload, FileSpreadsheet, CheckCircle2, AlertCircle, ArrowRight, FileText, Banknote
 } from 'lucide-react';
 import { formatCurrency, getDirectionClass } from '../lib/utils';
 import { toast } from 'sonner';
 import BankImportModal from '../components/BankImportModal';
+import CashImportModal from '../components/CashImportModal';
 
 const POLISH_BANKS = [
   { id: 'mbank', name: 'mBank' },
@@ -43,6 +44,7 @@ export const ImportPage = () => {
   const [selectedDirection, setSelectedDirection] = useState('');
   const [importResult, setImportResult] = useState(null);
   const [showBankImport, setShowBankImport] = useState(false);
+  const [showCashImport, setShowCashImport] = useState(false);
 
   const fetchSettings = useCallback(async () => {
     try {
@@ -157,13 +159,20 @@ export const ImportPage = () => {
           <h1 className="text-3xl font-bold tracking-tight">Импорт выписок</h1>
           <p className="text-muted-foreground">Загрузка банковских операций из CSV/XLSX или PDF</p>
         </div>
-        <Button onClick={() => setShowBankImport(true)} data-testid="open-pdf-import-btn" className="gap-2">
-          <FileText className="h-4 w-4" />
-          Импорт PDF выписки
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={() => setShowBankImport(true)} data-testid="open-pdf-import-btn" className="gap-2">
+            <FileText className="h-4 w-4" />
+            Импорт PDF выписки
+          </Button>
+          <Button onClick={() => setShowCashImport(true)} variant="outline" className="gap-2 text-foreground border-border" data-testid="open-cash-import-btn">
+            <Banknote className="h-4 w-4" />
+            Импорт наличных
+          </Button>
+        </div>
       </div>
 
       <BankImportModal open={showBankImport} onOpenChange={setShowBankImport} onImported={() => toast.success('Операции импортированы!')} />
+      <CashImportModal open={showCashImport} onOpenChange={setShowCashImport} onImported={() => toast.success('Наличные операции импортированы!')} />
 
       {/* Progress Steps */}
       <div className="flex items-center gap-4">

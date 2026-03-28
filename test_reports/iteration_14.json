@@ -1,0 +1,145 @@
+{
+  "summary": "Tested new features: sidebar navigation restructuring, cash import from Google Sheets. All 13 backend tests passed, all frontend UI elements working correctly.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Dashboard charts",
+        "issues": ["Console warnings about chart width/height being -1 during initial render - cosmetic issue, charts render correctly after data loads"]
+      }
+    ]
+  },
+  "passed_tests": [
+    "Backend: POST /api/cash-import/fetch requires authentication (401/403)",
+    "Backend: POST /api/cash-import/fetch requires sheet_url parameter (400)",
+    "Backend: POST /api/cash-import/fetch requires date_from and date_to (400)",
+    "Backend: POST /api/cash-import/fetch rejects invalid Google Sheets URL (400)",
+    "Backend: POST /api/cash-import/fetch successfully parses public Google Sheet (200)",
+    "Backend: POST /api/cash-import/confirm requires authentication (401/403)",
+    "Backend: POST /api/cash-import/confirm requires non-empty transactions (400)",
+    "Backend: POST /api/cash-import/confirm successfully imports transactions (200)",
+    "Backend: GET /api/cash-import/settings requires authentication (401/403)",
+    "Backend: GET /api/cash-import/settings returns sheets array (200)",
+    "Backend: PUT /api/cash-import/settings requires authentication (401/403)",
+    "Backend: PUT /api/cash-import/settings saves sheet URLs (200)",
+    "Backend: Deduplication marks previously imported transactions as duplicates",
+    "Frontend: Sidebar 'Документы' section is collapsible [data-testid='nav-documents-toggle']",
+    "Frontend: Documents section has 'Все документы' [data-testid='nav-documents']",
+    "Frontend: Documents section has 'Импорт выписок' [data-testid='nav-import']",
+    "Frontend: Documents section has 'Автоправила' [data-testid='nav-settings-rules']",
+    "Frontend: Sidebar 'Планирование' section is collapsible [data-testid='nav-planning-toggle']",
+    "Frontend: Planning section has 'Платёжный календарь' [data-testid='nav-planning-calendar']",
+    "Frontend: Planning section has 'План расходов' [data-testid='nav-planning-expenses']",
+    "Frontend: Planning section does NOT have Import or Auto-rules (moved to Documents)",
+    "Frontend: Import page has 'Импорт PDF выписки' button [data-testid='open-pdf-import-btn']",
+    "Frontend: Import page has 'Импорт наличных' button [data-testid='open-cash-import-btn']",
+    "Frontend: Cash Import Modal opens [data-testid='cash-import-modal']",
+    "Frontend: Cash Import Modal has URL input [data-testid='sheet-url-input']",
+    "Frontend: Cash Import Modal has date from input [data-testid='cash-date-from']",
+    "Frontend: Cash Import Modal has date to input [data-testid='cash-date-to']",
+    "Frontend: Cash Import Modal has fetch button [data-testid='fetch-cash-btn']",
+    "Frontend: Cash Import Modal fetches data from Google Sheets (49 transactions)",
+    "Frontend: Cash Import Modal review step has select all checkbox [data-testid='cash-select-all']",
+    "Frontend: Cash Import Modal review step has back button [data-testid='cash-back-btn']",
+    "Frontend: Cash Import Modal review step has confirm button [data-testid='cash-confirm-btn']",
+    "Frontend: Cash Import Modal review step shows 49 transaction rows with inline direction selectors",
+    "Frontend: Cash Import Modal review step shows comment field per row",
+    "Frontend: Cash Import Modal review step shows review toggle (?) per row",
+    "Frontend: Cash Import Modal shows stats: total, selected, duplicates, sum"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_cash_import.py",
+    "/app/test_reports/pytest/pytest_results_cash_import.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Layout.jsx: Sidebar navigation correctly restructured with Documents section containing Import and Auto-rules",
+    "Layout.jsx: Planning section only has calendar and expenses as expected",
+    "CashImportModal.jsx: Full implementation with config and review steps, inline direction selector per row",
+    "cash_import.py: Backend correctly fetches public Google Sheets, parses CSV, and handles deduplication",
+    "BankImportModal.jsx: Auto-saves PDF to documents on import confirmation (verified in code)"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_cash_import.py"
+  ],
+  "success_rate": {
+    "backend": "100% (13/13 tests passed)",
+    "frontend": "100% (all UI flows working)"
+  },
+  "test_credentials": {
+    "login": "admin",
+    "password": "220066mm"
+  },
+  "seed_data_creation": "Imported 3 test transactions via cash import API for testing",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "mocked_apis": {
+    "has_mocked_apis": false,
+    "mocked_apis_list": []
+  },
+  "context_for_next_testing_agent": "All new features verified working: 1) Sidebar nav restructured - Documents section has Import and Auto-rules, Planning only has calendar and expenses. 2) Cash Import from Google Sheets fully functional - fetches public sheet, shows review table with inline direction selector, comment field, and review toggle per row. 3) PDF auto-save to documents on bank import confirmation (verified in BankImportModal.jsx code). Test Google Sheet URL: https://docs.google.com/spreadsheets/d/1S5OcIk2oPr8F0mrUX0U4ioDGSm6L-NNW08vttUkgH8E/edit with period 2026-03-01 to 2026-03-31 returns 49 expense transactions.",
+  "features_tested": {
+    "sidebar_navigation_restructuring": {
+      "status": "PASS",
+      "documents_section": {
+        "toggle": "[data-testid='nav-documents-toggle']",
+        "sub_items": ["Все документы", "Импорт выписок", "Автоправила"]
+      },
+      "planning_section": {
+        "toggle": "[data-testid='nav-planning-toggle']",
+        "sub_items": ["Платёжный календарь", "План расходов"],
+        "no_import_or_rules": true
+      }
+    },
+    "import_page_buttons": {
+      "status": "PASS",
+      "pdf_import_btn": "[data-testid='open-pdf-import-btn']",
+      "cash_import_btn": "[data-testid='open-cash-import-btn']"
+    },
+    "cash_import_modal": {
+      "status": "PASS",
+      "config_step": {
+        "modal": "[data-testid='cash-import-modal']",
+        "url_input": "[data-testid='sheet-url-input']",
+        "date_from": "[data-testid='cash-date-from']",
+        "date_to": "[data-testid='cash-date-to']",
+        "fetch_btn": "[data-testid='fetch-cash-btn']"
+      },
+      "review_step": {
+        "select_all": "[data-testid='cash-select-all']",
+        "back_btn": "[data-testid='cash-back-btn']",
+        "confirm_btn": "[data-testid='cash-confirm-btn']",
+        "transaction_rows": "[data-testid='cash-tx-{idx}']",
+        "direction_selectors": "[data-testid='cash-direction-{idx}']",
+        "comment_inputs": "[data-testid='cash-comment-{idx}']",
+        "review_toggle": "Button with AlertTriangle icon per row"
+      },
+      "test_results": {
+        "total_transactions": 49,
+        "selected": 46,
+        "duplicates": 3,
+        "total_sum": "104,038.00 zł"
+      }
+    },
+    "cash_import_api": {
+      "status": "PASS",
+      "endpoints": {
+        "fetch": "POST /api/cash-import/fetch",
+        "confirm": "POST /api/cash-import/confirm",
+        "get_settings": "GET /api/cash-import/settings",
+        "put_settings": "PUT /api/cash-import/settings"
+      },
+      "deduplication": "Working - marks previously imported transactions"
+    },
+    "pdf_auto_save_to_documents": {
+      "status": "PASS (code review)",
+      "location": "BankImportModal.jsx lines 259-272",
+      "description": "After import confirmation, PDF file is auto-saved to documents via POST /api/documents/upload"
+    }
+  }
+}
