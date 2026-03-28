@@ -10,7 +10,7 @@ import { Card, CardContent } from '../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import {
   Upload, Loader2, FileText, ChevronDown, ChevronRight,
-  Check, X, AlertTriangle, Layers, ArrowUpRight, ArrowDownLeft, Pencil, Users, Zap
+  Check, X, AlertTriangle, Layers, ArrowUpRight, ArrowDownLeft, Pencil, Users, Zap, MessageSquare
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -44,10 +44,6 @@ export default function BankImportModal({ open, onOpenChange, onImported }) {
   const [editingGroup, setEditingGroup] = useState(null);
   const [groupEdit, setGroupEdit] = useState({});
   const [expandedGroups, setExpandedGroups] = useState(new Set());
-
-  // Individual editing
-  const [editingIdx, setEditingIdx] = useState(null);
-  const [itemEdit, setItemEdit] = useState({});
 
   // Importing
   const [importing, setImporting] = useState(false);
@@ -186,13 +182,11 @@ export default function BankImportModal({ open, onOpenChange, onImported }) {
     setGroupEdit({});
   };
 
-  // Save individual edit
-  const saveItemEdit = (idx) => {
+  // Inline field update for a transaction
+  const updateTxField = (idx, field, value) => {
     const updated = [...transactions];
-    updated[idx] = { ...updated[idx], ...itemEdit };
+    updated[idx] = { ...updated[idx], [field]: value };
     setTransactions(updated);
-    setEditingIdx(null);
-    setItemEdit({});
   };
 
   const toggleNeedsReview = (idx) => {
@@ -246,6 +240,7 @@ export default function BankImportModal({ open, onOpenChange, onImported }) {
           direction_name: t.direction_name || null,
           payment_purpose: t.payment_purpose,
           needs_review: t.needs_review || false,
+          comment: t.comment || '',
         }));
 
       const res = await api().post('/bank-import/confirm', {
@@ -551,17 +546,17 @@ export default function BankImportModal({ open, onOpenChange, onImported }) {
                     </TableHead>
                     <TableHead className="w-24">Дата</TableHead>
                     <TableHead className="w-20">Тип</TableHead>
-                    <TableHead>Контрагент / Описание</TableHead>
-                    <TableHead className="w-28">Направление</TableHead>
-                    <TableHead className="w-28">Категория</TableHead>
+                    <TableHead className="min-w-[180px]">Контрагент / Описание</TableHead>
+                    <TableHead className="w-32">Направление</TableHead>
+                    <TableHead className="w-32">Категория</TableHead>
                     <TableHead className="w-28 text-right">Сумма</TableHead>
+                    <TableHead className="w-36">Комментарий</TableHead>
                     <TableHead className="w-10" title="Под вопросом">?</TableHead>
-                    <TableHead className="w-12"></TableHead>
+                    <TableHead className="w-8"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {transactions.map((t, idx) => {
-                    const isEditing = editingIdx === idx;
                     const isGroupExpanded = groups.some(g =>
                       g.indices.includes(idx) && expandedGroups.has(g.group_key)
                     );
@@ -575,7 +570,7 @@ export default function BankImportModal({ open, onOpenChange, onImported }) {
 
                     return (
                       <TableRow key={idx}
-                        className={`group ${t.is_duplicate ? 'opacity-40' : ''} ${isEditing ? 'bg-muted/30' : ''}`}
+                        className={`${t.is_duplicate ? 'opacity-40' : ''}`}
                         data-testid={`import-tx-${idx}`}
                       >
                         <TableCell>
@@ -592,66 +587,64 @@ export default function BankImportModal({ open, onOpenChange, onImported }) {
                           }
                         </TableCell>
                         <TableCell>
-                          {isEditing ? (
-                            <div className="space-y-1">
-                              <Input className="h-7 text-xs" value={itemEdit.counterparty || ''}
-                                onChange={e => setItemEdit({ ...itemEdit, counterparty: e.target.value })}
-                                placeholder="Контрагент" />
-                              <Input className="h-7 text-xs" value={itemEdit.payment_purpose || ''}
-                                onChange={e => setItemEdit({ ...itemEdit, payment_purpose: e.target.value })}
-                                placeholder="Назначение" />
-                            </div>
-                          ) : (
-                            <div>
-                              <p className="text-sm font-medium truncate max-w-[300px]">{t.counterparty || t.operation_type}</p>
-                              <p className="text-xs text-muted-foreground truncate max-w-[300px]">{t.payment_purpose || t.description}</p>
-                              {t.is_duplicate && (
-                                <Badge variant="outline" className="text-xs text-amber-500 border-amber-500/30 mt-0.5">
-                                  <AlertTriangle className="h-3 w-3 mr-1" /> Возможный дубликат
-                                </Badge>
-                              )}
-                              {t.matched_rule_pattern && !isEditing && (
-                                <Badge variant="outline" className="text-xs text-blue-500 border-blue-500/30 mt-0.5">
-                                  <Zap className="h-3 w-3 mr-1" /> Правило: {t.matched_rule_pattern}
-                                </Badge>
-                              )}
-                            </div>
-                          )}
+                          <div>
+                            <p className="text-sm font-medium truncate max-w-[250px]">{t.counterparty || t.operation_type}</p>
+                            <p className="text-xs text-muted-foreground truncate max-w-[250px]">{t.payment_purpose || t.description}</p>
+                            {t.is_duplicate && (
+                              <Badge variant="outline" className="text-xs text-amber-500 border-amber-500/30 mt-0.5">
+                                <AlertTriangle className="h-3 w-3 mr-1" /> Возможный дубликат
+                              </Badge>
+                            )}
+                            {t.matched_rule_pattern && (
+                              <Badge variant="outline" className="text-xs text-blue-500 border-blue-500/30 mt-0.5">
+                                <Zap className="h-3 w-3 mr-1" /> Правило: {t.matched_rule_pattern}
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
-                          {isEditing ? (
-                            <Select value={itemEdit.direction_id || '__default__'}
-                              onValueChange={v => setItemEdit({ ...itemEdit, direction_id: v === '__default__' ? '' : v })}>
-                              <SelectTrigger className="h-7 text-xs text-foreground border-border bg-card"><SelectValue /></SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="__default__">По умолч.</SelectItem>
-                                {directions.filter(d => d.is_active).map(d => (
-                                  <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            <span className="text-xs">{dirName(t.direction_id) || '—'}</span>
-                          )}
+                          <Select
+                            value={t.direction_id || '__default__'}
+                            onValueChange={v => updateTxField(idx, 'direction_id', v === '__default__' ? '' : v)}
+                          >
+                            <SelectTrigger className="h-7 text-xs text-foreground border-border bg-card" data-testid={`tx-direction-${idx}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__default__">По умолч.</SelectItem>
+                              {directions.filter(d => d.is_active).map(d => (
+                                <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </TableCell>
                         <TableCell>
-                          {isEditing ? (
-                            <Select value={itemEdit.category_id || '__none__'}
-                              onValueChange={v => setItemEdit({ ...itemEdit, category_id: v === '__none__' ? '' : v })}>
-                              <SelectTrigger className="h-7 text-xs text-foreground border-border bg-card"><SelectValue /></SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="__none__">— нет</SelectItem>
-                                {categories.filter(c => c.type === t.type).map(c => (
-                                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            <span className="text-xs">{catName(t.category_id) || '—'}</span>
-                          )}
+                          <Select
+                            value={t.category_id || '__none__'}
+                            onValueChange={v => updateTxField(idx, 'category_id', v === '__none__' ? '' : v)}
+                          >
+                            <SelectTrigger className="h-7 text-xs text-foreground border-border bg-card" data-testid={`tx-category-${idx}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__none__">— нет</SelectItem>
+                              {categories.filter(c => c.type === t.type).map(c => (
+                                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </TableCell>
                         <TableCell className={`text-right font-mono text-sm ${t.type === 'income' ? 'text-emerald-500' : 'text-rose-500'}`}>
                           {t.type === 'income' ? '+' : '-'}{fmtMoney(t.amount, t.currency)}
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            className="h-7 text-xs"
+                            value={t.comment || ''}
+                            onChange={e => updateTxField(idx, 'comment', e.target.value)}
+                            placeholder="Комментарий"
+                            data-testid={`tx-comment-${idx}`}
+                          />
                         </TableCell>
                         <TableCell>
                           <Button size="icon" variant={t.needs_review ? 'default' : 'ghost'}
@@ -663,31 +656,13 @@ export default function BankImportModal({ open, onOpenChange, onImported }) {
                           </Button>
                         </TableCell>
                         <TableCell>
-                          {isEditing ? (
-                            <div className="flex gap-0.5">
-                              <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => saveItemEdit(idx)}>
-                                <Check className="h-3.5 w-3.5 text-emerald-500" />
-                              </Button>
-                              <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setEditingIdx(null)}>
-                                <X className="h-3.5 w-3.5" />
-                              </Button>
-                            </div>
-                          ) : (
-                            <div className="flex gap-0.5 opacity-0 group-hover:opacity-100">
-                              <Button size="icon" variant="ghost" className="h-6 w-6"
-                                onClick={() => { setEditingIdx(idx); setItemEdit({ ...t }); }}
-                                title="Редактировать">
-                                <Pencil className="h-3 w-3" />
-                              </Button>
-                              {t.category_id && (
-                                <Button size="icon" variant="ghost" className="h-6 w-6"
-                                  onClick={() => createRuleFromTransaction(t)}
-                                  title="Создать автоправило из этой операции"
-                                  data-testid={`create-rule-${idx}`}>
-                                  <Zap className="h-3 w-3 text-amber-500" />
-                                </Button>
-                              )}
-                            </div>
+                          {t.category_id && (
+                            <Button size="icon" variant="ghost" className="h-6 w-6"
+                              onClick={() => createRuleFromTransaction(t)}
+                              title="Создать автоправило из этой операции"
+                              data-testid={`create-rule-${idx}`}>
+                              <Zap className="h-3 w-3 text-amber-500" />
+                            </Button>
                           )}
                         </TableCell>
                       </TableRow>

@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Badge } from '../components/ui/badge';
 import { Skeleton } from '../components/ui/skeleton';
+import { Checkbox } from '../components/ui/checkbox';
 import { 
   TrendingUp, TrendingDown, Wallet, PiggyBank, 
   ArrowUpRight, ArrowDownRight, Calendar, Users
@@ -28,6 +29,7 @@ export const DashboardPage = () => {
   const [dailyBalance, setDailyBalance] = useState([]);
   const [prevData, setPrevData] = useState(null);
   const [topContractors, setTopContractors] = useState([]);
+  const [selectedAccountIds, setSelectedAccountIds] = useState(new Set());
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -46,6 +48,10 @@ export const DashboardPage = () => {
       setDailyBalance(dailyRes.data);
       setPrevData(prevSummaryRes.data);
       setTopContractors(topContractorsRes.data.contractors || []);
+      // Auto-select all accounts on first load
+      if (summaryRes.data?.accounts?.length > 0 && selectedAccountIds.size === 0) {
+        setSelectedAccountIds(new Set(summaryRes.data.accounts.map(a => a.id)));
+      }
     } catch (error) {
       console.error('Failed to fetch dashboard data:', error);
     } finally {
@@ -56,6 +62,27 @@ export const DashboardPage = () => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const toggleAccountSelection = (accountId) => {
+    setSelectedAccountIds(prev => {
+      const next = new Set(prev);
+      if (next.has(accountId)) next.delete(accountId); else next.add(accountId);
+      return next;
+    });
+  };
+
+  const toggleAllAccounts = () => {
+    if (!data?.accounts) return;
+    if (selectedAccountIds.size === data.accounts.length) {
+      setSelectedAccountIds(new Set());
+    } else {
+      setSelectedAccountIds(new Set(data.accounts.map(a => a.id)));
+    }
+  };
+
+  const selectedBalance = data?.accounts
+    ? data.accounts.filter(a => selectedAccountIds.has(a.id)).reduce((sum, a) => sum + (a.current_balance || 0), 0)
+    : (data?.total_balance || 0);
 
   const incomeChange = prevData ? getChangePercent(data?.total_income || 0, prevData.total_income) : 0;
   const expenseChange = prevData ? getChangePercent(data?.total_expense || 0, prevData.total_expense) : 0;
@@ -122,7 +149,7 @@ export const DashboardPage = () => {
         </div>
         
         <Select value={period} onValueChange={setPeriod} data-testid="period-select">
-          <SelectTrigger className="w-48">
+          <SelectTrigger className="w-48 text-foreground border-border bg-card">
             <Calendar className="h-4 w-4 mr-2" />
             <SelectValue />
           </SelectTrigger>
@@ -161,7 +188,7 @@ export const DashboardPage = () => {
         />
         <MetricCard 
           title="Деньги бизнеса" 
-          value={data?.total_balance} 
+          value={selectedBalance} 
           icon={Wallet}
         />
       </div>
@@ -259,7 +286,18 @@ export const DashboardPage = () => {
         {/* Accounts */}
         <Card data-testid="accounts-card">
           <CardHeader>
-            <CardTitle>Счета</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle>Счета</CardTitle>
+              {data?.accounts?.length > 1 && (
+                <button
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={toggleAllAccounts}
+                  data-testid="toggle-all-accounts"
+                >
+                  {selectedAccountIds.size === (data?.accounts?.length || 0) ? 'Снять все' : 'Выбрать все'}
+                </button>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -269,8 +307,15 @@ export const DashboardPage = () => {
             ) : (
               <div className="space-y-3">
                 {data?.accounts?.map((account) => (
-                  <div key={account.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                    <div>
+                  <div key={account.id} className={`flex items-center gap-3 p-3 rounded-lg transition-colors cursor-pointer ${selectedAccountIds.has(account.id) ? 'bg-primary/5 border border-primary/20' : 'bg-muted/50 opacity-60'}`}
+                    onClick={() => toggleAccountSelection(account.id)}
+                    data-testid={`account-toggle-${account.id}`}>
+                    <Checkbox
+                      checked={selectedAccountIds.has(account.id)}
+                      onCheckedChange={() => toggleAccountSelection(account.id)}
+                      className="flex-shrink-0"
+                    />
+                    <div className="flex-1 min-w-0">
                       <p className="font-medium">{account.name}</p>
                       <p className="text-sm text-muted-foreground">{account.currency}</p>
                     </div>

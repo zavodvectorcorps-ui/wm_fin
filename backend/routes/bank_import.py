@@ -585,6 +585,7 @@ async def confirm_bank_import(
             "contractor_id": contractor_id,
             "contractor_name": contractor_name,
             "description": t.get("payment_purpose") or t.get("description", ""),
+            "comment": t.get("comment", ""),
             "source": "import",
             "status": "fact",
             "is_recurring": False,

@@ -283,7 +283,7 @@ export const TransactionsPage = () => {
             <Minus className="h-4 w-4 mr-2" />
             Расход
           </Button>
-          <Button onClick={() => openNewTransaction('transfer')} variant="outline" data-testid="add-transfer-btn">
+          <Button onClick={() => openNewTransaction('transfer')} variant="outline" className="text-foreground border-border" data-testid="add-transfer-btn">
             <ArrowLeftRight className="h-4 w-4 mr-2" />
             Перевод
           </Button>
@@ -382,6 +382,55 @@ export const TransactionsPage = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Period Summary */}
+      {!loading && transactions.length > 0 && (
+        <div className="grid gap-3 grid-cols-2 md:grid-cols-4" data-testid="period-summary">
+          <Card className="border-emerald-500/20">
+            <CardContent className="py-3 px-4">
+              <p className="text-xs text-muted-foreground">Доходы</p>
+              <p className="text-lg font-bold font-mono text-emerald-500" data-testid="summary-income">
+                +{formatCurrency(
+                  transactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0),
+                  transactions[0]?.currency
+                )}
+              </p>
+            </CardContent>
+          </Card>
+          <Card className="border-rose-500/20">
+            <CardContent className="py-3 px-4">
+              <p className="text-xs text-muted-foreground">Расходы</p>
+              <p className="text-lg font-bold font-mono text-rose-500" data-testid="summary-expense">
+                -{formatCurrency(
+                  transactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0),
+                  transactions[0]?.currency
+                )}
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="py-3 px-4">
+              <p className="text-xs text-muted-foreground">Баланс за период</p>
+              {(() => {
+                const inc = transactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+                const exp = transactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+                const net = inc - exp;
+                return (
+                  <p className={`text-lg font-bold font-mono ${net >= 0 ? 'text-emerald-500' : 'text-rose-500'}`} data-testid="summary-net">
+                    {net >= 0 ? '+' : ''}{formatCurrency(net, transactions[0]?.currency)}
+                  </p>
+                );
+              })()}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="py-3 px-4">
+              <p className="text-xs text-muted-foreground">Операций</p>
+              <p className="text-lg font-bold font-mono" data-testid="summary-count">{transactions.length}</p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Transactions Table */}
       <Card>
