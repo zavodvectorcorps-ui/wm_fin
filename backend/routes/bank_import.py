@@ -383,14 +383,23 @@ async def parse_bank_statement(
     ).to_list(1000)
     rules_map = {r["contractor_name_upper"]: r for r in rules}
 
+    # Load auto_rules (pattern-based)
+    auto_rules = await db.auto_rules.find(
+        {"user_id": current_user["user_id"], "is_active": True},
+        {"_id": 0}
+    ).to_list(100)
+
     # Collect unique new counterparties
     new_counterparties = {}
+    auto_rules_matched = 0
 
     for t in result["transactions"]:
         t["matched_contractor_id"] = None
         t["matched_contractor_name"] = None
         t["auto_category_id"] = None
         t["auto_direction_id"] = None
+        t["auto_contractor_id"] = None
+        t["matched_rule_pattern"] = None
         cp = (t.get("counterparty") or "").upper().strip()
         if cp:
             if cp in contractor_map:
@@ -404,7 +413,7 @@ async def parse_bank_statement(
                         cp = name  # use matched key for rules lookup
                         break
 
-            # Apply category/direction rules
+            # Apply contractor → category rules
             rule = rules_map.get(cp)
             if rule:
                 t["auto_category_id"] = rule.get("category_id")
@@ -416,7 +425,22 @@ async def parse_bank_statement(
                 if raw_cp and raw_cp.upper() not in new_counterparties:
                     new_counterparties[raw_cp.upper()] = raw_cp
 
+        # Apply auto_rules (pattern matching on description + counterparty)
+        search_text = (t.get("description", "") + " " + t.get("counterparty", "") + " " + t.get("payment_purpose", "")).lower()
+        for ar in auto_rules:
+            if ar["pattern"].lower() in search_text:
+                if ar.get("category_id") and not t["auto_category_id"]:
+                    t["auto_category_id"] = ar["category_id"]
+                if ar.get("direction_id") and not t["auto_direction_id"]:
+                    t["auto_direction_id"] = ar["direction_id"]
+                if ar.get("contractor_id") and not t["matched_contractor_id"]:
+                    t["auto_contractor_id"] = ar["contractor_id"]
+                t["matched_rule_pattern"] = ar["pattern"]
+                auto_rules_matched += 1
+                break
+
     result["new_counterparties"] = list(new_counterparties.values())
+    result["auto_rules_matched"] = auto_rules_matched
 
     # Check for duplicates
     if result["transactions"]:

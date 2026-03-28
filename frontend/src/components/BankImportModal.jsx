@@ -10,7 +10,7 @@ import { Card, CardContent } from '../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import {
   Upload, Loader2, FileText, ChevronDown, ChevronRight,
-  Check, X, AlertTriangle, Layers, ArrowUpRight, ArrowDownLeft, Pencil, Users
+  Check, X, AlertTriangle, Layers, ArrowUpRight, ArrowDownLeft, Pencil, Users, Zap
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -110,6 +110,7 @@ export default function BankImportModal({ open, onOpenChange, onImported }) {
         ...t,
         category_id: t.auto_category_id || null,
         direction_id: t.auto_direction_id || null,
+        contractor_id: t.auto_contractor_id || t.matched_contractor_id || null,
         needs_review: false,
       }));
       setTransactions(txs);
@@ -121,7 +122,12 @@ export default function BankImportModal({ open, onOpenChange, onImported }) {
       txs.forEach((t, i) => { if (!t.is_duplicate) sel.add(i); });
       setSelected(sel);
       setStep(2);
-      toast.success(`Распознано ${txs.length} операций`);
+      const rulesMatched = res.data.auto_rules_matched || 0;
+      const autoCategories = txs.filter(t => t.category_id).length;
+      toast.success(`Распознано ${txs.length} операций` + 
+        (rulesMatched > 0 ? `, ${rulesMatched} авто-категоризировано правилами` : '') +
+        (autoCategories > rulesMatched ? `, ${autoCategories - rulesMatched} по контрагентам` : '')
+      );
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Ошибка парсинга PDF');
     } finally {
@@ -182,6 +188,23 @@ export default function BankImportModal({ open, onOpenChange, onImported }) {
     const next = new Set(selectedNewContractors);
     if (next.has(name)) next.delete(name); else next.add(name);
     setSelectedNewContractors(next);
+  };
+
+  const createRuleFromTransaction = async (t) => {
+    const pattern = t.counterparty || t.operation_type || '';
+    if (!pattern) { toast.error('Нет данных для создания правила'); return; }
+    if (!t.category_id) { toast.error('Сначала назначьте категорию'); return; }
+    try {
+      await api().post('/auto-rules', {
+        pattern: pattern,
+        category_id: t.category_id,
+        direction_id: t.direction_id || null,
+        contractor_id: t.contractor_id || t.matched_contractor_id || null,
+      });
+      toast.success(`Правило создано: "${pattern}"`);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Ошибка создания правила');
+    }
   };
 
   const handleImport = async () => {
@@ -327,6 +350,11 @@ export default function BankImportModal({ open, onOpenChange, onImported }) {
               <Badge variant={totalSelected >= 0 ? 'default' : 'destructive'}>
                 Выбрано: {selected.size} из {transactions.length}
               </Badge>
+              {parseResult?.auto_rules_matched > 0 && (
+                <Badge variant="outline" className="text-amber-500 border-amber-500/30">
+                  <Zap className="h-3 w-3 mr-1" />Авто-правила: {parseResult.auto_rules_matched}
+                </Badge>
+              )}
             </div>
 
             {/* Groups - collapsible */}
@@ -494,6 +522,11 @@ export default function BankImportModal({ open, onOpenChange, onImported }) {
                                   <AlertTriangle className="h-3 w-3 mr-1" /> Возможный дубликат
                                 </Badge>
                               )}
+                              {t.matched_rule_pattern && !isEditing && (
+                                <Badge variant="outline" className="text-xs text-blue-500 border-blue-500/30 mt-0.5">
+                                  <Zap className="h-3 w-3 mr-1" /> Правило: {t.matched_rule_pattern}
+                                </Badge>
+                              )}
                             </div>
                           )}
                         </TableCell>
@@ -552,10 +585,21 @@ export default function BankImportModal({ open, onOpenChange, onImported }) {
                               </Button>
                             </div>
                           ) : (
-                            <Button size="icon" variant="ghost" className="h-6 w-6 opacity-0 group-hover:opacity-100"
-                              onClick={() => { setEditingIdx(idx); setItemEdit({ ...t }); }}>
-                              <Pencil className="h-3 w-3" />
-                            </Button>
+                            <div className="flex gap-0.5 opacity-0 group-hover:opacity-100">
+                              <Button size="icon" variant="ghost" className="h-6 w-6"
+                                onClick={() => { setEditingIdx(idx); setItemEdit({ ...t }); }}
+                                title="Редактировать">
+                                <Pencil className="h-3 w-3" />
+                              </Button>
+                              {t.category_id && (
+                                <Button size="icon" variant="ghost" className="h-6 w-6"
+                                  onClick={() => createRuleFromTransaction(t)}
+                                  title="Создать автоправило из этой операции"
+                                  data-testid={`create-rule-${idx}`}>
+                                  <Zap className="h-3 w-3 text-amber-500" />
+                                </Button>
+                              )}
+                            </div>
                           )}
                         </TableCell>
                       </TableRow>
