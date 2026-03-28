@@ -283,11 +283,11 @@ export const DashboardPage = () => {
           </CardContent>
         </Card>
 
-        {/* Accounts */}
+        {/* Accounts — per-period income/expense */}
         <Card data-testid="accounts-card">
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle>Счета</CardTitle>
+              <CardTitle>Счета за период</CardTitle>
               {data?.accounts?.length > 1 && (
                 <button
                   className="text-xs text-muted-foreground hover:text-foreground transition-colors"
@@ -302,30 +302,73 @@ export const DashboardPage = () => {
           <CardContent>
             {loading ? (
               <div className="space-y-3">
-                {[1,2,3].map(i => <Skeleton key={i} className="h-12 w-full" />)}
+                {[1,2,3].map(i => <Skeleton key={i} className="h-16 w-full" />)}
               </div>
             ) : (
-              <div className="space-y-3">
-                {data?.accounts?.map((account) => (
-                  <div key={account.id} className={`flex items-center gap-3 p-3 rounded-lg transition-colors cursor-pointer ${selectedAccountIds.has(account.id) ? 'bg-primary/5 border border-primary/20' : 'bg-muted/50 opacity-60'}`}
-                    onClick={() => toggleAccountSelection(account.id)}
-                    data-testid={`account-toggle-${account.id}`}>
-                    <Checkbox
-                      checked={selectedAccountIds.has(account.id)}
-                      onCheckedChange={() => toggleAccountSelection(account.id)}
-                      className="flex-shrink-0"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium">{account.name}</p>
-                      <p className="text-sm text-muted-foreground">{account.currency}</p>
+              <div className="space-y-2">
+                {data?.accounts?.map((account) => {
+                  const isSelected = selectedAccountIds.has(account.id);
+                  const hasActivity = (account.period_income || 0) > 0 || (account.period_expense || 0) > 0;
+                  return (
+                    <div key={account.id}
+                      className={`p-3 rounded-lg transition-colors cursor-pointer border ${isSelected ? 'bg-primary/5 border-primary/20' : 'bg-muted/30 border-transparent opacity-50'}`}
+                      onClick={() => toggleAccountSelection(account.id)}
+                      data-testid={`account-toggle-${account.id}`}>
+                      <div className="flex items-center gap-3 mb-2">
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={() => toggleAccountSelection(account.id)}
+                          className="flex-shrink-0"
+                        />
+                        <span className="font-medium flex-1">{account.name}</span>
+                        <Badge variant="outline" className="text-xs">{account.currency}</Badge>
+                        <span className="font-mono text-sm font-semibold">
+                          {formatCurrency(account.current_balance, account.currency)}
+                        </span>
+                      </div>
+                      {hasActivity && (
+                        <div className="flex gap-4 ml-8 text-xs">
+                          <span className="text-emerald-500 font-mono">
+                            +{formatCurrency(account.period_income || 0, account.currency)}
+                          </span>
+                          <span className="text-rose-500 font-mono">
+                            -{formatCurrency(account.period_expense || 0, account.currency)}
+                          </span>
+                          <span className={`font-mono font-semibold ${(account.period_net || 0) >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                            = {formatCurrency(account.period_net || 0, account.currency)}
+                          </span>
+                        </div>
+                      )}
                     </div>
-                    <span className="font-mono font-semibold">
-                      {formatCurrency(account.current_balance, account.currency)}
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
                 {(!data?.accounts || data.accounts.length === 0) && (
                   <p className="text-muted-foreground text-center py-4">Нет счетов</p>
+                )}
+
+                {/* Selected totals */}
+                {data?.accounts?.length > 1 && selectedAccountIds.size > 0 && (
+                  <div className="mt-3 pt-3 border-t border-border">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Итого ({selectedAccountIds.size}):</span>
+                      <span className="font-mono font-bold">{formatCurrency(selectedBalance)}</span>
+                    </div>
+                    {(() => {
+                      const selAccs = (data?.accounts || []).filter(a => selectedAccountIds.has(a.id));
+                      const totInc = selAccs.reduce((s, a) => s + (a.period_income || 0), 0);
+                      const totExp = selAccs.reduce((s, a) => s + (a.period_expense || 0), 0);
+                      if (totInc === 0 && totExp === 0) return null;
+                      return (
+                        <div className="flex gap-4 text-xs mt-1">
+                          <span className="text-emerald-500 font-mono">+{formatCurrency(totInc)}</span>
+                          <span className="text-rose-500 font-mono">-{formatCurrency(totExp)}</span>
+                          <span className={`font-mono font-semibold ${(totInc - totExp) >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                            = {formatCurrency(totInc - totExp)}
+                          </span>
+                        </div>
+                      );
+                    })()}
+                  </div>
                 )}
               </div>
             )}

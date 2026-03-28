@@ -56,6 +56,23 @@ async def get_analytics_summary(
     accounts = await db.accounts.find({"user_id": current_user["user_id"], "is_active": True}, {"_id": 0}).to_list(100)
     total_balance = sum(a.get("current_balance", 0) for a in accounts)
 
+    # Per-account income/expense for the period
+    account_stats = {}
+    for t in transactions:
+        acc_id = t.get("account_id", "")
+        if acc_id not in account_stats:
+            account_stats[acc_id] = {"income": 0, "expense": 0}
+        if t["type"] == "income":
+            account_stats[acc_id]["income"] += t["amount"]
+        elif t["type"] == "expense":
+            account_stats[acc_id]["expense"] += t["amount"]
+
+    for a in accounts:
+        stats = account_stats.get(a["id"], {"income": 0, "expense": 0})
+        a["period_income"] = stats["income"]
+        a["period_expense"] = stats["expense"]
+        a["period_net"] = stats["income"] - stats["expense"]
+
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     upcoming_payments = await db.planned_payments.find(
         {"user_id": current_user["user_id"], "status": {"$in": ["pending", "overdue"]}, "date": {"$gte": today}},
