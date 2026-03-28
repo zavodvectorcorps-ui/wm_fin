@@ -13,9 +13,9 @@ load_dotenv(ROOT_DIR / '.env')
 JWT_SECRET = os.environ.get('JWT_SECRET', 'wmfinance_secret')
 JWT_ALGORITHM = "HS256"
 
-SUPERADMIN_LOGIN = "admin"
-SUPERADMIN_PASSWORD = "220066mm"
-SUPERADMIN_ID = "superadmin-wmfinance-001"
+SUPERADMIN_LOGIN = os.environ.get('SUPERADMIN_LOGIN', 'admin')
+SUPERADMIN_PASSWORD = os.environ.get('SUPERADMIN_PASSWORD', '220066mm')
+SUPERADMIN_ID = os.environ.get('SUPERADMIN_ID', 'superadmin-wmfinance-001')
 
 security = HTTPBearer()
 
