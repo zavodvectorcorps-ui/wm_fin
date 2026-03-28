@@ -12,7 +12,7 @@ import { Alert, AlertDescription } from '../components/ui/alert';
 import { Separator } from '../components/ui/separator';
 import { 
   Send, CheckCircle2, XCircle, Loader2, Bot, Plug, Settings, 
-  Clock, Calendar, MessageSquare, Bell, Database, ExternalLink, RefreshCw
+  Clock, Calendar, MessageSquare, Bell, Database, ExternalLink, RefreshCw, Upload, FileText
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -36,6 +36,13 @@ export const IntegrationsPage = () => {
   
   const [testStatus, setTestStatus] = useState(null);
 
+  // Google Sheets state
+  const [gsUrl, setGsUrl] = useState('');
+  const [gsServiceAccount, setGsServiceAccount] = useState('');
+  const [gsSaving, setGsSaving] = useState(false);
+  const [gsTesting, setGsTesting] = useState(false);
+  const [gsTestStatus, setGsTestStatus] = useState(null);
+
   const fetchSettings = useCallback(async () => {
     setLoading(true);
     try {
@@ -52,6 +59,7 @@ export const IntegrationsPage = () => {
         adesk_api_token: settingsRes.data.adesk_api_token || ''
       });
       setBackupStatus(backupRes.data);
+      setGsUrl(backupRes.data.spreadsheet_url || '');
     } catch (error) {
       console.error('Error fetching settings:', error);
     } finally {
@@ -68,7 +76,7 @@ export const IntegrationsPage = () => {
     try {
       const res = await api().post('/backup/google-sheets');
       if (res.data.status === 'success') {
-        toast.success(`Бэкап выполнен: ${res.data.stats?.transactions || 0} операций`);
+        toast.success(res.data.message || 'Бэкап выполнен');
       } else {
         toast.error(res.data.message || 'Ошибка бэкапа');
       }
@@ -77,6 +85,62 @@ export const IntegrationsPage = () => {
     } finally {
       setBackingUp(false);
     }
+  };
+
+  const saveGoogleSheets = async () => {
+    setGsSaving(true);
+    try {
+      const payload = { google_sheets_url: gsUrl };
+      if (gsServiceAccount.trim()) {
+        payload.google_service_account = gsServiceAccount.trim();
+      }
+      await api().put('/settings/integrations/google-sheets', payload);
+      toast.success('Настройки Google Sheets сохранены');
+      fetchSettings();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Ошибка сохранения');
+    } finally {
+      setGsSaving(false);
+    }
+  };
+
+  const testGoogleSheets = async () => {
+    setGsTesting(true);
+    setGsTestStatus(null);
+    try {
+      const res = await api().post('/backup/google-sheets/test');
+      setGsTestStatus(res.data.status);
+      if (res.data.status === 'success') {
+        toast.success(res.data.message);
+      } else {
+        toast.error(res.data.message);
+      }
+    } catch (error) {
+      setGsTestStatus('error');
+      toast.error(error.response?.data?.detail || 'Ошибка тестирования');
+    } finally {
+      setGsTesting(false);
+    }
+  };
+
+  const handleSaFileUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const json = JSON.parse(ev.target.result);
+        if (!json.client_email || !json.private_key) {
+          toast.error('JSON должен содержать client_email и private_key');
+          return;
+        }
+        setGsServiceAccount(JSON.stringify(json));
+        toast.success(`Service Account загружен: ${json.client_email}`);
+      } catch {
+        toast.error('Некорректный JSON файл');
+      }
+    };
+    reader.readAsText(file);
   };
 
   const saveTelegramSettings = async () => {
@@ -164,60 +228,127 @@ export const IntegrationsPage = () => {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {backupStatus?.configured ? (
-                <>
-                  <Alert className="bg-emerald-500/10 border-emerald-500/20">
-                    <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                    <AlertDescription className="text-emerald-500">
-                      <strong>Бэкап настроен!</strong> Данные автоматически выгружаются ежедневно в 6:00 UTC
-                    </AlertDescription>
-                  </Alert>
-                  
-                  <div className="space-y-2">
-                    <Label>Google Таблица</Label>
-                    <div className="flex items-center gap-2">
-                      <Input 
-                        value={backupStatus.spreadsheet_title || 'WM Finance Backup'} 
-                        readOnly 
-                        className="bg-muted"
-                      />
-                      <Button variant="outline" size="icon" asChild>
-                        <a href={backupStatus.spreadsheet_url} target="_blank" rel="noopener noreferrer">
-                          <ExternalLink className="h-4 w-4" />
-                        </a>
-                      </Button>
+              {/* Status badges */}
+              <div className="flex gap-2 flex-wrap">
+                {backupStatus?.has_service_account ? (
+                  <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
+                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                    Service Account: {backupStatus.service_account_email}
+                  </Badge>
+                ) : (
+                  <Badge className="bg-yellow-500/10 text-yellow-600 border-yellow-500/20">
+                    <XCircle className="h-3 w-3 mr-1" />
+                    Service Account не загружен
+                  </Badge>
+                )}
+                {backupStatus?.has_url ? (
+                  <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
+                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                    URL таблицы указан
+                  </Badge>
+                ) : (
+                  <Badge className="bg-yellow-500/10 text-yellow-600 border-yellow-500/20">
+                    <XCircle className="h-3 w-3 mr-1" />
+                    URL таблицы не указан
+                  </Badge>
+                )}
+              </div>
+
+              {/* Google Sheets URL */}
+              <div className="space-y-2">
+                <Label>URL Google таблицы</Label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="https://docs.google.com/spreadsheets/d/..."
+                    value={gsUrl}
+                    onChange={(e) => setGsUrl(e.target.value)}
+                    data-testid="gs-url-input"
+                  />
+                  {gsUrl && (
+                    <Button variant="outline" size="icon" asChild>
+                      <a href={gsUrl} target="_blank" rel="noopener noreferrer">
+                        <ExternalLink className="h-4 w-4" />
+                      </a>
+                    </Button>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Создайте пустую Google таблицу и предоставьте доступ (Редактор) для email Service Account
+                </p>
+              </div>
+
+              {/* Service Account JSON */}
+              <div className="space-y-2">
+                <Label>Service Account JSON</Label>
+                <div className="flex gap-2 items-start">
+                  <label className="flex-1 cursor-pointer">
+                    <div className="flex items-center gap-2 p-3 border border-dashed border-border rounded-lg hover:bg-muted/50 transition-colors">
+                      <Upload className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm">
+                        {gsServiceAccount ? 'JSON загружен (нажмите для замены)' : 'Загрузить JSON файл сервисного аккаунта'}
+                      </span>
                     </div>
-                  </div>
-                  
-                  <div className="bg-muted/50 rounded-lg p-4 space-y-2">
-                    <p className="text-sm font-medium">Выгружаемые данные:</p>
-                    <ul className="text-sm text-muted-foreground grid grid-cols-2 gap-1">
-                      <li>• Операции</li>
-                      <li>• Контрагенты</li>
-                      <li>• Счета</li>
-                      <li>• Категории</li>
-                      <li>• Направления</li>
-                      <li>• Проекты</li>
-                      <li>• Плановые платежи</li>
-                    </ul>
-                  </div>
-                  
-                  <Button onClick={runBackupNow} disabled={backingUp} data-testid="run-backup-btn">
-                    {backingUp ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <RefreshCw className="h-4 w-4 mr-2" />
-                    )}
-                    Выгрузить сейчас
-                  </Button>
-                </>
-              ) : (
-                <Alert className="bg-yellow-500/10 border-yellow-500/20">
-                  <AlertDescription className="text-yellow-600">
-                    Google Sheets бэкап не настроен. Обратитесь к администратору.
-                  </AlertDescription>
-                </Alert>
-              )}
+                    <input
+                      type="file"
+                      accept=".json"
+                      className="hidden"
+                      onChange={handleSaFileUpload}
+                      data-testid="gs-sa-file-input"
+                    />
+                  </label>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Создайте Service Account в{' '}
+                  <a href="https://console.cloud.google.com/iam-admin/serviceaccounts" target="_blank" rel="noopener noreferrer" className="text-primary underline">
+                    Google Cloud Console
+                  </a>
+                  , скачайте JSON-ключ и загрузите сюда
+                </p>
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-2 flex-wrap">
+                <Button onClick={saveGoogleSheets} disabled={gsSaving} data-testid="save-gs-btn">
+                  {gsSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Settings className="h-4 w-4 mr-2" />}
+                  Сохранить настройки
+                </Button>
+
+                <Button variant="outline" onClick={testGoogleSheets} disabled={gsTesting || !backupStatus?.configured}
+                  data-testid="test-gs-btn">
+                  {gsTesting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+                  Тест подключения
+                </Button>
+
+                <Button variant="outline" onClick={runBackupNow} disabled={backingUp || !backupStatus?.configured}
+                  data-testid="run-backup-btn">
+                  {backingUp ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                  Выгрузить сейчас
+                </Button>
+
+                {gsTestStatus === 'success' && (
+                  <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
+                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                    Подключено
+                  </Badge>
+                )}
+                {gsTestStatus === 'error' && (
+                  <Badge className="bg-rose-500/10 text-rose-500 border-rose-500/20">
+                    <XCircle className="h-3 w-3 mr-1" />
+                    Ошибка подключения
+                  </Badge>
+                )}
+              </div>
+
+              {/* Info */}
+              <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+                <p className="text-sm font-medium">Выгружаемые данные:</p>
+                <ul className="text-sm text-muted-foreground grid grid-cols-2 gap-1">
+                  <li>• Операции</li>
+                  <li>• Контрагенты</li>
+                  <li>• Счета</li>
+                  <li>• Категории</li>
+                </ul>
+              </div>
             </CardContent>
           </Card>
 
