@@ -10,7 +10,7 @@ import { Card, CardContent } from '../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import {
   Upload, Loader2, FileText, ChevronDown, ChevronRight,
-  Check, X, AlertTriangle, Layers, ArrowUpRight, ArrowDownLeft, Pencil
+  Check, X, AlertTriangle, Layers, ArrowUpRight, ArrowDownLeft, Pencil, Users
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -52,6 +52,11 @@ export default function BankImportModal({ open, onOpenChange, onImported }) {
   // Importing
   const [importing, setImporting] = useState(false);
 
+  // New counterparties
+  const [newCounterparties, setNewCounterparties] = useState([]);
+  const [selectedNewContractors, setSelectedNewContractors] = useState(new Set());
+  const [showNewContractors, setShowNewContractors] = useState(true);
+
   const fetchSettings = useCallback(async () => {
     try {
       const [accRes, dirRes, catRes, conRes] = await Promise.all([
@@ -79,8 +84,11 @@ export default function BankImportModal({ open, onOpenChange, onImported }) {
       setTransactions([]);
       setGroups([]);
       setSelected(new Set());
+      setNewCounterparties([]);
+      setSelectedNewContractors(new Set());
     }
-  }, [open, fetchSettings]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const handleFileParse = async (e) => {
     const file = e.target.files?.[0];
@@ -98,9 +106,16 @@ export default function BankImportModal({ open, onOpenChange, onImported }) {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       setParseResult(res.data);
-      const txs = res.data.transactions || [];
+      const txs = (res.data.transactions || []).map(t => ({
+        ...t,
+        category_id: t.auto_category_id || null,
+        direction_id: t.auto_direction_id || null,
+        needs_review: false,
+      }));
       setTransactions(txs);
       setGroups(res.data.groups || []);
+      setNewCounterparties(res.data.new_counterparties || []);
+      setSelectedNewContractors(new Set(res.data.new_counterparties || []));
       // Select all non-duplicate by default
       const sel = new Set();
       txs.forEach((t, i) => { if (!t.is_duplicate) sel.add(i); });
@@ -157,6 +172,18 @@ export default function BankImportModal({ open, onOpenChange, onImported }) {
     setItemEdit({});
   };
 
+  const toggleNeedsReview = (idx) => {
+    const updated = [...transactions];
+    updated[idx] = { ...updated[idx], needs_review: !updated[idx].needs_review };
+    setTransactions(updated);
+  };
+
+  const toggleNewContractor = (name) => {
+    const next = new Set(selectedNewContractors);
+    if (next.has(name)) next.delete(name); else next.add(name);
+    setSelectedNewContractors(next);
+  };
+
   const handleImport = async () => {
     if (!selectedAccount) { toast.error('Выберите счёт'); return; }
     if (!selectedDirection) { toast.error('Выберите направление по умолчанию'); return; }
@@ -178,12 +205,14 @@ export default function BankImportModal({ open, onOpenChange, onImported }) {
           direction_id: t.direction_id || null,
           direction_name: t.direction_name || null,
           payment_purpose: t.payment_purpose,
+          needs_review: t.needs_review || false,
         }));
 
       const res = await api().post('/bank-import/confirm', {
         account_id: selectedAccount,
         direction_id: selectedDirection,
         transactions: txsToImport,
+        new_contractors: [...selectedNewContractors],
       });
 
       toast.success(`Импортировано ${res.data.imported} операций на счёт "${res.data.account_name}"`);
@@ -365,6 +394,33 @@ export default function BankImportModal({ open, onOpenChange, onImported }) {
               </Card>
             )}
 
+            {/* New Counterparties — auto-create contractors */}
+            {newCounterparties.length > 0 && (
+              <Card className="border-blue-500/20">
+                <CardContent className="py-2 px-4">
+                  <button className="flex items-center gap-2 w-full text-left"
+                    onClick={() => setShowNewContractors(!showNewContractors)} data-testid="toggle-new-contractors">
+                    {showNewContractors ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                    <Users className="h-4 w-4 text-blue-500" />
+                    <span className="text-sm font-medium">Новые контрагенты ({selectedNewContractors.size}/{newCounterparties.length}) — создать автоматически</span>
+                  </button>
+                  {showNewContractors && (
+                    <div className="mt-2 max-h-[150px] overflow-y-auto grid grid-cols-2 gap-1">
+                      {newCounterparties.map(cp => (
+                        <label key={cp} className="flex items-center gap-2 p-1.5 rounded hover:bg-muted/30 cursor-pointer text-sm">
+                          <Checkbox
+                            checked={selectedNewContractors.has(cp)}
+                            onCheckedChange={() => toggleNewContractor(cp)}
+                          />
+                          <span className="truncate">{cp}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
             {/* Transactions table */}
             <div className="border rounded-lg">
               <Table>
@@ -383,6 +439,7 @@ export default function BankImportModal({ open, onOpenChange, onImported }) {
                     <TableHead className="w-28">Направление</TableHead>
                     <TableHead className="w-28">Категория</TableHead>
                     <TableHead className="w-28 text-right">Сумма</TableHead>
+                    <TableHead className="w-10" title="Под вопросом">?</TableHead>
                     <TableHead className="w-12"></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -474,6 +531,15 @@ export default function BankImportModal({ open, onOpenChange, onImported }) {
                         </TableCell>
                         <TableCell className={`text-right font-mono text-sm ${t.type === 'income' ? 'text-emerald-500' : 'text-rose-500'}`}>
                           {t.type === 'income' ? '+' : '-'}{fmtMoney(t.amount, t.currency)}
+                        </TableCell>
+                        <TableCell>
+                          <Button size="icon" variant={t.needs_review ? 'default' : 'ghost'}
+                            className={`h-6 w-6 ${t.needs_review ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'opacity-40 hover:opacity-100'}`}
+                            onClick={() => toggleNeedsReview(idx)}
+                            title="Под вопросом — требует уточнения"
+                            data-testid={`review-toggle-${idx}`}>
+                            <AlertTriangle className="h-3 w-3" />
+                          </Button>
                         </TableCell>
                         <TableCell>
                           {isEditing ? (

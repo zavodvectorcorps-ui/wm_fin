@@ -11,10 +11,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '../components/ui/alert-dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Textarea } from '../components/ui/textarea';
+import DescriptionAutocomplete from '../components/DescriptionAutocomplete';
 import { Checkbox } from '../components/ui/checkbox';
 import { 
   Plus, Minus, ArrowLeftRight, Search, Filter, Pencil, ArrowDownToLine, Bot, 
-  Trash2, Calendar, MoreHorizontal, Paperclip, FileText, Link2, Unlink
+  Trash2, Calendar, MoreHorizontal, Paperclip, FileText, Link2, Unlink, AlertTriangle
 } from 'lucide-react';
 import { formatCurrency, formatDate, getDirectionClass, getStatusLabel, getPeriodDates, getTypeLabel } from '../lib/utils';
 import { toast } from 'sonner';
@@ -51,6 +52,7 @@ export const TransactionsPage = () => {
     status: 'all',
     account_id: 'all',
     direction_id: 'all',
+    needs_review: 'all',
     search: ''
   });
 
@@ -80,6 +82,7 @@ export const TransactionsPage = () => {
         ...(filters.status && filters.status !== 'all' && { status: filters.status }),
         ...(filters.account_id && filters.account_id !== 'all' && { account_id: filters.account_id }),
         ...(filters.direction_id && filters.direction_id !== 'all' && { direction_id: filters.direction_id }),
+        ...(filters.needs_review && filters.needs_review !== 'all' && { needs_review: filters.needs_review === 'yes' }),
         ...(filters.search && { search: filters.search })
       };
       
@@ -108,6 +111,16 @@ export const TransactionsPage = () => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const toggleNeedsReview = async (e, transactionId) => {
+    e.stopPropagation();
+    try {
+      const res = await api().put(`/transactions/${transactionId}/review`);
+      setTransactions(prev => prev.map(t => t.id === transactionId ? { ...t, needs_review: res.data.needs_review } : t));
+    } catch {
+      toast.error('Ошибка обновления');
+    }
+  };
 
   // Open document linking dialog
   const openLinkDocDialog = async (transaction) => {
@@ -345,6 +358,17 @@ export const TransactionsPage = () => {
               </SelectContent>
             </Select>
 
+            <Select value={filters.needs_review} onValueChange={(v) => setFilters({ ...filters, needs_review: v })}>
+              <SelectTrigger data-testid="filter-needs-review">
+                <AlertTriangle className="h-4 w-4 mr-2 text-amber-500" />
+                <SelectValue placeholder="Под вопросом" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Все</SelectItem>
+                <SelectItem value="yes">Под вопросом</SelectItem>
+              </SelectContent>
+            </Select>
+
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input 
@@ -404,8 +428,15 @@ export const TransactionsPage = () => {
                       </p>
                     </TableCell>
                     <TableCell>
-                      <p className="font-medium">{t.category_name || 'Без категории'}</p>
-                      {t.description && <p className="text-sm text-muted-foreground truncate max-w-48">{t.description}</p>}
+                      <div className="flex items-center gap-1.5">
+                        <div>
+                          <p className="font-medium">{t.category_name || 'Без категории'}</p>
+                          {t.description && <p className="text-sm text-muted-foreground truncate max-w-48">{t.description}</p>}
+                        </div>
+                        {t.needs_review && (
+                          <AlertTriangle className="h-4 w-4 text-amber-500 flex-shrink-0" title="Под вопросом" />
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline" className={getDirectionClass(t.direction_name)}>
@@ -429,6 +460,10 @@ export const TransactionsPage = () => {
                           <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openLinkDocDialog(t); }}>
                             <Paperclip className="h-4 w-4 mr-2" />
                             Документы
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={(e) => toggleNeedsReview(e, t.id)}>
+                            <AlertTriangle className="h-4 w-4 mr-2" />
+                            {t.needs_review ? 'Снять отметку "Под вопросом"' : 'Отметить "Под вопросом"'}
                           </DropdownMenuItem>
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
@@ -670,11 +705,9 @@ export const TransactionsPage = () => {
 
             <div className="space-y-2">
               <Label>Описание</Label>
-              <Textarea 
-                placeholder="Комментарий к операции..."
+              <DescriptionAutocomplete
                 value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                data-testid="form-description"
+                onChange={(v) => setFormData({ ...formData, description: v })}
               />
             </div>
 

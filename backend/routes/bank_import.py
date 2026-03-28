@@ -376,10 +376,22 @@ async def parse_bank_statement(
 
     contractor_map = {c["name"].upper(): c for c in contractors}
 
+    # Load contractor → category rules
+    rules = await db.contractor_category_rules.find(
+        {"user_id": current_user["user_id"]},
+        {"_id": 0}
+    ).to_list(1000)
+    rules_map = {r["contractor_name_upper"]: r for r in rules}
+
+    # Collect unique new counterparties
+    new_counterparties = {}
+
     for t in result["transactions"]:
         t["matched_contractor_id"] = None
         t["matched_contractor_name"] = None
-        cp = (t.get("counterparty") or "").upper()
+        t["auto_category_id"] = None
+        t["auto_direction_id"] = None
+        cp = (t.get("counterparty") or "").upper().strip()
         if cp:
             if cp in contractor_map:
                 t["matched_contractor_id"] = contractor_map[cp]["id"]
@@ -389,7 +401,22 @@ async def parse_bank_statement(
                     if name in cp or cp in name:
                         t["matched_contractor_id"] = c["id"]
                         t["matched_contractor_name"] = c["name"]
+                        cp = name  # use matched key for rules lookup
                         break
+
+            # Apply category/direction rules
+            rule = rules_map.get(cp)
+            if rule:
+                t["auto_category_id"] = rule.get("category_id")
+                t["auto_direction_id"] = rule.get("direction_id")
+
+            # Track new counterparties (not matched to existing contractors)
+            if not t["matched_contractor_id"] and t.get("counterparty"):
+                raw_cp = t["counterparty"].strip()
+                if raw_cp and raw_cp.upper() not in new_counterparties:
+                    new_counterparties[raw_cp.upper()] = raw_cp
+
+    result["new_counterparties"] = list(new_counterparties.values())
 
     # Check for duplicates
     if result["transactions"]:
@@ -426,6 +453,7 @@ async def confirm_bank_import(
     account_id = data.get("account_id")
     direction_id = data.get("direction_id")
     transactions_data = data.get("transactions", [])
+    new_contractors_to_create = data.get("new_contractors", [])
 
     if not account_id:
         raise HTTPException(status_code=400, detail="Выберите счёт")
@@ -444,7 +472,33 @@ async def confirm_bank_import(
     direction = await db.directions.find_one({"id": direction_id}, {"_id": 0, "name": 1})
     default_direction_name = direction["name"] if direction else ""
 
+    # Auto-create new contractors
+    created_contractor_map = {}
+    for cp_name in new_contractors_to_create:
+        cp_name = cp_name.strip()
+        if not cp_name:
+            continue
+        existing = await db.contractors.find_one(
+            {"user_id": current_user["user_id"], "name": {"$regex": f"^{re.escape(cp_name)}$", "$options": "i"}},
+            {"_id": 0, "id": 1}
+        )
+        if existing:
+            created_contractor_map[cp_name.upper()] = existing["id"]
+        else:
+            new_id = str(uuid.uuid4())
+            contractor_doc = {
+                "id": new_id,
+                "name": cp_name,
+                "type": "supplier",
+                "is_active": True,
+                "user_id": current_user["user_id"],
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+            await db.contractors.insert_one(contractor_doc)
+            created_contractor_map[cp_name.upper()] = new_id
+
     imported = 0
+    rules_to_save = []
 
     for t in transactions_data:
         t_direction_id = t.get("direction_id") or direction_id
@@ -453,17 +507,29 @@ async def confirm_bank_import(
             d = await db.directions.find_one({"id": t_direction_id}, {"_id": 0, "name": 1})
             t_direction_name = d["name"] if d else ""
 
-        contractor_name = None
+        # Resolve contractor — check auto-created first
         contractor_id = t.get("contractor_id")
+        contractor_name = t.get("counterparty", "")
+        if not contractor_id and contractor_name:
+            contractor_id = created_contractor_map.get(contractor_name.upper())
         if contractor_id:
             c = await db.contractors.find_one({"id": contractor_id}, {"_id": 0, "name": 1})
-            contractor_name = c["name"] if c else t.get("counterparty", "")
+            if c:
+                contractor_name = c["name"]
 
         category_name = None
         category_id = t.get("category_id")
         if category_id:
             cat = await db.categories.find_one({"id": category_id}, {"_id": 0, "name": 1})
             category_name = cat["name"] if cat else None
+
+        # Collect rules: contractor + category mapping
+        if contractor_name and category_id:
+            rules_to_save.append({
+                "contractor_name_upper": contractor_name.upper().strip(),
+                "category_id": category_id,
+                "direction_id": t_direction_id if t_direction_id != direction_id else None,
+            })
 
         transaction = {
             "id": str(uuid.uuid4()),
@@ -479,17 +545,36 @@ async def confirm_bank_import(
             "account_id": account_id,
             "account_name": account["name"],
             "contractor_id": contractor_id,
-            "contractor_name": contractor_name or t.get("counterparty", ""),
+            "contractor_name": contractor_name,
             "description": t.get("payment_purpose") or t.get("description", ""),
             "source": "import",
             "status": "fact",
             "is_recurring": False,
+            "needs_review": bool(t.get("needs_review", False)),
             "balance_after": 0,
             "user_id": current_user["user_id"],
         }
 
         await db.transactions.insert_one(transaction)
         imported += 1
+
+    # Save contractor → category rules (upsert)
+    for rule in rules_to_save:
+        update_fields = {"category_id": rule["category_id"]}
+        if rule.get("direction_id"):
+            update_fields["direction_id"] = rule["direction_id"]
+        await db.contractor_category_rules.update_one(
+            {
+                "user_id": current_user["user_id"],
+                "contractor_name_upper": rule["contractor_name_upper"],
+            },
+            {"$set": update_fields, "$setOnInsert": {
+                "user_id": current_user["user_id"],
+                "contractor_name_upper": rule["contractor_name_upper"],
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }},
+            upsert=True,
+        )
 
     # Update account balance
     from services.balance import update_account_balance
@@ -499,4 +584,5 @@ async def confirm_bank_import(
         "status": "success",
         "imported": imported,
         "account_name": account["name"],
+        "contractors_created": len(created_contractor_map),
     }

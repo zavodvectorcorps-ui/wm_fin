@@ -124,6 +124,7 @@ class Transaction(BaseModel):
     description: Optional[str] = None
     status: Literal["fact", "plan"] = "fact"
     is_recurring: bool = False
+    needs_review: bool = False
     balance_after: float = 0
     user_id: str = ""
 

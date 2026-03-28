@@ -26,6 +26,7 @@ async def get_transactions(
     contractor_id: Optional[str] = None,
     source: Optional[str] = None,
     search: Optional[str] = None,
+    needs_review: Optional[bool] = None,
     current_user: dict = Depends(get_current_user)
 ):
     query = {"user_id": current_user["user_id"]}
@@ -53,6 +54,8 @@ async def get_transactions(
         query["source"] = source
     if search:
         query["description"] = {"$regex": search, "$options": "i"}
+    if needs_review is not None:
+        query["needs_review"] = needs_review
 
     transactions = await db.transactions.find(query, {"_id": 0}).sort("date", -1).to_list(1000)
     return transactions
@@ -326,3 +329,45 @@ async def process_import(
         "imported": imported,
         "duplicates": duplicates
     }
+
+
+
+@router.get("/transactions/descriptions/suggestions")
+async def get_description_suggestions(
+    q: str = "",
+    current_user: dict = Depends(get_current_user)
+):
+    """Return popular transaction descriptions for autocomplete."""
+    query = {"user_id": current_user["user_id"], "description": {"$exists": True, "$ne": ""}}
+    if q:
+        query["description"] = {"$regex": q, "$options": "i"}
+
+    pipeline = [
+        {"$match": query},
+        {"$group": {"_id": "$description", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+        {"$limit": 20},
+    ]
+    results = await db.transactions.aggregate(pipeline).to_list(20)
+    return [{"description": r["_id"], "count": r["count"]} for r in results if r["_id"]]
+
+
+@router.put("/transactions/{transaction_id}/review")
+async def toggle_needs_review(
+    transaction_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Toggle the needs_review flag on a transaction."""
+    tx = await db.transactions.find_one(
+        {"id": transaction_id, "user_id": current_user["user_id"]},
+        {"_id": 0, "needs_review": 1}
+    )
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    new_val = not tx.get("needs_review", False)
+    await db.transactions.update_one(
+        {"id": transaction_id},
+        {"$set": {"needs_review": new_val}}
+    )
+    return {"needs_review": new_val}
