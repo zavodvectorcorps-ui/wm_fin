@@ -12,7 +12,8 @@ import { Alert, AlertDescription } from '../components/ui/alert';
 import { Separator } from '../components/ui/separator';
 import { 
   Send, CheckCircle2, XCircle, Loader2, Bot, Plug, Settings, 
-  Clock, Calendar, MessageSquare, Bell, Database, ExternalLink, RefreshCw, Upload, FileText
+  Clock, Calendar, MessageSquare, Bell, Database, ExternalLink, RefreshCw, Upload, FileText,
+  Banknote, Link2, Users, Unlink
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -35,6 +36,11 @@ export const IntegrationsPage = () => {
   });
   
   const [testStatus, setTestStatus] = useState(null);
+
+  // Webhook state
+  const [webhookInfo, setWebhookInfo] = useState(null);
+  const [webhookLoading, setWebhookLoading] = useState(false);
+  const [botUsers, setBotUsers] = useState([]);
 
   // Google Sheets state
   const [gsUrl, setGsUrl] = useState('');
@@ -70,6 +76,55 @@ export const IntegrationsPage = () => {
   useEffect(() => {
     fetchSettings();
   }, [fetchSettings]);
+
+  const fetchWebhookInfo = useCallback(async () => {
+    try {
+      const [infoRes, usersRes] = await Promise.all([
+        api().get('/telegram/webhook-info'),
+        api().get('/telegram/bot-users'),
+      ]);
+      setWebhookInfo(infoRes.data);
+      setBotUsers(usersRes.data.users || []);
+    } catch {
+      // ignore
+    }
+  }, [api]);
+
+  useEffect(() => {
+    if (!loading) fetchWebhookInfo();
+  }, [loading, fetchWebhookInfo]);
+
+  const setupWebhook = async () => {
+    setWebhookLoading(true);
+    try {
+      const backendUrl = process.env.REACT_APP_BACKEND_URL;
+      const webhookUrl = `${backendUrl}/api/telegram/webhook`;
+      const res = await api().post('/telegram/setup-webhook', { webhook_url: webhookUrl });
+      if (res.data.status === 'success') {
+        toast.success('Вебхук установлен');
+        fetchWebhookInfo();
+      } else {
+        toast.error(res.data.message || 'Ошибка');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Ошибка установки вебхука');
+    } finally {
+      setWebhookLoading(false);
+    }
+  };
+
+  const removeWebhook = async () => {
+    setWebhookLoading(true);
+    try {
+      await api().delete('/telegram/remove-webhook');
+      toast.success('Вебхук удалён');
+      fetchWebhookInfo();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Ошибка');
+    } finally {
+      setWebhookLoading(false);
+    }
+  };
 
   const runBackupNow = async () => {
     setBackingUp(true);
@@ -502,6 +557,108 @@ export const IntegrationsPage = () => {
                   )}
                   Отправить сводку сейчас
                 </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Telegram Cash Bot */}
+          <Card data-testid="cash-bot-card">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Banknote className="h-5 w-5 text-emerald-500" />
+                Telegram Касса
+              </CardTitle>
+              <CardDescription>
+                Записывайте наличные операции прямо из Telegram. Несколько пользователей могут отправлять данные.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Webhook Status */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {webhookInfo?.webhook_url ? (
+                  <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
+                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                    Вебхук активен
+                  </Badge>
+                ) : (
+                  <Badge className="bg-yellow-500/10 text-yellow-600 border-yellow-500/20">
+                    <XCircle className="h-3 w-3 mr-1" />
+                    Вебхук не настроен
+                  </Badge>
+                )}
+                {webhookInfo?.pending_update_count > 0 && (
+                  <Badge variant="outline">
+                    В очереди: {webhookInfo.pending_update_count}
+                  </Badge>
+                )}
+                {webhookInfo?.last_error_message && (
+                  <Badge className="bg-rose-500/10 text-rose-500 border-rose-500/20 text-xs">
+                    {webhookInfo.last_error_message}
+                  </Badge>
+                )}
+              </div>
+
+              {/* Webhook Actions */}
+              <div className="flex gap-2">
+                {!webhookInfo?.webhook_url ? (
+                  <Button onClick={setupWebhook} disabled={webhookLoading || !settings.telegram_bot_token}
+                    data-testid="setup-webhook-btn">
+                    {webhookLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Link2 className="h-4 w-4 mr-2" />}
+                    Подключить Telegram Кассу
+                  </Button>
+                ) : (
+                  <>
+                    <Button variant="outline" onClick={setupWebhook} disabled={webhookLoading}
+                      data-testid="update-webhook-btn">
+                      {webhookLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                      Переподключить
+                    </Button>
+                    <Button variant="outline" onClick={removeWebhook} disabled={webhookLoading} className="text-rose-500"
+                      data-testid="remove-webhook-btn">
+                      <Unlink className="h-4 w-4 mr-2" />
+                      Отключить
+                    </Button>
+                  </>
+                )}
+              </div>
+
+              <Separator />
+
+              {/* Connected Users */}
+              {botUsers.length > 0 && (
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <Users className="h-4 w-4" />
+                    Подключённые пользователи ({botUsers.length})
+                  </Label>
+                  <div className="space-y-1">
+                    {botUsers.map(u => (
+                      <div key={u.id} className="flex items-center gap-2 text-sm p-2 rounded bg-muted/50">
+                        <span className="font-medium">{u.telegram_first_name}</span>
+                        {u.telegram_username && <span className="text-muted-foreground">@{u.telegram_username}</span>}
+                        {u.current_direction_name && (
+                          <Badge variant="outline" className="text-xs ml-auto">
+                            {u.current_direction_name}
+                          </Badge>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Instructions */}
+              <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+                <p className="text-sm font-medium">Как пользоваться:</p>
+                <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
+                  <li>Сохраните Bot Token выше и нажмите "Подключить Telegram Кассу"</li>
+                  <li>Отправьте <code className="bg-background px-1 rounded">/start</code> вашему боту</li>
+                  <li>Выберите направление (Теплицы, Сауны и т.д.)</li>
+                  <li>Отправляйте операции: <code className="bg-background px-1 rounded">1000 Антон зп</code> (расход) или <code className="bg-background px-1 rounded">+5000 продажа</code> (приход)</li>
+                </ol>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Команды: <code className="bg-background px-1 rounded">/direction</code> — сменить направление, <code className="bg-background px-1 rounded">/balance</code> — баланс, <code className="bg-background px-1 rounded">/last</code> — последние операции
+                </p>
               </div>
             </CardContent>
           </Card>

@@ -36,6 +36,7 @@ from routes.bot import router as bot_router
 from routes.expense_plan import router as expense_plan_router
 from routes.bank_import import router as bank_import_router
 from routes.cash_import import router as cash_import_router
+from routes.telegram_webhook import router as telegram_webhook_router
 
 # Import service routers
 from services.google_sheets import router as google_sheets_router
@@ -78,6 +79,7 @@ all_routers = [
     expense_plan_router,
     bank_import_router,
     cash_import_router,
+    telegram_webhook_router,
     google_sheets_router,
 ]
 
