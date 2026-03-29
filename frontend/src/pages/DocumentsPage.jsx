@@ -16,7 +16,7 @@ import { Calendar } from '../components/ui/calendar';
 import { 
   Upload, FileText, Image, FileSpreadsheet, File, Download, 
   Eye, Trash2, AlertCircle, CheckCircle2, FolderPlus, Folder, FolderOpen,
-  CalendarIcon, ChevronRight, MoreHorizontal, ArrowRight, CheckCheck, X
+  CalendarIcon, ChevronRight, ArrowRight, CheckCheck, X, GripVertical
 } from 'lucide-react';
 import { formatDate, getDirectionClass } from '../lib/utils';
 import { toast } from 'sonner';
@@ -88,30 +88,87 @@ const MonthPicker = ({ value, onChange }) => {
   );
 };
 
-/* ──── Folder sidebar item ──── */
-const FolderItem = ({ folder, isActive, onClick, onDelete, docCount }) => (
-  <div
-    role="button"
-    tabIndex={0}
-    onClick={onClick}
-    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClick(); }}
-    data-testid={`folder-${folder.id}`}
-    className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors text-left group cursor-pointer ${
-      isActive ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted/60 text-muted-foreground'
-    }`}
-  >
-    {isActive ? <FolderOpen className="h-4 w-4 shrink-0" style={{ color: folder.color }} /> : <Folder className="h-4 w-4 shrink-0" style={{ color: folder.color }} />}
-    <span className="truncate flex-1">{folder.name}</span>
-    {docCount > 0 && <Badge variant="secondary" className="text-xs h-5 px-1.5">{docCount}</Badge>}
-    <button
-      onClick={(e) => { e.stopPropagation(); onDelete(folder.id); }}
-      className="opacity-0 group-hover:opacity-100 transition-opacity"
-      data-testid={`delete-folder-${folder.id}`}
+/* ──── Folder sidebar item (drop target) ──── */
+const FolderItem = ({ folder, isActive, onClick, onDelete, docCount, onDropDoc }) => {
+  const [dragOver, setDragOver] = useState(false);
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOver(true);
+  };
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClick(); }}
+      onDragOver={handleDragOver}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragOver(false);
+        const docId = e.dataTransfer.getData('text/doc-id');
+        if (docId) onDropDoc(docId, folder.id);
+      }}
+      data-testid={`folder-${folder.id}`}
+      className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all text-left group cursor-pointer ${
+        dragOver
+          ? 'bg-primary/20 ring-2 ring-primary/40 scale-[1.02]'
+          : isActive
+            ? 'bg-primary/10 text-primary font-medium'
+            : 'hover:bg-muted/60 text-muted-foreground'
+      }`}
     >
-      <Trash2 className="h-3 w-3 text-destructive" />
-    </button>
-  </div>
-);
+      {isActive || dragOver ? <FolderOpen className="h-4 w-4 shrink-0" style={{ color: folder.color }} /> : <Folder className="h-4 w-4 shrink-0" style={{ color: folder.color }} />}
+      <span className="truncate flex-1">{folder.name}</span>
+      {docCount > 0 && <Badge variant="secondary" className="text-xs h-5 px-1.5">{docCount}</Badge>}
+      <button
+        onClick={(e) => { e.stopPropagation(); onDelete(folder.id); }}
+        className="opacity-0 group-hover:opacity-100 transition-opacity"
+        data-testid={`delete-folder-${folder.id}`}
+      >
+        <Trash2 className="h-3 w-3 text-destructive" />
+      </button>
+    </div>
+  );
+};
+
+/* ──── "All documents" drop target ──── */
+const AllDocsDropTarget = ({ isActive, onClick, count, onDropDoc }) => {
+  const [dragOver, setDragOver] = useState(false);
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClick(); }}
+      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOver(true); }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragOver(false);
+        const docId = e.dataTransfer.getData('text/doc-id');
+        if (docId) onDropDoc(docId);
+      }}
+      data-testid="folder-all"
+      className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all text-left cursor-pointer ${
+        dragOver
+          ? 'bg-primary/20 ring-2 ring-primary/40 scale-[1.02]'
+          : isActive
+            ? 'bg-primary/10 text-primary font-medium'
+            : 'hover:bg-muted/60 text-muted-foreground'
+      }`}
+    >
+      <Folder className="h-4 w-4 shrink-0" />
+      <span className="flex-1">Все документы</span>
+      <Badge variant="secondary" className="text-xs h-5 px-1.5">{count}</Badge>
+    </div>
+  );
+};
+
 
 export const DocumentsPage = () => {
   const { api } = useAuth();
@@ -384,17 +441,12 @@ export const DocumentsPage = () => {
             </Button>
           </div>
           
-          <button
+          <AllDocsDropTarget
+            isActive={!activeFolder}
             onClick={() => setActiveFolder(null)}
-            data-testid="folder-all"
-            className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors text-left ${
-              !activeFolder ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted/60 text-muted-foreground'
-            }`}
-          >
-            <Folder className="h-4 w-4 shrink-0" />
-            <span className="flex-1">Все документы</span>
-            <Badge variant="secondary" className="text-xs h-5 px-1.5">{documents.length}</Badge>
-          </button>
+            count={documents.length}
+            onDropDoc={(docId) => handleMoveToFolder(docId, null)}
+          />
 
           {folders.map(f => (
             <FolderItem
@@ -404,6 +456,7 @@ export const DocumentsPage = () => {
               onClick={() => setActiveFolder(f.id)}
               onDelete={handleDeleteFolder}
               docCount={folderDocCounts[f.id] || 0}
+              onDropDoc={handleMoveToFolder}
             />
           ))}
         </div>
@@ -523,9 +576,25 @@ export const DocumentsPage = () => {
                       const FileIcon = getFileIcon(doc.mime_type, doc.file_name);
                       const docFolder = folders.find(f => f.id === doc.folder_id);
                       return (
-                        <TableRow key={doc.id} className="table-row-hover" data-testid={`doc-row-${doc.id}`}>
+                        <TableRow
+                          key={doc.id}
+                          className="table-row-hover cursor-grab active:cursor-grabbing"
+                          data-testid={`doc-row-${doc.id}`}
+                          draggable
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData('text/doc-id', doc.id);
+                            e.dataTransfer.effectAllowed = 'move';
+                            e.currentTarget.style.opacity = '0.4';
+                          }}
+                          onDragEnd={(e) => {
+                            e.currentTarget.style.opacity = '1';
+                          }}
+                        >
                           <TableCell>
-                            <FileIcon className="h-5 w-5 text-muted-foreground" />
+                            <div className="flex items-center gap-1">
+                              <GripVertical className="h-4 w-4 text-muted-foreground/40" />
+                              <FileIcon className="h-5 w-5 text-muted-foreground" />
+                            </div>
                           </TableCell>
                           <TableCell>
                             <p className="font-medium truncate max-w-48">{doc.file_name}</p>
