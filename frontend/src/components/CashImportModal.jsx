@@ -146,6 +146,7 @@ const CashImportModal = ({ open, onOpenChange, onImported }) => {
           category_id: t.category_id || '',
           comment: t.comment || '',
           needs_review: t.needs_review || false,
+          to_account_id: t.to_account_id || null,
         })),
       });
       toast.success(`Импортировано ${res.data.imported_count} операций`);
@@ -278,6 +279,7 @@ const CashImportModal = ({ open, onOpenChange, onImported }) => {
                     <TableHead className="w-20">Тип</TableHead>
                     <TableHead className="min-w-[180px]">Описание</TableHead>
                     <TableHead className="w-32">Направление</TableHead>
+                    <TableHead className="w-32">На счёт</TableHead>
                     <TableHead className="w-28 text-right">Сумма</TableHead>
                     <TableHead className="w-36">Комментарий</TableHead>
                     <TableHead className="w-10">?</TableHead>
@@ -298,10 +300,19 @@ const CashImportModal = ({ open, onOpenChange, onImported }) => {
                       </TableCell>
                       <TableCell className="text-xs font-mono">{t.date}</TableCell>
                       <TableCell>
-                        {t.type === 'income'
-                          ? <Badge className="bg-emerald-600/20 text-emerald-500 text-xs">Приход</Badge>
-                          : <Badge className="bg-rose-600/20 text-rose-500 text-xs">Расход</Badge>
-                        }
+                        <Select
+                          value={t.type}
+                          onValueChange={v => updateTxField(idx, 'type', v)}
+                        >
+                          <SelectTrigger className="h-7 text-xs text-foreground border-border bg-card" data-testid={`cash-type-${idx}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="income">Приход</SelectItem>
+                            <SelectItem value="expense">Расход</SelectItem>
+                            <SelectItem value="transfer">Перевод</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </TableCell>
                       <TableCell>
                         <div>
@@ -329,6 +340,26 @@ const CashImportModal = ({ open, onOpenChange, onImported }) => {
                             ))}
                           </SelectContent>
                         </Select>
+                      </TableCell>
+                      <TableCell>
+                        {t.type === 'transfer' ? (
+                          <Select
+                            value={t.to_account_id || '__none__'}
+                            onValueChange={v => updateTxField(idx, 'to_account_id', v === '__none__' ? '' : v)}
+                          >
+                            <SelectTrigger className="h-7 text-xs text-foreground border-border bg-card" data-testid={`cash-to-account-${idx}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__none__">Выберите</SelectItem>
+                              {accounts.filter(a => a.id !== t.account_id).map(a => (
+                                <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-right font-mono text-sm text-rose-500">
                         -{formatCurrency(t.amount, t.currency)}

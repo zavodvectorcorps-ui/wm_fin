@@ -2,13 +2,10 @@
 Telegram Webhook handler for WM Finance cash bot.
 
 Flow:
-1. User sends /start → Welcome message + direction buttons
-2. User picks direction → Stored in DB, ask for amount + description
-3. User sends "1000 Антон Ск" → Creates expense on Cash PL
-4. User sends "+5000 продажа" → Creates income on Cash PL
-5. /balance → Current Cash PL balance
-6. /last → Last 5 cash transactions
-7. /direction → Change direction
+1. /start → Welcome + type buttons (Расход / Приход)
+2. Pick type → Direction buttons
+3. Pick direction → Enter amount + description
+4. "1000 Антон Ск" → Creates transaction on Cash PL
 """
 from fastapi import APIRouter, Request, HTTPException, Depends
 from datetime import datetime, timezone
@@ -39,18 +36,13 @@ async def get_bot_config():
 
 async def send_telegram(bot_token: str, chat_id, text: str, reply_markup=None, parse_mode="HTML"):
     """Send a message via Telegram Bot API."""
-    payload = {
-        "chat_id": chat_id,
-        "text": text,
-        "parse_mode": parse_mode,
-    }
+    payload = {"chat_id": chat_id, "text": text, "parse_mode": parse_mode}
     if reply_markup:
         payload["reply_markup"] = reply_markup
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(
-                f"https://api.telegram.org/bot{bot_token}/sendMessage",
-                json=payload,
+                f"https://api.telegram.org/bot{bot_token}/sendMessage", json=payload,
             )
             if resp.status_code != 200:
                 logger.error(f"Telegram send error: {resp.text}")
@@ -58,13 +50,32 @@ async def send_telegram(bot_token: str, chat_id, text: str, reply_markup=None, p
         logger.error(f"Telegram send exception: {e}")
 
 
-async def get_directions_keyboard(user_id: str):
-    """Build inline keyboard with directions."""
-    directions = await db.directions.find(
-        {"user_id": user_id, "is_active": True},
-        {"_id": 0},
-    ).to_list(20)
+async def answer_callback(bot_token: str, callback_id: str, text: str = ""):
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            await client.post(
+                f"https://api.telegram.org/bot{bot_token}/answerCallbackQuery",
+                json={"callback_query_id": callback_id, "text": text},
+            )
+    except Exception:
+        pass
 
+
+def type_keyboard():
+    """Income/Expense selection buttons."""
+    return {"inline_keyboard": [
+        [
+            {"text": "Расход", "callback_data": "type:expense"},
+            {"text": "Приход", "callback_data": "type:income"},
+        ]
+    ]}
+
+
+async def directions_keyboard(user_id: str):
+    """Direction selection buttons."""
+    directions = await db.directions.find(
+        {"user_id": user_id, "is_active": True}, {"_id": 0},
+    ).to_list(20)
     buttons = []
     row = []
     for d in directions:
@@ -74,15 +85,11 @@ async def get_directions_keyboard(user_id: str):
             row = []
     if row:
         buttons.append(row)
-
     return {"inline_keyboard": buttons}
 
 
 async def get_or_create_bot_user(chat_id: int, telegram_user: dict, owner_user_id: str):
-    """Get or create a mapping from Telegram chat_id to bot user state."""
-    bot_user = await db.telegram_bot_users.find_one(
-        {"chat_id": chat_id}, {"_id": 0}
-    )
+    bot_user = await db.telegram_bot_users.find_one({"chat_id": chat_id}, {"_id": 0})
     if not bot_user:
         bot_user = {
             "id": str(uuid.uuid4()),
@@ -90,6 +97,7 @@ async def get_or_create_bot_user(chat_id: int, telegram_user: dict, owner_user_i
             "telegram_username": telegram_user.get("username", ""),
             "telegram_first_name": telegram_user.get("first_name", ""),
             "owner_user_id": owner_user_id,
+            "current_type": "",
             "current_direction_id": "",
             "current_direction_name": "",
             "created_at": datetime.now(timezone.utc).isoformat(),
@@ -99,53 +107,29 @@ async def get_or_create_bot_user(chat_id: int, telegram_user: dict, owner_user_i
     return bot_user
 
 
-async def update_bot_user_direction(chat_id: int, direction_id: str, direction_name: str):
-    """Update user's current direction."""
-    await db.telegram_bot_users.update_one(
-        {"chat_id": chat_id},
-        {"$set": {
-            "current_direction_id": direction_id,
-            "current_direction_name": direction_name,
-        }},
-    )
+async def update_bot_user(chat_id: int, fields: dict):
+    await db.telegram_bot_users.update_one({"chat_id": chat_id}, {"$set": fields})
 
 
-def parse_transaction_text(text: str):
-    """
-    Parse transaction text. Supports:
-      "1000 Антон Ск"     → expense 1000, desc "Антон Ск"
-      "+5000 продажа"     → income 5000, desc "продажа"
-      "1000/ Антон Ск"    → expense 1000, desc "Антон Ск"
-    """
+def parse_amount_text(text: str):
+    """Parse '1000 Антон Ск' or '1000/ description'."""
     text = text.strip()
-
-    is_income = text.startswith("+")
-    if is_income:
-        text = text[1:].strip()
-
-    # Try pattern "amount/ description" or "amount description"
     match = re.match(r'^(\d+(?:[.,]\d+)?)\s*/?\s*(.*)', text)
     if not match:
         return None
-
     amount_str = match.group(1).replace(",", ".")
     description = match.group(2).strip()
-
     try:
         amount = float(amount_str)
     except ValueError:
         return None
-
     if amount <= 0:
         return None
-
-    tx_type = "income" if is_income else "expense"
-    return {"type": tx_type, "amount": amount, "description": description}
+    return {"amount": amount, "description": description}
 
 
 @router.post("/telegram/webhook")
 async def telegram_webhook(request: Request):
-    """Handle incoming Telegram updates."""
     try:
         update = await request.json()
     except Exception:
@@ -158,89 +142,107 @@ async def telegram_webhook(request: Request):
     bot_token = config["telegram_bot_token"]
     owner_user_id = config["user_id"]
 
-    # Handle callback queries (direction selection)
+    # === CALLBACK QUERIES ===
     if "callback_query" in update:
-        callback = update["callback_query"]
-        chat_id = callback["message"]["chat"]["id"]
-        data = callback.get("data", "")
+        cb = update["callback_query"]
+        chat_id = cb["message"]["chat"]["id"]
+        data = cb.get("data", "")
+        tg_user = cb.get("from", {})
 
+        bot_user = await get_or_create_bot_user(chat_id, tg_user, owner_user_id)
+
+        # Step 1 result: Type selected
+        if data.startswith("type:"):
+            tx_type = data.split(":")[1]
+            type_label = "Расход" if tx_type == "expense" else "Приход"
+            await update_bot_user(chat_id, {"current_type": tx_type, "current_direction_id": "", "current_direction_name": ""})
+            keyboard = await directions_keyboard(owner_user_id)
+            await send_telegram(
+                bot_token, chat_id,
+                f"<b>{type_label}</b>\n\nВыберите направление:",
+                reply_markup=keyboard,
+            )
+            await answer_callback(bot_token, cb["id"], type_label)
+            return {"ok": True}
+
+        # Step 2 result: Direction selected
         if data.startswith("dir:"):
             parts = data.split(":", 2)
             if len(parts) == 3:
-                direction_id = parts[1]
-                direction_name = parts[2]
-                await update_bot_user_direction(chat_id, direction_id, direction_name)
+                direction_id, direction_name = parts[1], parts[2]
+                await update_bot_user(chat_id, {
+                    "current_direction_id": direction_id,
+                    "current_direction_name": direction_name,
+                })
+
+                # Reload user to get current_type
+                bot_user = await db.telegram_bot_users.find_one({"chat_id": chat_id}, {"_id": 0})
+                type_label = "Расход" if bot_user.get("current_type") == "expense" else "Приход"
+
                 await send_telegram(
                     bot_token, chat_id,
-                    f"<b>Направление: {direction_name}</b>\n\n"
-                    f"Теперь отправьте сумму и описание:\n"
-                    f"• <code>1000 Антон зп</code> — расход\n"
-                    f"• <code>+5000 продажа теплицы</code> — приход\n\n"
-                    f"Или /direction чтобы сменить направление"
+                    f"<b>{type_label} / {direction_name}</b>\n\n"
+                    f"Введите сумму и описание:\n"
+                    f"<code>1000 Антон зп</code>\n"
+                    f"<code>5000 продажа теплицы</code>",
                 )
-
-                # Acknowledge callback
-                try:
-                    async with httpx.AsyncClient(timeout=5) as client:
-                        await client.post(
-                            f"https://api.telegram.org/bot{bot_token}/answerCallbackQuery",
-                            json={"callback_query_id": callback["id"], "text": f"Выбрано: {direction_name}"},
-                        )
-                except Exception:
-                    pass
+                await answer_callback(bot_token, cb["id"], direction_name)
+            return {"ok": True}
 
         return {"ok": True}
 
-    # Handle regular messages
+    # === TEXT MESSAGES ===
     message = update.get("message")
     if not message:
         return {"ok": True}
 
     chat_id = message["chat"]["id"]
     text = (message.get("text") or "").strip()
-    telegram_user = message.get("from", {})
+    tg_user = message.get("from", {})
 
     if not text:
         return {"ok": True}
 
-    bot_user = await get_or_create_bot_user(chat_id, telegram_user, owner_user_id)
+    bot_user = await get_or_create_bot_user(chat_id, tg_user, owner_user_id)
 
     # === COMMANDS ===
-
     if text == "/start":
-        keyboard = await get_directions_keyboard(owner_user_id)
+        await update_bot_user(chat_id, {"current_type": "", "current_direction_id": "", "current_direction_name": ""})
         await send_telegram(
             bot_token, chat_id,
             f"<b>WM Finance — Касса</b>\n\n"
-            f"Привет, {telegram_user.get('first_name', '')}!\n"
-            f"Выберите направление для записи операций:",
-            reply_markup=keyboard,
+            f"Привет, {tg_user.get('first_name', '')}!\n"
+            f"Выберите тип операции:",
+            reply_markup=type_keyboard(),
+        )
+        return {"ok": True}
+
+    if text in ("/new", "/add"):
+        await update_bot_user(chat_id, {"current_type": "", "current_direction_id": "", "current_direction_name": ""})
+        await send_telegram(
+            bot_token, chat_id,
+            "Выберите тип операции:",
+            reply_markup=type_keyboard(),
         )
         return {"ok": True}
 
     if text in ("/direction", "/dir"):
-        keyboard = await get_directions_keyboard(owner_user_id)
-        await send_telegram(
-            bot_token, chat_id,
-            "Выберите направление:",
-            reply_markup=keyboard,
-        )
+        keyboard = await directions_keyboard(owner_user_id)
+        await send_telegram(bot_token, chat_id, "Выберите направление:", reply_markup=keyboard)
         return {"ok": True}
 
     if text == "/balance":
-        # Show Cash PL balance
-        account = await db.accounts.find_one(
-            {"user_id": owner_user_id, "name": {"$regex": "cash", "$options": "i"}},
-            {"_id": 0},
-        )
-        if account:
-            bal = account.get("current_balance", 0)
-            await send_telegram(
-                bot_token, chat_id,
-                f"<b>Баланс {account['name']}:</b> {bal:,.2f} {account.get('currency', 'PLN')}",
-            )
-        else:
-            await send_telegram(bot_token, chat_id, "Касса не найдена")
+        accounts = await db.accounts.find(
+            {"user_id": owner_user_id, "is_active": True}, {"_id": 0},
+        ).to_list(50)
+        lines = ["<b>Балансы счетов:</b>\n"]
+        total = 0
+        for a in accounts:
+            bal = a.get("current_balance", 0)
+            lines.append(f"• {a['name']}: {bal:,.2f} {a.get('currency', 'PLN')}")
+            total += bal
+        lines.append(f"\n<b>Итого: {total:,.2f} zł</b>")
+        await send_telegram(bot_token, chat_id, "\n".join(lines))
         return {"ok": True}
 
     if text == "/last":
@@ -248,9 +250,8 @@ async def telegram_webhook(request: Request):
             {"user_id": owner_user_id, "source": "telegram_cash"},
             {"_id": 0},
         ).sort("created_at", -1).to_list(5)
-
         if not txs:
-            await send_telegram(bot_token, chat_id, "Нет последних операций из бота")
+            await send_telegram(bot_token, chat_id, "Нет операций из бота")
         else:
             lines = ["<b>Последние 5 операций (касса):</b>\n"]
             for t in txs:
@@ -266,36 +267,43 @@ async def telegram_webhook(request: Request):
         await send_telegram(
             bot_token, chat_id,
             "<b>Команды:</b>\n"
-            "/start — начать, выбрать направление\n"
+            "/start — новая операция\n"
+            "/new — новая операция\n"
             "/direction — сменить направление\n"
-            "/balance — баланс кассы\n"
+            "/balance — балансы всех счетов\n"
             "/last — последние 5 операций\n"
             "/help — помощь\n\n"
-            "<b>Формат записи:</b>\n"
-            "<code>1000 Антон зп</code> — расход\n"
-            "<code>+5000 продажа</code> — приход",
+            "<b>Как записать операцию:</b>\n"
+            "1. Нажмите Расход или Приход\n"
+            "2. Выберите направление\n"
+            "3. Введите <code>сумма описание</code>",
         )
         return {"ok": True}
 
-    # === TRANSACTION PARSING ===
-
-    # Check direction is selected
-    if not bot_user.get("current_direction_id"):
-        keyboard = await get_directions_keyboard(owner_user_id)
+    # === TRANSACTION RECORDING ===
+    # Check that type and direction are selected
+    if not bot_user.get("current_type"):
         await send_telegram(
             bot_token, chat_id,
-            "Сначала выберите направление:",
+            "Сначала выберите тип операции:",
+            reply_markup=type_keyboard(),
+        )
+        return {"ok": True}
+
+    if not bot_user.get("current_direction_id"):
+        keyboard = await directions_keyboard(owner_user_id)
+        await send_telegram(
+            bot_token, chat_id,
+            "Выберите направление:",
             reply_markup=keyboard,
         )
         return {"ok": True}
 
-    parsed = parse_transaction_text(text)
+    parsed = parse_amount_text(text)
     if not parsed:
         await send_telegram(
             bot_token, chat_id,
-            "Не удалось распознать. Формат:\n"
-            "<code>1000 Антон зп</code> — расход\n"
-            "<code>+5000 продажа</code> — приход",
+            "Не удалось распознать. Формат: <code>1000 описание</code>",
         )
         return {"ok": True}
 
@@ -305,32 +313,30 @@ async def telegram_webhook(request: Request):
         {"_id": 0},
     )
     if not account:
-        await send_telegram(bot_token, chat_id, "Счёт Cash не найден. Настройте в приложении.")
+        await send_telegram(bot_token, chat_id, "Счёт Cash не найден.")
         return {"ok": True}
 
-    # Try auto-category from rules
-    category_id = ""
-    category_name = ""
+    tx_type = bot_user["current_type"]
+
+    # Auto-category from rules
+    category_id, category_name = "", ""
     if parsed["description"]:
         desc_upper = parsed["description"].strip().upper()
         rule = await db.contractor_category_rules.find_one(
-            {"user_id": owner_user_id, "contractor_name_upper": desc_upper},
-            {"_id": 0},
+            {"user_id": owner_user_id, "contractor_name_upper": desc_upper}, {"_id": 0},
         )
         if rule:
             cat = await db.categories.find_one(
-                {"id": rule["category_id"], "user_id": owner_user_id},
-                {"_id": 0},
+                {"id": rule["category_id"], "user_id": owner_user_id}, {"_id": 0},
             )
             if cat:
-                category_id = cat["id"]
-                category_name = cat["name"]
+                category_id, category_name = cat["id"], cat["name"]
 
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     transaction = Transaction(
         date=date_str,
-        type=parsed["type"],
+        type=tx_type,
         amount=parsed["amount"],
         currency=account.get("currency", "PLN"),
         direction_id=bot_user["current_direction_id"],
@@ -340,7 +346,7 @@ async def telegram_webhook(request: Request):
         account_id=account["id"],
         account_name=account["name"],
         description=parsed["description"] or "Операция из Telegram",
-        comment=f"Telegram: @{telegram_user.get('username', '')} ({telegram_user.get('first_name', '')})",
+        comment=f"Telegram: @{tg_user.get('username', '')} ({tg_user.get('first_name', '')})",
         source="telegram_cash",
         status="fact",
         user_id=owner_user_id,
@@ -349,15 +355,11 @@ async def telegram_webhook(request: Request):
     await db.transactions.insert_one(transaction.model_dump())
     await update_account_balance(account["id"], owner_user_id)
 
-    # Get updated balance
-    updated_account = await db.accounts.find_one(
-        {"id": account["id"], "user_id": owner_user_id},
-        {"_id": 0},
-    )
-    new_balance = updated_account.get("current_balance", 0) if updated_account else 0
+    updated = await db.accounts.find_one({"id": account["id"], "user_id": owner_user_id}, {"_id": 0})
+    new_balance = updated.get("current_balance", 0) if updated else 0
 
-    sign = "+" if parsed["type"] == "income" else "-"
-    type_label = "Приход" if parsed["type"] == "income" else "Расход"
+    sign = "+" if tx_type == "income" else "-"
+    type_label = "Приход" if tx_type == "income" else "Расход"
     cat_info = f"\nКатегория: {category_name}" if category_name else ""
 
     await send_telegram(
@@ -368,27 +370,25 @@ async def telegram_webhook(request: Request):
         f"Счёт: {account['name']}"
         f"{cat_info}\n\n"
         f"Баланс: <b>{new_balance:,.2f} {account.get('currency', 'PLN')}</b>",
+        reply_markup=type_keyboard(),
     )
+
+    # Reset state for next operation
+    await update_bot_user(chat_id, {"current_type": "", "current_direction_id": "", "current_direction_name": ""})
 
     return {"ok": True}
 
 
 @router.post("/telegram/setup-webhook")
-async def setup_webhook(
-    data: dict,
-    current_user: dict = Depends(get_current_user),
-):
-    """Register the Telegram webhook URL."""
+async def setup_webhook(data: dict, current_user: dict = Depends(get_current_user)):
     settings = await db.integration_settings.find_one(
-        {"user_id": current_user["user_id"]},
-        {"_id": 0},
+        {"user_id": current_user["user_id"]}, {"_id": 0},
     )
     if not settings or not settings.get("telegram_bot_token"):
         raise HTTPException(status_code=400, detail="Telegram Bot Token не настроен")
 
     bot_token = settings["telegram_bot_token"]
     webhook_url = data.get("webhook_url", "").strip()
-
     if not webhook_url:
         raise HTTPException(status_code=400, detail="Укажите URL вебхука")
 
@@ -401,28 +401,23 @@ async def setup_webhook(
             result = resp.json()
             if result.get("ok"):
                 return {"status": "success", "message": "Вебхук установлен", "url": webhook_url}
-            else:
-                return {"status": "error", "message": result.get("description", "Ошибка установки вебхука")}
+            return {"status": "error", "message": result.get("description", "Ошибка")}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.delete("/telegram/remove-webhook")
 async def remove_webhook(current_user: dict = Depends(get_current_user)):
-    """Remove the Telegram webhook."""
     settings = await db.integration_settings.find_one(
-        {"user_id": current_user["user_id"]},
-        {"_id": 0},
+        {"user_id": current_user["user_id"]}, {"_id": 0},
     )
     if not settings or not settings.get("telegram_bot_token"):
         raise HTTPException(status_code=400, detail="Telegram Bot Token не настроен")
 
-    bot_token = settings["telegram_bot_token"]
-
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(
-                f"https://api.telegram.org/bot{bot_token}/deleteWebhook",
+                f"https://api.telegram.org/bot{settings['telegram_bot_token']}/deleteWebhook",
             )
             result = resp.json()
             return {"status": "success" if result.get("ok") else "error", "message": result.get("description", "")}
@@ -432,27 +427,21 @@ async def remove_webhook(current_user: dict = Depends(get_current_user)):
 
 @router.get("/telegram/webhook-info")
 async def get_webhook_info(current_user: dict = Depends(get_current_user)):
-    """Get current webhook status."""
     settings = await db.integration_settings.find_one(
-        {"user_id": current_user["user_id"]},
-        {"_id": 0},
+        {"user_id": current_user["user_id"]}, {"_id": 0},
     )
     if not settings or not settings.get("telegram_bot_token"):
         return {"configured": False}
 
-    bot_token = settings["telegram_bot_token"]
-
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(
-                f"https://api.telegram.org/bot{bot_token}/getWebhookInfo",
+                f"https://api.telegram.org/bot{settings['telegram_bot_token']}/getWebhookInfo",
             )
-            result = resp.json()
-            info = result.get("result", {})
+            info = resp.json().get("result", {})
             return {
                 "configured": True,
                 "webhook_url": info.get("url", ""),
-                "has_custom_certificate": info.get("has_custom_certificate", False),
                 "pending_update_count": info.get("pending_update_count", 0),
                 "last_error_message": info.get("last_error_message"),
             }
@@ -462,9 +451,7 @@ async def get_webhook_info(current_user: dict = Depends(get_current_user)):
 
 @router.get("/telegram/bot-users")
 async def get_bot_users(current_user: dict = Depends(get_current_user)):
-    """Get list of Telegram users linked to the bot."""
     users = await db.telegram_bot_users.find(
-        {"owner_user_id": current_user["user_id"]},
-        {"_id": 0},
+        {"owner_user_id": current_user["user_id"]}, {"_id": 0},
     ).to_list(100)
     return {"users": users}

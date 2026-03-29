@@ -255,6 +255,7 @@ async def confirm_cash_import(
 
     imported = []
     balance_updates = {}
+    transfer_target_accounts = set()
 
     for t in txs:
         account_id = t.get("account_id", "")
@@ -277,11 +278,14 @@ async def confirm_cash_import(
                 cat = category_map.get(category_id)
                 category_name = cat["name"] if cat else ""
 
+        tx_type = t.get("type", "expense")
+        to_account_id = t.get("to_account_id") or None
+
         transaction = {
             "id": str(uuid.uuid4()),
             "created_at": datetime.now(timezone.utc).isoformat(),
             "date": t["date"],
-            "type": t.get("type", "expense"),
+            "type": tx_type,
             "amount": abs(float(t["amount"])),
             "currency": t.get("currency", "PLN"),
             "category_id": category_id,
@@ -290,6 +294,7 @@ async def confirm_cash_import(
             "direction_name": direction["name"] if direction else t.get("direction_name", ""),
             "account_id": account_id,
             "account_name": account["name"] if account else t.get("account_name", ""),
+            "to_account_id": to_account_id,
             "contractor_id": None,
             "contractor_name": t.get("contractor", ""),
             "description": t.get("description", ""),
@@ -310,15 +315,20 @@ async def confirm_cash_import(
         if account_id:
             if account_id not in balance_updates:
                 balance_updates[account_id] = 0
-            sign = 1 if t.get("type") == "income" else -1
-            balance_updates[account_id] += sign * abs(float(t["amount"]))
+            if tx_type == "transfer":
+                balance_updates[account_id] -= abs(float(t["amount"]))
+                if to_account_id:
+                    transfer_target_accounts.add(to_account_id)
+            else:
+                sign = 1 if tx_type == "income" else -1
+                balance_updates[account_id] += sign * abs(float(t["amount"]))
 
-    # Update account balances
-    for acc_id, delta in balance_updates.items():
-        await db.accounts.update_one(
-            {"id": acc_id, "user_id": current_user["user_id"]},
-            {"$inc": {"current_balance": delta}},
-        )
+    # Update account balances using proper recalculation
+    from services.balance import update_account_balance
+    for acc_id in balance_updates:
+        await update_account_balance(acc_id, current_user["user_id"])
+    for target_id in transfer_target_accounts:
+        await update_account_balance(target_id, current_user["user_id"])
 
     return {
         "imported_count": len(imported),

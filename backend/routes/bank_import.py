@@ -537,6 +537,7 @@ async def confirm_bank_import(
 
     imported = 0
     rules_to_save = []
+    transfer_target_accounts = set()
 
     for t in transactions_data:
         t_direction_id = t.get("direction_id") or direction_id
@@ -582,6 +583,7 @@ async def confirm_bank_import(
             "direction_name": t_direction_name,
             "account_id": account_id,
             "account_name": account["name"],
+            "to_account_id": t.get("to_account_id") or None,
             "contractor_id": contractor_id,
             "contractor_name": contractor_name,
             "description": t.get("payment_purpose") or t.get("description", ""),
@@ -596,6 +598,10 @@ async def confirm_bank_import(
 
         await db.transactions.insert_one(transaction)
         imported += 1
+
+        # Update target account balance for transfers
+        if t.get("type") == "transfer" and t.get("to_account_id"):
+            transfer_target_accounts.add(t["to_account_id"])
 
     # Save contractor → category rules (upsert)
     for rule in rules_to_save:
@@ -618,6 +624,8 @@ async def confirm_bank_import(
     # Update account balance
     from services.balance import update_account_balance
     await update_account_balance(account_id, current_user["user_id"])
+    for target_id in transfer_target_accounts:
+        await update_account_balance(target_id, current_user["user_id"])
 
     return {
         "status": "success",

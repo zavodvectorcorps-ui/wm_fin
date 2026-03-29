@@ -243,6 +243,7 @@ export default function BankImportModal({ open, onOpenChange, onImported }) {
           payment_purpose: t.payment_purpose,
           needs_review: t.needs_review || false,
           comment: t.comment || '',
+          to_account_id: t.to_account_id || null,
         }));
 
       const res = await api().post('/bank-import/confirm', {
@@ -569,6 +570,7 @@ export default function BankImportModal({ open, onOpenChange, onImported }) {
                     <TableHead className="w-20">Тип</TableHead>
                     <TableHead className="min-w-[180px]">Контрагент / Описание</TableHead>
                     <TableHead className="w-32">Направление</TableHead>
+                    <TableHead className="w-32">На счёт</TableHead>
                     <TableHead className="w-32">Категория</TableHead>
                     <TableHead className="w-28 text-right">Сумма</TableHead>
                     <TableHead className="w-36">Комментарий</TableHead>
@@ -602,10 +604,19 @@ export default function BankImportModal({ open, onOpenChange, onImported }) {
                         </TableCell>
                         <TableCell className="text-xs font-mono">{t.original_date || t.date}</TableCell>
                         <TableCell>
-                          {t.type === 'income'
-                            ? <Badge className="bg-emerald-600/20 text-emerald-500 text-xs">Приход</Badge>
-                            : <Badge className="bg-rose-600/20 text-rose-500 text-xs">Расход</Badge>
-                          }
+                          <Select
+                            value={t.type}
+                            onValueChange={v => updateTxField(idx, 'type', v)}
+                          >
+                            <SelectTrigger className="h-7 text-xs text-foreground border-border bg-card w-24" data-testid={`tx-type-${idx}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="income">Приход</SelectItem>
+                              <SelectItem value="expense">Расход</SelectItem>
+                              <SelectItem value="transfer">Перевод</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </TableCell>
                         <TableCell>
                           <div>
@@ -638,6 +649,26 @@ export default function BankImportModal({ open, onOpenChange, onImported }) {
                               ))}
                             </SelectContent>
                           </Select>
+                        </TableCell>
+                        <TableCell>
+                          {t.type === 'transfer' ? (
+                            <Select
+                              value={t.to_account_id || '__none__'}
+                              onValueChange={v => updateTxField(idx, 'to_account_id', v === '__none__' ? '' : v)}
+                            >
+                              <SelectTrigger className="h-7 text-xs text-foreground border-border bg-card" data-testid={`tx-to-account-${idx}`}>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__none__">Выберите</SelectItem>
+                                {accounts.filter(a => a.is_active && a.id !== selectedAccount).map(a => (
+                                  <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           <Select
