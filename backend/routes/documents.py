@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Query
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Query, Body
 from fastapi.responses import StreamingResponse
 from typing import List, Optional
 from pathlib import Path
@@ -9,13 +9,81 @@ import zipfile
 
 from database import db
 from auth import get_current_user
-from models import Document, DocumentCreate
+from models import Document, DocumentCreate, DocumentFolder
 
 router = APIRouter(prefix="/api")
 
 UPLOADS_DIR = Path(__file__).parent.parent / "uploads"
 UPLOADS_DIR.mkdir(exist_ok=True)
 
+
+# ─── Folders ───────────────────────────────────────────────────────────────
+
+@router.get("/documents/folders")
+async def get_folders(current_user: dict = Depends(get_current_user)):
+    folders = await db.document_folders.find(
+        {"user_id": current_user["user_id"]}, {"_id": 0}
+    ).sort("name", 1).to_list(200)
+    return folders
+
+
+@router.post("/documents/folders")
+async def create_folder(
+    data: dict = Body(...),
+    current_user: dict = Depends(get_current_user),
+):
+    folder = DocumentFolder(
+        name=data["name"],
+        parent_id=data.get("parent_id"),
+        color=data.get("color", "#6366f1"),
+        user_id=current_user["user_id"],
+    )
+    doc = folder.model_dump()
+    await db.document_folders.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@router.put("/documents/folders/{folder_id}")
+async def update_folder(
+    folder_id: str,
+    data: dict = Body(...),
+    current_user: dict = Depends(get_current_user),
+):
+    update = {}
+    if "name" in data:
+        update["name"] = data["name"]
+    if "color" in data:
+        update["color"] = data["color"]
+    if "parent_id" in data:
+        update["parent_id"] = data["parent_id"]
+
+    result = await db.document_folders.update_one(
+        {"id": folder_id, "user_id": current_user["user_id"]},
+        {"$set": update},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    folder = await db.document_folders.find_one({"id": folder_id}, {"_id": 0})
+    return folder
+
+
+@router.delete("/documents/folders/{folder_id}")
+async def delete_folder(folder_id: str, current_user: dict = Depends(get_current_user)):
+    # Unassign documents from this folder
+    await db.documents.update_many(
+        {"folder_id": folder_id, "user_id": current_user["user_id"]},
+        {"$set": {"folder_id": None}},
+    )
+    result = await db.document_folders.delete_one(
+        {"id": folder_id, "user_id": current_user["user_id"]}
+    )
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    return {"status": "deleted"}
+
+
+# ─── Documents ─────────────────────────────────────────────────────────────
 
 @router.get("/documents", response_model=List[Document])
 async def get_documents(
@@ -24,8 +92,9 @@ async def get_documents(
     type: Optional[str] = None,
     status: Optional[str] = None,
     direction_id: Optional[str] = None,
+    folder_id: Optional[str] = None,
     period: Optional[str] = None,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
 ):
     query = {"user_id": current_user["user_id"]}
 
@@ -42,6 +111,8 @@ async def get_documents(
         query["status"] = status
     if direction_id:
         query["direction_id"] = direction_id
+    if folder_id:
+        query["folder_id"] = folder_id
     if period:
         query["period"] = period
 
@@ -53,7 +124,7 @@ async def get_documents(
 async def get_pending_documents(current_user: dict = Depends(get_current_user)):
     documents = await db.documents.find(
         {"user_id": current_user["user_id"], "status": "pending"},
-        {"_id": 0}
+        {"_id": 0},
     ).sort("created_at", -1).to_list(100)
     return documents
 
@@ -66,8 +137,9 @@ async def upload_document(
     direction_id: Optional[str] = Form(None),
     contractor_id: Optional[str] = Form(None),
     transaction_id: Optional[str] = Form(None),
+    folder_id: Optional[str] = Form(None),
     description: Optional[str] = Form(None),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
 ):
     allowed_types = [".pdf", ".png", ".jpg", ".jpeg", ".xlsx", ".xls"]
     file_ext = os.path.splitext(file.filename)[1].lower()
@@ -112,15 +184,18 @@ async def upload_document(
         contractor_name=contractor_name,
         direction_id=direction_id,
         direction_name=direction_name,
+        folder_id=folder_id if folder_id and folder_id != "none" else None,
         period=period_val,
         status=status_val,
         source="manual",
         description=description,
-        user_id=current_user["user_id"]
+        user_id=current_user["user_id"],
     )
 
-    await db.documents.insert_one(document.model_dump())
-    return document
+    doc = document.model_dump()
+    await db.documents.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
 
 
 @router.get("/documents/file/{filename}")
@@ -136,7 +211,7 @@ async def get_document_file(filename: str):
         ".jpg": "image/jpeg",
         ".jpeg": "image/jpeg",
         ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        ".xls": "application/vnd.ms-excel"
+        ".xls": "application/vnd.ms-excel",
     }
     content_type = content_types.get(ext, "application/octet-stream")
 
@@ -146,7 +221,7 @@ async def get_document_file(filename: str):
     return StreamingResponse(
         io.BytesIO(content),
         media_type=content_type,
-        headers={"Content-Disposition": f"inline; filename={filename}"}
+        headers={"Content-Disposition": f"inline; filename={filename}"},
     )
 
 
@@ -154,7 +229,7 @@ async def get_document_file(filename: str):
 async def update_document(
     document_id: str,
     data: DocumentCreate,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
 ):
     update_data = data.model_dump(exclude_unset=True)
 
@@ -170,7 +245,7 @@ async def update_document(
 
     result = await db.documents.update_one(
         {"id": document_id, "user_id": current_user["user_id"]},
-        {"$set": update_data}
+        {"$set": update_data},
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -179,11 +254,45 @@ async def update_document(
     return document
 
 
+@router.post("/documents/{document_id}/process")
+async def process_document(
+    document_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Mark document as processed without linking to a transaction."""
+    result = await db.documents.update_one(
+        {"id": document_id, "user_id": current_user["user_id"]},
+        {"$set": {"status": "processed"}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Document not found")
+    document = await db.documents.find_one({"id": document_id}, {"_id": 0})
+    return document
+
+
+@router.post("/documents/{document_id}/move")
+async def move_document_to_folder(
+    document_id: str,
+    data: dict = Body(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Move document to a folder."""
+    folder_id = data.get("folder_id")
+    result = await db.documents.update_one(
+        {"id": document_id, "user_id": current_user["user_id"]},
+        {"$set": {"folder_id": folder_id}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Document not found")
+    document = await db.documents.find_one({"id": document_id}, {"_id": 0})
+    return document
+
+
 @router.delete("/documents/{document_id}")
 async def delete_document(document_id: str, current_user: dict = Depends(get_current_user)):
     document = await db.documents.find_one(
         {"id": document_id, "user_id": current_user["user_id"]},
-        {"_id": 0}
+        {"_id": 0},
     )
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -202,7 +311,7 @@ async def delete_document(document_id: str, current_user: dict = Depends(get_cur
 async def link_document_to_transaction(
     document_id: str,
     transaction_id: str,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
 ):
     document = await db.documents.find_one({"id": document_id, "user_id": current_user["user_id"]}, {"_id": 0})
     if not document:
@@ -214,7 +323,7 @@ async def link_document_to_transaction(
 
     await db.documents.update_one(
         {"id": document_id},
-        {"$set": {"transaction_id": transaction_id, "status": "linked"}}
+        {"$set": {"transaction_id": transaction_id, "status": "linked"}},
     )
 
     return {"status": "linked", "document_id": document_id, "transaction_id": transaction_id}
@@ -223,11 +332,11 @@ async def link_document_to_transaction(
 @router.delete("/documents/{document_id}/unlink")
 async def unlink_document_from_transaction(
     document_id: str,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
 ):
     await db.documents.update_one(
         {"id": document_id, "user_id": current_user["user_id"]},
-        {"$set": {"transaction_id": None, "status": "pending"}}
+        {"$set": {"transaction_id": None, "status": "pending"}},
     )
     return {"status": "unlinked"}
 
@@ -235,11 +344,11 @@ async def unlink_document_from_transaction(
 @router.get("/transactions/{transaction_id}/documents")
 async def get_transaction_documents(
     transaction_id: str,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
 ):
     documents = await db.documents.find(
         {"transaction_id": transaction_id, "user_id": current_user["user_id"]},
-        {"_id": 0}
+        {"_id": 0},
     ).to_list(100)
     return documents
 
@@ -248,7 +357,7 @@ async def get_transaction_documents(
 async def export_documents(
     period: str = Query(..., description="Period in YYYY-MM format"),
     types: Optional[str] = Query(None, description="Comma-separated document types"),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
 ):
     query = {"user_id": current_user["user_id"], "period": period}
 
@@ -286,17 +395,17 @@ async def export_documents(
     return StreamingResponse(
         zip_buffer,
         media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="documents_{period}.zip"'}
+        headers={"Content-Disposition": f'attachment; filename="documents_{period}.zip"'},
     )
 
 
 @router.get("/documents/by-transaction/{transaction_id}", response_model=List[Document])
 async def get_documents_by_transaction(
     transaction_id: str,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
 ):
     documents = await db.documents.find(
         {"user_id": current_user["user_id"], "transaction_id": transaction_id},
-        {"_id": 0}
+        {"_id": 0},
     ).to_list(100)
     return documents

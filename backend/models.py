@@ -246,8 +246,9 @@ class Document(BaseModel):
     contractor_name: Optional[str] = None
     direction_id: Optional[str] = None
     direction_name: Optional[str] = None
+    folder_id: Optional[str] = None
     period: Optional[str] = None
-    status: Literal["linked", "pending"] = "pending"
+    status: Literal["linked", "pending", "processed"] = "pending"
     source: Literal["manual", "email", "telegram_bot"] = "manual"
     description: Optional[str] = None
     user_id: str = ""
@@ -259,8 +260,19 @@ class DocumentCreate(BaseModel):
     transaction_id: Optional[str] = None
     contractor_id: Optional[str] = None
     direction_id: Optional[str] = None
+    folder_id: Optional[str] = None
     period: Optional[str] = None
     description: Optional[str] = None
+
+
+class DocumentFolder(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    parent_id: Optional[str] = None
+    color: str = "#6366f1"
+    user_id: str = ""
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 class Notification(BaseModel):

@@ -456,12 +456,24 @@ export const IntegrationsPage = () => {
 
               {/* Info */}
               <div className="bg-muted/50 rounded-lg p-4 space-y-2">
-                <p className="text-sm font-medium">Выгружаемые данные:</p>
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-sm font-medium">Автоматический бэкап</p>
+                  <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
+                    <Clock className="h-3 w-3 mr-1" />
+                    Ежедневно в 02:00
+                  </Badge>
+                </div>
+                {backupStatus?.last_backup_at && (
+                  <p className="text-xs text-muted-foreground">
+                    Последний бэкап: {new Date(backupStatus.last_backup_at).toLocaleString('ru-RU')}
+                  </p>
+                )}
+                <p className="text-sm font-medium mt-2">Выгружаемые данные:</p>
                 <ul className="text-sm text-muted-foreground grid grid-cols-2 gap-1">
                   <li>• Операции</li>
                   <li>• Контрагенты</li>
                   <li>• Счета</li>
-                  <li>• Категории</li>
+                  <li>• Наличные</li>
                 </ul>
               </div>
             </CardContent>

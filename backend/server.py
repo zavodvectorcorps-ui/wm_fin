@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from datetime import datetime, timezone
 import os
 import logging
 from dotenv import load_dotenv
@@ -112,17 +113,26 @@ async def startup_event():
     # Schedule Google Sheets backup (daily at 2:00 AM)
     async def scheduled_google_sheets_backup():
         users_with_sheets = await db.integration_settings.find(
-            {"google_sheets_url": {"$exists": True, "$ne": None}},
+            {
+                "google_sheets_url": {"$exists": True, "$ne": None},
+                "google_service_account": {"$exists": True, "$ne": None},
+            },
             {"_id": 0}
         ).to_list(100)
 
         for settings in users_with_sheets:
             try:
-                await backup_to_google_sheets(
+                result = await backup_to_google_sheets(
                     settings["user_id"],
-                    settings["google_sheets_url"]
+                    settings["google_sheets_url"],
+                    settings["google_service_account"],
                 )
-                logger.info(f"Scheduled backup for user {settings['user_id']} completed")
+                if result.get("status") == "success":
+                    await db.integration_settings.update_one(
+                        {"user_id": settings["user_id"]},
+                        {"$set": {"last_backup_at": datetime.now(timezone.utc).isoformat()}}
+                    )
+                logger.info(f"Scheduled backup for user {settings['user_id']}: {result.get('status')}")
             except Exception as e:
                 logger.error(f"Scheduled backup failed for user {settings['user_id']}: {e}")
 

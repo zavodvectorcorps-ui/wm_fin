@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -11,12 +11,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Textarea } from '../components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
+import { Calendar } from '../components/ui/calendar';
 import { 
   Upload, FileText, Image, FileSpreadsheet, File, Download, 
-  Paperclip, Eye, Trash2, Search, Filter, AlertCircle, CheckCircle2
+  Eye, Trash2, AlertCircle, CheckCircle2, FolderPlus, Folder, FolderOpen,
+  CalendarIcon, ChevronRight, MoreHorizontal, ArrowRight, CheckCheck, X
 } from 'lucide-react';
 import { formatDate, getDirectionClass } from '../lib/utils';
 import { toast } from 'sonner';
+import { format } from 'date-fns';
+import { ru } from 'date-fns/locale';
 
 const DOCUMENT_TYPES = [
   { value: 'invoice', label: 'Инвойс' },
@@ -37,6 +42,77 @@ const getFileIcon = (mimeType, fileName) => {
   return File;
 };
 
+const formatFileSize = (bytes) => {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+/* ──── Month picker via Calendar popover ──── */
+const MonthPicker = ({ value, onChange }) => {
+  const [open, setOpen] = useState(false);
+  const selectedDate = value ? new Date(value + '-01') : null;
+
+  const handleSelect = (date) => {
+    if (date) {
+      onChange(format(date, 'yyyy-MM'));
+      setOpen(false);
+    }
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" className="w-full justify-start text-left font-normal" data-testid="filter-period-btn">
+          <CalendarIcon className="mr-2 h-4 w-4" />
+          {value ? format(new Date(value + '-01'), 'LLLL yyyy', { locale: ru }) : 'Выберите период'}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="start">
+        <Calendar
+          mode="single"
+          selected={selectedDate}
+          onSelect={handleSelect}
+          locale={ru}
+          data-testid="filter-period-calendar"
+        />
+        {value && (
+          <div className="p-2 pt-0 flex justify-end">
+            <Button variant="ghost" size="sm" onClick={() => { onChange(''); setOpen(false); }}>
+              <X className="h-3 w-3 mr-1" /> Сбросить
+            </Button>
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+};
+
+/* ──── Folder sidebar item ──── */
+const FolderItem = ({ folder, isActive, onClick, onDelete, docCount }) => (
+  <div
+    role="button"
+    tabIndex={0}
+    onClick={onClick}
+    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClick(); }}
+    data-testid={`folder-${folder.id}`}
+    className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors text-left group cursor-pointer ${
+      isActive ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted/60 text-muted-foreground'
+    }`}
+  >
+    {isActive ? <FolderOpen className="h-4 w-4 shrink-0" style={{ color: folder.color }} /> : <Folder className="h-4 w-4 shrink-0" style={{ color: folder.color }} />}
+    <span className="truncate flex-1">{folder.name}</span>
+    {docCount > 0 && <Badge variant="secondary" className="text-xs h-5 px-1.5">{docCount}</Badge>}
+    <button
+      onClick={(e) => { e.stopPropagation(); onDelete(folder.id); }}
+      className="opacity-0 group-hover:opacity-100 transition-opacity"
+      data-testid={`delete-folder-${folder.id}`}
+    >
+      <Trash2 className="h-3 w-3 text-destructive" />
+    </button>
+  </div>
+);
+
 export const DocumentsPage = () => {
   const { api } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -45,11 +121,16 @@ export const DocumentsPage = () => {
   const [directions, setDirections] = useState([]);
   const [contractors, setContractors] = useState([]);
   const [transactions, setTransactions] = useState([]);
+  const [folders, setFolders] = useState([]);
   
   const [activeTab, setActiveTab] = useState('all');
+  const [activeFolder, setActiveFolder] = useState(null); // null = show all
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [previewDocument, setPreviewDocument] = useState(null);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [newFolderDialogOpen, setNewFolderDialogOpen] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [moveDialogDoc, setMoveDialogDoc] = useState(null);
   
   const [filters, setFilters] = useState({
     type: 'all',
@@ -65,13 +146,13 @@ export const DocumentsPage = () => {
     direction_id: '',
     contractor_id: '',
     transaction_id: '',
+    folder_id: '',
     description: ''
   });
   
   const [exportPeriod, setExportPeriod] = useState(new Date().toISOString().slice(0, 7));
   
   const fileInputRef = useRef(null);
-  const dropZoneRef = useRef(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -81,13 +162,15 @@ export const DocumentsPage = () => {
       if (filters.status !== 'all') params.status = filters.status;
       if (filters.direction_id !== 'all') params.direction_id = filters.direction_id;
       if (filters.period) params.period = filters.period;
+      if (activeFolder) params.folder_id = activeFolder;
       
-      const [docsRes, pendingRes, directionsRes, contractorsRes, transRes] = await Promise.all([
+      const [docsRes, pendingRes, directionsRes, contractorsRes, transRes, foldersRes] = await Promise.all([
         api().get('/documents', { params }),
         api().get('/documents/pending'),
         api().get('/directions'),
         api().get('/contractors'),
-        api().get('/transactions', { params: { status: 'fact' } })
+        api().get('/transactions', { params: { status: 'fact' } }),
+        api().get('/documents/folders'),
       ]);
       
       setDocuments(docsRes.data);
@@ -95,12 +178,13 @@ export const DocumentsPage = () => {
       setDirections(directionsRes.data);
       setContractors(contractorsRes.data);
       setTransactions(transRes.data);
+      setFolders(foldersRes.data);
     } catch (error) {
       toast.error('Ошибка загрузки данных');
     } finally {
       setLoading(false);
     }
-  }, [api, filters]);
+  }, [api, filters, activeFolder]);
 
   useEffect(() => {
     fetchData();
@@ -109,7 +193,7 @@ export const DocumentsPage = () => {
   const handleFileSelect = (e) => {
     const file = e.target.files?.[0];
     if (file) {
-      setUploadData({ ...uploadData, file });
+      setUploadData(prev => ({ ...prev, file, folder_id: activeFolder || '' }));
       setUploadDialogOpen(true);
     }
   };
@@ -118,7 +202,7 @@ export const DocumentsPage = () => {
     e.preventDefault();
     const file = e.dataTransfer.files?.[0];
     if (file) {
-      setUploadData({ ...uploadData, file });
+      setUploadData(prev => ({ ...prev, file, folder_id: activeFolder || '' }));
       setUploadDialogOpen(true);
     }
   };
@@ -137,6 +221,7 @@ export const DocumentsPage = () => {
       if (uploadData.direction_id) formData.append('direction_id', uploadData.direction_id);
       if (uploadData.contractor_id) formData.append('contractor_id', uploadData.contractor_id);
       if (uploadData.transaction_id) formData.append('transaction_id', uploadData.transaction_id);
+      if (uploadData.folder_id) formData.append('folder_id', uploadData.folder_id);
       if (uploadData.description) formData.append('description', uploadData.description);
 
       await api().post('/documents/upload', formData, {
@@ -152,6 +237,7 @@ export const DocumentsPage = () => {
         direction_id: '',
         contractor_id: '',
         transaction_id: '',
+        folder_id: '',
         description: ''
       });
       fetchData();
@@ -170,12 +256,56 @@ export const DocumentsPage = () => {
     }
   };
 
+  const handleProcess = async (id) => {
+    try {
+      await api().post(`/documents/${id}/process`);
+      toast.success('Документ обработан');
+      fetchData();
+    } catch (error) {
+      toast.error('Ошибка обработки');
+    }
+  };
+
+  const handleMoveToFolder = async (docId, folderId) => {
+    try {
+      await api().post(`/documents/${docId}/move`, { folder_id: folderId || null });
+      toast.success('Документ перемещён');
+      setMoveDialogDoc(null);
+      fetchData();
+    } catch (error) {
+      toast.error('Ошибка перемещения');
+    }
+  };
+
+  const handleCreateFolder = async () => {
+    if (!newFolderName.trim()) return;
+    try {
+      await api().post('/documents/folders', { name: newFolderName.trim() });
+      toast.success('Папка создана');
+      setNewFolderDialogOpen(false);
+      setNewFolderName('');
+      fetchData();
+    } catch (error) {
+      toast.error('Ошибка создания папки');
+    }
+  };
+
+  const handleDeleteFolder = async (folderId) => {
+    try {
+      await api().delete(`/documents/folders/${folderId}`);
+      toast.success('Папка удалена');
+      if (activeFolder === folderId) setActiveFolder(null);
+      fetchData();
+    } catch (error) {
+      toast.error('Ошибка удаления папки');
+    }
+  };
+
   const handleExport = async () => {
     try {
       const response = await api().get(`/documents/export?period=${exportPeriod}`, {
         responseType: 'blob'
       });
-      
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -183,7 +313,6 @@ export const DocumentsPage = () => {
       document.body.appendChild(link);
       link.click();
       link.remove();
-      
       toast.success('Архив скачан');
       setExportDialogOpen(false);
     } catch (error) {
@@ -191,20 +320,23 @@ export const DocumentsPage = () => {
     }
   };
 
-  const formatFileSize = (bytes) => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
+  // Count docs per folder
+  const folderDocCounts = {};
+  documents.forEach(d => {
+    if (d.folder_id) {
+      folderDocCounts[d.folder_id] = (folderDocCounts[d.folder_id] || 0) + 1;
+    }
+  });
 
   const displayedDocs = activeTab === 'pending' ? pendingDocs : documents;
+  const activeFolderObj = folders.find(f => f.id === activeFolder);
 
   return (
     <div className="p-6 md:p-8 space-y-6">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Документы</h1>
+          <h1 className="text-3xl font-bold tracking-tight" data-testid="documents-title">Документы</h1>
           <p className="text-muted-foreground">Управление файлами и документами</p>
         </div>
         
@@ -242,179 +374,258 @@ export const DocumentsPage = () => {
         </TabsList>
       </Tabs>
 
-      {/* Filters */}
-      {activeTab === 'all' && (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="grid gap-4 md:grid-cols-4">
-              <Select value={filters.type} onValueChange={(v) => setFilters({ ...filters, type: v })}>
-                <SelectTrigger data-testid="filter-type">
-                  <SelectValue placeholder="Тип документа" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Все типы</SelectItem>
-                  {DOCUMENT_TYPES.map(t => (
-                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+      <div className="flex gap-6">
+        {/* Folder Sidebar */}
+        <div className="w-56 shrink-0 space-y-2 hidden md:block" data-testid="folder-sidebar">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Папки</span>
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setNewFolderDialogOpen(true)} data-testid="create-folder-btn">
+              <FolderPlus className="h-4 w-4" />
+            </Button>
+          </div>
+          
+          <button
+            onClick={() => setActiveFolder(null)}
+            data-testid="folder-all"
+            className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors text-left ${
+              !activeFolder ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted/60 text-muted-foreground'
+            }`}
+          >
+            <Folder className="h-4 w-4 shrink-0" />
+            <span className="flex-1">Все документы</span>
+            <Badge variant="secondary" className="text-xs h-5 px-1.5">{documents.length}</Badge>
+          </button>
 
-              <Select value={filters.status} onValueChange={(v) => setFilters({ ...filters, status: v })}>
-                <SelectTrigger data-testid="filter-status">
-                  <SelectValue placeholder="Статус" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Все статусы</SelectItem>
-                  <SelectItem value="linked">Привязан</SelectItem>
-                  <SelectItem value="pending">Не привязан</SelectItem>
-                </SelectContent>
-              </Select>
+          {folders.map(f => (
+            <FolderItem
+              key={f.id}
+              folder={f}
+              isActive={activeFolder === f.id}
+              onClick={() => setActiveFolder(f.id)}
+              onDelete={handleDeleteFolder}
+              docCount={folderDocCounts[f.id] || 0}
+            />
+          ))}
+        </div>
 
-              <Select value={filters.direction_id} onValueChange={(v) => setFilters({ ...filters, direction_id: v })}>
-                <SelectTrigger data-testid="filter-direction">
-                  <SelectValue placeholder="Направление" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Все направления</SelectItem>
-                  {directions.map(d => (
-                    <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Input 
-                type="month"
-                placeholder="Период"
-                value={filters.period}
-                onChange={(e) => setFilters({ ...filters, period: e.target.value })}
-                data-testid="filter-period"
-              />
+        {/* Main content */}
+        <div className="flex-1 min-w-0 space-y-4">
+          {/* Breadcrumb */}
+          {activeFolder && (
+            <div className="flex items-center gap-1 text-sm text-muted-foreground" data-testid="folder-breadcrumb">
+              <button onClick={() => setActiveFolder(null)} className="hover:text-foreground transition-colors">Все документы</button>
+              <ChevronRight className="h-3 w-3" />
+              <span className="text-foreground font-medium">{activeFolderObj?.name}</span>
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Drop Zone */}
-      <div 
-        ref={dropZoneRef}
-        className="border-2 border-dashed border-border rounded-xl p-8 text-center hover:border-primary/50 transition-colors cursor-pointer"
-        onClick={() => fileInputRef.current?.click()}
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={handleDrop}
-        data-testid="drop-zone"
-      >
-        <Upload className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
-        <p className="text-muted-foreground">
-          Перетащите файлы сюда или нажмите для выбора
-        </p>
-        <p className="text-xs text-muted-foreground mt-1">
-          PDF, PNG, JPG, XLSX до 10MB
-        </p>
-      </div>
-
-      {/* Documents List */}
-      <Card>
-        <CardContent className="p-0">
-          {loading ? (
-            <div className="p-6 space-y-4">
-              {[1,2,3,4,5].map(i => <Skeleton key={i} className="h-16 w-full" />)}
-            </div>
-          ) : displayedDocs.length === 0 ? (
-            <div className="p-12 text-center">
-              <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <p className="text-muted-foreground mb-4">
-                {activeTab === 'pending' ? 'Нет документов, требующих обработки' : 'Нет документов'}
-              </p>
-              <Button onClick={() => fileInputRef.current?.click()}>
-                <Upload className="h-4 w-4 mr-2" />
-                Загрузить документ
-              </Button>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-12"></TableHead>
-                  <TableHead>Название</TableHead>
-                  <TableHead>Тип</TableHead>
-                  <TableHead>Дата</TableHead>
-                  <TableHead>Направление</TableHead>
-                  <TableHead>Статус</TableHead>
-                  <TableHead>Размер</TableHead>
-                  <TableHead className="w-24"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {displayedDocs.map((doc) => {
-                  const FileIcon = getFileIcon(doc.mime_type, doc.file_name);
-                  return (
-                    <TableRow key={doc.id} className="table-row-hover" data-testid={`doc-row-${doc.id}`}>
-                      <TableCell>
-                        <FileIcon className="h-5 w-5 text-muted-foreground" />
-                      </TableCell>
-                      <TableCell>
-                        <p className="font-medium truncate max-w-48">{doc.file_name}</p>
-                        {doc.description && (
-                          <p className="text-sm text-muted-foreground truncate max-w-48">{doc.description}</p>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{getTypeLabel(doc.type)}</Badge>
-                      </TableCell>
-                      <TableCell className="font-mono text-sm">
-                        {doc.document_date ? formatDate(doc.document_date) : '-'}
-                      </TableCell>
-                      <TableCell>
-                        {doc.direction_name ? (
-                          <Badge variant="outline" className={getDirectionClass(doc.direction_name)}>
-                            {doc.direction_name}
-                          </Badge>
-                        ) : '-'}
-                      </TableCell>
-                      <TableCell>
-                        {doc.status === 'linked' ? (
-                          <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/20">
-                            <CheckCircle2 className="h-3 w-3 mr-1" />
-                            Привязан
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="bg-yellow-500/10 text-yellow-500 border-yellow-500/20">
-                            <AlertCircle className="h-3 w-3 mr-1" />
-                            Не привязан
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground text-sm">
-                        {formatFileSize(doc.file_size)}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-1">
-                          <Button 
-                            variant="ghost" 
-                            size="icon"
-                            onClick={() => setPreviewDocument(doc)}
-                            data-testid={`preview-doc-${doc.id}`}
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          <Button 
-                            variant="ghost" 
-                            size="icon"
-                            onClick={() => handleDelete(doc.id)}
-                            data-testid={`delete-doc-${doc.id}`}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
           )}
-        </CardContent>
-      </Card>
+
+          {/* Filters */}
+          {activeTab === 'all' && (
+            <Card>
+              <CardContent className="pt-6">
+                <div className="grid gap-4 md:grid-cols-4">
+                  <Select value={filters.type} onValueChange={(v) => setFilters({ ...filters, type: v })}>
+                    <SelectTrigger data-testid="filter-type">
+                      <SelectValue placeholder="Тип документа" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Все типы</SelectItem>
+                      {DOCUMENT_TYPES.map(t => (
+                        <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Select value={filters.status} onValueChange={(v) => setFilters({ ...filters, status: v })}>
+                    <SelectTrigger data-testid="filter-status">
+                      <SelectValue placeholder="Статус" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Все статусы</SelectItem>
+                      <SelectItem value="linked">Привязан</SelectItem>
+                      <SelectItem value="pending">Не привязан</SelectItem>
+                      <SelectItem value="processed">Обработан</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  <Select value={filters.direction_id} onValueChange={(v) => setFilters({ ...filters, direction_id: v })}>
+                    <SelectTrigger data-testid="filter-direction">
+                      <SelectValue placeholder="Направление" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Все направления</SelectItem>
+                      {directions.map(d => (
+                        <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <MonthPicker
+                    value={filters.period}
+                    onChange={(v) => setFilters({ ...filters, period: v })}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Drop Zone */}
+          <div 
+            className="border-2 border-dashed border-border rounded-xl p-8 text-center hover:border-primary/50 transition-colors cursor-pointer"
+            onClick={() => fileInputRef.current?.click()}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={handleDrop}
+            data-testid="drop-zone"
+          >
+            <Upload className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+            <p className="text-muted-foreground">
+              Перетащите файлы сюда или нажмите для выбора
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              PDF, PNG, JPG, XLSX до 10MB
+            </p>
+          </div>
+
+          {/* Documents List */}
+          <Card>
+            <CardContent className="p-0">
+              {loading ? (
+                <div className="p-6 space-y-4">
+                  {[1,2,3,4,5].map(i => <Skeleton key={i} className="h-16 w-full" />)}
+                </div>
+              ) : displayedDocs.length === 0 ? (
+                <div className="p-12 text-center">
+                  <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground mb-4">
+                    {activeTab === 'pending' ? 'Нет документов, требующих обработки' : activeFolder ? 'В этой папке нет документов' : 'Нет документов'}
+                  </p>
+                  <Button onClick={() => fileInputRef.current?.click()}>
+                    <Upload className="h-4 w-4 mr-2" />
+                    Загрузить документ
+                  </Button>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-12"></TableHead>
+                      <TableHead>Название</TableHead>
+                      <TableHead>Тип</TableHead>
+                      <TableHead>Дата</TableHead>
+                      <TableHead>Направление</TableHead>
+                      <TableHead>Статус</TableHead>
+                      <TableHead>Размер</TableHead>
+                      <TableHead className="w-32"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {displayedDocs.map((doc) => {
+                      const FileIcon = getFileIcon(doc.mime_type, doc.file_name);
+                      const docFolder = folders.find(f => f.id === doc.folder_id);
+                      return (
+                        <TableRow key={doc.id} className="table-row-hover" data-testid={`doc-row-${doc.id}`}>
+                          <TableCell>
+                            <FileIcon className="h-5 w-5 text-muted-foreground" />
+                          </TableCell>
+                          <TableCell>
+                            <p className="font-medium truncate max-w-48">{doc.file_name}</p>
+                            <div className="flex items-center gap-1.5">
+                              {doc.description && (
+                                <p className="text-sm text-muted-foreground truncate max-w-36">{doc.description}</p>
+                              )}
+                              {docFolder && (
+                                <Badge variant="outline" className="text-xs h-5 px-1.5" style={{ borderColor: docFolder.color, color: docFolder.color }}>
+                                  <Folder className="h-3 w-3 mr-0.5" />{docFolder.name}
+                                </Badge>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{getTypeLabel(doc.type)}</Badge>
+                          </TableCell>
+                          <TableCell className="font-mono text-sm">
+                            {doc.document_date ? formatDate(doc.document_date) : '-'}
+                          </TableCell>
+                          <TableCell>
+                            {doc.direction_name ? (
+                              <Badge variant="outline" className={getDirectionClass(doc.direction_name)}>
+                                {doc.direction_name}
+                              </Badge>
+                            ) : '-'}
+                          </TableCell>
+                          <TableCell>
+                            {doc.status === 'linked' ? (
+                              <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/20">
+                                <CheckCircle2 className="h-3 w-3 mr-1" />
+                                Привязан
+                              </Badge>
+                            ) : doc.status === 'processed' ? (
+                              <Badge variant="outline" className="bg-blue-500/10 text-blue-500 border-blue-500/20">
+                                <CheckCheck className="h-3 w-3 mr-1" />
+                                Обработан
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="bg-yellow-500/10 text-yellow-500 border-yellow-500/20">
+                                <AlertCircle className="h-3 w-3 mr-1" />
+                                Не привязан
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground text-sm">
+                            {formatFileSize(doc.file_size)}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-1">
+                              {doc.status === 'pending' && (
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon"
+                                  title="Обработать"
+                                  onClick={() => handleProcess(doc.id)}
+                                  data-testid={`process-doc-${doc.id}`}
+                                >
+                                  <CheckCheck className="h-4 w-4 text-blue-500" />
+                                </Button>
+                              )}
+                              <Button 
+                                variant="ghost" 
+                                size="icon"
+                                title="Переместить в папку"
+                                onClick={() => setMoveDialogDoc(doc)}
+                                data-testid={`move-doc-${doc.id}`}
+                              >
+                                <ArrowRight className="h-4 w-4" />
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="icon"
+                                title="Просмотр"
+                                onClick={() => setPreviewDocument(doc)}
+                                data-testid={`preview-doc-${doc.id}`}
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="icon"
+                                title="Удалить"
+                                onClick={() => handleDelete(doc.id)}
+                                data-testid={`delete-doc-${doc.id}`}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
 
       {/* Upload Dialog */}
       <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
@@ -459,26 +670,42 @@ export const DocumentsPage = () => {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>Направление</Label>
-              <Select value={uploadData.direction_id} onValueChange={(v) => setUploadData({ ...uploadData, direction_id: v })}>
-                <SelectTrigger data-testid="upload-direction">
-                  <SelectValue placeholder="Выберите направление" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Не указано</SelectItem>
-                  {directions.map(d => (
-                    <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Направление</Label>
+                <Select value={uploadData.direction_id} onValueChange={(v) => setUploadData({ ...uploadData, direction_id: v })}>
+                  <SelectTrigger data-testid="upload-direction">
+                    <SelectValue placeholder="Выберите" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Не указано</SelectItem>
+                    {directions.map(d => (
+                      <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Папка</Label>
+                <Select value={uploadData.folder_id} onValueChange={(v) => setUploadData({ ...uploadData, folder_id: v })}>
+                  <SelectTrigger data-testid="upload-folder">
+                    <SelectValue placeholder="Без папки" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Без папки</SelectItem>
+                    {folders.map(f => (
+                      <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             <div className="space-y-2">
-              <Label>Привязать к операции</Label>
+              <Label>Привязать к операции (необязательно)</Label>
               <Select value={uploadData.transaction_id} onValueChange={(v) => setUploadData({ ...uploadData, transaction_id: v })}>
                 <SelectTrigger data-testid="upload-transaction">
-                  <SelectValue placeholder="Выберите операцию" />
+                  <SelectValue placeholder="Не привязывать" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Не привязывать</SelectItem>
@@ -506,6 +733,39 @@ export const DocumentsPage = () => {
             <Button variant="outline" onClick={() => setUploadDialogOpen(false)}>Отмена</Button>
             <Button onClick={handleUpload} data-testid="upload-submit-btn">Загрузить</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Move to Folder Dialog */}
+      <Dialog open={!!moveDialogDoc} onOpenChange={() => setMoveDialogDoc(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Переместить в папку</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 py-4">
+            <button
+              onClick={() => handleMoveToFolder(moveDialogDoc?.id, null)}
+              className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm hover:bg-muted/60 transition-colors text-left"
+              data-testid="move-to-root"
+            >
+              <Folder className="h-4 w-4" />
+              <span>Без папки</span>
+            </button>
+            {folders.map(f => (
+              <button
+                key={f.id}
+                onClick={() => handleMoveToFolder(moveDialogDoc?.id, f.id)}
+                className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm hover:bg-muted/60 transition-colors text-left ${
+                  moveDialogDoc?.folder_id === f.id ? 'bg-primary/10 text-primary' : ''
+                }`}
+                data-testid={`move-to-folder-${f.id}`}
+              >
+                <Folder className="h-4 w-4" style={{ color: f.color }} />
+                <span>{f.name}</span>
+                {moveDialogDoc?.folder_id === f.id && <Badge variant="secondary" className="text-xs ml-auto">Текущая</Badge>}
+              </button>
+            ))}
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -547,6 +807,30 @@ export const DocumentsPage = () => {
         </DialogContent>
       </Dialog>
 
+      {/* Create Folder Dialog */}
+      <Dialog open={newFolderDialogOpen} onOpenChange={setNewFolderDialogOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Новая папка</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <Label>Название</Label>
+            <Input
+              value={newFolderName}
+              onChange={(e) => setNewFolderName(e.target.value)}
+              placeholder="Например: Выписки EUR"
+              autoFocus
+              onKeyDown={(e) => { if (e.key === 'Enter') handleCreateFolder(); }}
+              data-testid="new-folder-name-input"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNewFolderDialogOpen(false)}>Отмена</Button>
+            <Button onClick={handleCreateFolder} data-testid="create-folder-submit">Создать</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Export Dialog */}
       <Dialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>
         <DialogContent className="sm:max-w-md">
@@ -557,12 +841,7 @@ export const DocumentsPage = () => {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Период</Label>
-              <Input 
-                type="month"
-                value={exportPeriod}
-                onChange={(e) => setExportPeriod(e.target.value)}
-                data-testid="export-period"
-              />
+              <MonthPicker value={exportPeriod} onChange={setExportPeriod} />
             </div>
             
             <p className="text-sm text-muted-foreground">

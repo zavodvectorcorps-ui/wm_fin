@@ -1,0 +1,126 @@
+{
+  "summary": "Tested Documents page new features: folder CRUD, document process/move, calendar filter, backup status. All 17 backend tests passed. All frontend UI elements verified working. Fixed HTML nesting issue (button inside button) in FolderItem component.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "Backend: POST /api/documents/folders - create folder with name and color (200)",
+    "Backend: GET /api/documents/folders - list all folders (200)",
+    "Backend: DELETE /api/documents/folders/{id} - delete folder (200)",
+    "Backend: DELETE /api/documents/folders/{id} - 404 for nonexistent folder",
+    "Backend: POST /api/documents/{id}/process - mark as processed (200)",
+    "Backend: POST /api/documents/{id}/process - 404 for nonexistent document",
+    "Backend: POST /api/documents/{id}/move - move to folder (200)",
+    "Backend: POST /api/documents/{id}/move - move to root (null folder_id) (200)",
+    "Backend: POST /api/documents/{id}/move - 404 for nonexistent document",
+    "Backend: GET /api/documents?folder_id=... - filter by folder (200)",
+    "Backend: GET /api/documents?status=processed - filter by processed status (200)",
+    "Backend: GET /api/backup/status - returns auto_backup_enabled and last_backup_at (200)",
+    "Backend: POST /api/documents/upload with folder_id - upload to folder (200)",
+    "Backend: Auth required for folders endpoint (401/403)",
+    "Backend: Auth required for process endpoint (401/403)",
+    "Backend: Auth required for move endpoint (401/403)",
+    "Backend: Auth required for backup/status endpoint (401/403)",
+    "Frontend: Documents page loads at /documents route",
+    "Frontend: Folder sidebar visible with create button [data-testid='folder-sidebar']",
+    "Frontend: 'Все документы' tab [data-testid='tab-all-docs']",
+    "Frontend: 'Требуют обработки' tab [data-testid='tab-pending-docs']",
+    "Frontend: Type filter [data-testid='filter-type']",
+    "Frontend: Status filter with 'Обработан' option [data-testid='filter-status']",
+    "Frontend: Direction filter [data-testid='filter-direction']",
+    "Frontend: Calendar period picker [data-testid='filter-period-btn']",
+    "Frontend: Create folder dialog opens [data-testid='create-folder-btn']",
+    "Frontend: Folder name input in dialog [data-testid='new-folder-name-input']",
+    "Frontend: Create folder submit button [data-testid='create-folder-submit']",
+    "Frontend: Upload button [data-testid='upload-doc-btn']",
+    "Frontend: Export button [data-testid='export-docs-btn']",
+    "Frontend: Drop zone [data-testid='drop-zone']",
+    "Frontend: Folder selector in upload dialog [data-testid='upload-folder']",
+    "Frontend: Process button for pending docs [data-testid='process-doc-{id}']",
+    "Frontend: Move button opens dialog [data-testid='move-doc-{id}']",
+    "Frontend: Move dialog shows folder options [data-testid='move-to-folder-{id}']",
+    "Frontend: Preview button [data-testid='preview-doc-{id}']",
+    "Frontend: Delete button [data-testid='delete-doc-{id}']",
+    "Frontend: Folder breadcrumb appears when folder selected",
+    "Frontend: Document status changes to 'Обработан' after process",
+    "Frontend: Document shows folder badge after move"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_documents_folders.py",
+    "/app/test_reports/pytest/pytest_results_documents.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Fixed: HTML nesting issue in FolderItem component - changed outer <button> to <div role='button'> to allow nested delete button",
+    "DocumentsPage.jsx: Well-structured with proper data-testid attributes for all interactive elements",
+    "documents.py: All folder CRUD, process, and move endpoints properly implemented with user_id filtering",
+    "google_sheets.py: backup_status endpoint returns auto_backup_enabled and last_backup_at fields as required"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_documents_folders.py",
+    "/app/frontend/src/pages/DocumentsPage.jsx"
+  ],
+  "success_rate": {
+    "backend": "100% (17/17 tests passed)",
+    "frontend": "100% (all UI elements verified)"
+  },
+  "test_credentials": {
+    "login": "admin",
+    "password": "220066mm"
+  },
+  "seed_data_creation": "Created and cleaned up test folders and documents during testing",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "mocked_apis": {
+    "has_mocked_apis": false,
+    "mocked_apis_list": []
+  },
+  "context_for_next_testing_agent": "Documents page fully tested with new folder features. Key endpoints: POST/GET/DELETE /api/documents/folders, POST /api/documents/{id}/process, POST /api/documents/{id}/move. Calendar filter uses react-day-picker. Status filter includes 'Обработан' (processed). Folder sidebar only visible on md+ screens. Fixed HTML nesting issue in FolderItem component (button inside button -> div with role=button). Existing folder 'Выписки EUR' was created during development.",
+  "features_tested": {
+    "folder_crud": {
+      "status": "PASS",
+      "endpoints": {
+        "create": "POST /api/documents/folders",
+        "list": "GET /api/documents/folders",
+        "delete": "DELETE /api/documents/folders/{id}"
+      }
+    },
+    "document_process": {
+      "status": "PASS",
+      "endpoint": "POST /api/documents/{id}/process",
+      "description": "Marks document as 'processed' without linking to transaction"
+    },
+    "document_move": {
+      "status": "PASS",
+      "endpoint": "POST /api/documents/{id}/move",
+      "description": "Moves document to folder or root (null folder_id)"
+    },
+    "document_filters": {
+      "status": "PASS",
+      "folder_filter": "GET /api/documents?folder_id=...",
+      "status_filter": "GET /api/documents?status=processed"
+    },
+    "calendar_picker": {
+      "status": "PASS",
+      "component": "MonthPicker using react-day-picker",
+      "testid": "filter-period-btn"
+    },
+    "backup_status": {
+      "status": "PASS",
+      "endpoint": "GET /api/backup/status",
+      "fields": ["auto_backup_enabled", "last_backup_at", "configured", "has_url", "has_service_account"]
+    }
+  },
+  "bug_fix_applied": {
+    "file": "/app/frontend/src/pages/DocumentsPage.jsx",
+    "lines": "92-111",
+    "issue": "HTML nesting error: <button> inside <button> in FolderItem component caused hydration warning",
+    "fix": "Changed outer <button> to <div role='button' tabIndex={0}> with keyboard event handlers"
+  }
+}

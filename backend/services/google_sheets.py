@@ -145,15 +145,24 @@ async def trigger_backup(current_user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=400, detail="Service Account JSON не загружен")
 
     result = await backup_to_google_sheets(current_user["user_id"], url, sa)
+    if result.get("status") == "success":
+        await db.integration_settings.update_one(
+            {"user_id": current_user["user_id"]},
+            {"$set": {"last_backup_at": datetime.now(timezone.utc).isoformat()}}
+        )
     return result
 
 
 @router.get("/backup/status")
 async def get_backup_status(current_user: dict = Depends(get_current_user)):
-    config = await get_google_config(current_user["user_id"])
-    url = config.get("google_sheets_url")
-    sa = config.get("google_service_account")
+    settings = await db.integration_settings.find_one(
+        {"user_id": current_user["user_id"]}, {"_id": 0}
+    )
+    if not settings:
+        settings = {}
 
+    url = settings.get("google_sheets_url")
+    sa = settings.get("google_service_account")
     has_url = bool(url)
     has_sa = bool(sa)
     configured = has_url and has_sa
@@ -164,6 +173,8 @@ async def get_backup_status(current_user: dict = Depends(get_current_user)):
         "has_service_account": has_sa,
         "spreadsheet_url": url if has_url else None,
         "service_account_email": sa.get("client_email") if sa else None,
+        "auto_backup_enabled": settings.get("auto_backup_enabled", True),
+        "last_backup_at": settings.get("last_backup_at"),
         "message": "Google Sheets настроен" if configured else "Укажите URL таблицы и загрузите Service Account JSON",
     }
 
