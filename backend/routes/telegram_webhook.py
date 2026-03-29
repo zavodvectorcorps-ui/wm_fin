@@ -349,6 +349,7 @@ async def telegram_webhook(request: Request):
         comment=f"Telegram: @{tg_user.get('username', '')} ({tg_user.get('first_name', '')})",
         source="telegram_cash",
         status="fact",
+        needs_review=not bool(category_id),
         user_id=owner_user_id,
     )
 
