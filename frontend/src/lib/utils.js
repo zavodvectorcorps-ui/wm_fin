@@ -10,17 +10,17 @@ export const formatCurrency = (amount, currency = 'PLN') => {
   const formatted = new Intl.NumberFormat('pl-PL', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(Math.abs(amount));
+  }).format(amount);
   
   const symbols = { PLN: 'zł', EUR: '€', USD: '$' };
   return `${formatted} ${symbols[currency] || currency}`;
 };
 
 export const formatAmount = (amount, type, currency = 'PLN') => {
-  const formatted = formatCurrency(amount, currency);
+  const formatted = formatCurrency(Math.abs(amount), currency);
   if (type === 'income') return `+${formatted}`;
   if (type === 'expense') return `-${formatted}`;
-  return formatted;
+  return formatCurrency(amount, currency);
 };
 
 // Date formatting
