@@ -84,7 +84,7 @@ export const ExpenseAnalysisPage = () => {
         
         <div className="flex gap-2">
           <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger className="w-40" data-testid="period-select">
+            <SelectTrigger className="w-40 bg-card text-foreground" data-testid="period-select">
               <Calendar className="h-4 w-4 mr-2" />
               <SelectValue />
             </SelectTrigger>
@@ -97,7 +97,7 @@ export const ExpenseAnalysisPage = () => {
           </Select>
           
           <Select value={directionId} onValueChange={setDirectionId}>
-            <SelectTrigger className="w-40" data-testid="direction-select">
+            <SelectTrigger className="w-40 bg-card text-foreground" data-testid="direction-select">
               <SelectValue placeholder="Направление" />
             </SelectTrigger>
             <SelectContent>

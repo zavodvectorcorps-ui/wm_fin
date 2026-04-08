@@ -84,7 +84,7 @@ export const ProfitabilityPage = () => {
         </div>
         
         <Select value={period} onValueChange={setPeriod}>
-          <SelectTrigger className="w-48" data-testid="period-select">
+          <SelectTrigger className="w-48 bg-card text-foreground" data-testid="period-select">
             <Calendar className="h-4 w-4 mr-2" />
             <SelectValue />
           </SelectTrigger>

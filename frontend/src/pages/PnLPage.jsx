@@ -83,7 +83,7 @@ export const PnLPage = () => {
         
         <div className="flex gap-2 flex-wrap">
           <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger className="w-40" data-testid="period-select">
+            <SelectTrigger className="w-40 bg-card text-foreground" data-testid="period-select">
               <Calendar className="h-4 w-4 mr-2" />
               <SelectValue />
             </SelectTrigger>
@@ -114,7 +114,7 @@ export const PnLPage = () => {
           )}
           
           <Select value={directionId} onValueChange={setDirectionId}>
-            <SelectTrigger className="w-48" data-testid="direction-select">
+            <SelectTrigger className="w-48 bg-card text-foreground" data-testid="direction-select">
               <SelectValue placeholder="Все направления" />
             </SelectTrigger>
             <SelectContent>

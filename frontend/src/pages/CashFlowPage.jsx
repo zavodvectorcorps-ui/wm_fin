@@ -77,7 +77,7 @@ export const CashFlowPage = () => {
         
         <div className="flex gap-2">
           <Select value={year.toString()} onValueChange={(v) => setYear(parseInt(v))}>
-            <SelectTrigger className="w-32" data-testid="year-select">
+            <SelectTrigger className="w-32 bg-card text-foreground" data-testid="year-select">
               <Calendar className="h-4 w-4 mr-2" />
               <SelectValue />
             </SelectTrigger>
@@ -89,7 +89,7 @@ export const CashFlowPage = () => {
           </Select>
           
           <Select value={directionId} onValueChange={setDirectionId}>
-            <SelectTrigger className="w-48" data-testid="direction-select">
+            <SelectTrigger className="w-48 bg-card text-foreground" data-testid="direction-select">
               <SelectValue placeholder="Все направления" />
             </SelectTrigger>
             <SelectContent>
