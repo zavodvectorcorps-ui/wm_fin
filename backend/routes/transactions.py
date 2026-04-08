@@ -63,12 +63,36 @@ async def get_transactions(
     skip = (page - 1) * per_page
     items = await db.transactions.find(query, {"_id": 0}).sort("date", -1).skip(skip).limit(per_page).to_list(per_page)
 
+    # Aggregate summary for entire filtered period (not just current page)
+    summary_pipeline = [
+        {"$match": query},
+        {"$group": {
+            "_id": {"currency": {"$ifNull": ["$currency", "PLN"]}, "type": "$type"},
+            "total_amount": {"$sum": "$amount"},
+            "count": {"$sum": 1},
+        }},
+    ]
+    summary_raw = await db.transactions.aggregate(summary_pipeline).to_list(100)
+
+    summary = {}
+    for row in summary_raw:
+        cur = row["_id"]["currency"]
+        t = row["_id"]["type"]
+        if cur not in summary:
+            summary[cur] = {"income": 0, "expense": 0, "count": 0}
+        if t == "income":
+            summary[cur]["income"] = row["total_amount"]
+        elif t == "expense":
+            summary[cur]["expense"] = row["total_amount"]
+        summary[cur]["count"] += row["count"]
+
     return {
         "items": items,
         "total": total,
         "page": page,
         "per_page": per_page,
         "pages": (total + per_page - 1) // per_page if per_page else 1,
+        "summary": summary,
     }
 
 

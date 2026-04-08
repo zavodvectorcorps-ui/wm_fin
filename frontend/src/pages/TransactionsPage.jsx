@@ -32,22 +32,15 @@ const sourceIcons = {
   telegram_bot: Bot
 };
 
-const PeriodSummary = ({ transactions, eurPlnRate }) => {
-  // Group by currency
-  const byCurrency = {};
-  for (const t of transactions) {
-    const cur = t.currency || 'PLN';
-    if (!byCurrency[cur]) byCurrency[cur] = { income: 0, expense: 0 };
-    if (t.type === 'income') byCurrency[cur].income += t.amount;
-    else if (t.type === 'expense') byCurrency[cur].expense += t.amount;
-  }
+const PeriodSummary = ({ summary, totalCount, eurPlnRate }) => {
+  if (!summary || Object.keys(summary).length === 0) return null;
 
-  const currencies = Object.keys(byCurrency);
+  const currencies = Object.keys(summary);
   const hasMultiCurrency = currencies.length > 1;
 
   // Total in PLN
   let totalIncomePln = 0, totalExpensePln = 0;
-  for (const [cur, v] of Object.entries(byCurrency)) {
+  for (const [cur, v] of Object.entries(summary)) {
     const rate = cur === 'EUR' && eurPlnRate > 0 ? eurPlnRate : 1;
     totalIncomePln += v.income * rate;
     totalExpensePln += v.expense * rate;
@@ -56,9 +49,8 @@ const PeriodSummary = ({ transactions, eurPlnRate }) => {
 
   return (
     <div className="space-y-2" data-testid="period-summary">
-      {/* Per-currency rows */}
       {currencies.map(cur => {
-        const v = byCurrency[cur];
+        const v = summary[cur];
         const net = v.income - v.expense;
         return (
           <div key={cur} className="grid gap-3 grid-cols-4">
@@ -86,28 +78,15 @@ const PeriodSummary = ({ transactions, eurPlnRate }) => {
                 </p>
               </CardContent>
             </Card>
-            {!hasMultiCurrency && (
-              <Card>
-                <CardContent className="py-3 px-4">
-                  <p className="text-xs text-muted-foreground">Операций</p>
-                  <p className="text-lg font-bold font-mono">{transactions.length}</p>
-                </CardContent>
-              </Card>
-            )}
-            {hasMultiCurrency && (
-              <Card>
-                <CardContent className="py-3 px-4">
-                  <p className="text-xs text-muted-foreground">Операций {cur}</p>
-                  <p className="text-lg font-bold font-mono">
-                    {transactions.filter(t => (t.currency || 'PLN') === cur).length}
-                  </p>
-                </CardContent>
-              </Card>
-            )}
+            <Card>
+              <CardContent className="py-3 px-4">
+                <p className="text-xs text-muted-foreground">Операций {hasMultiCurrency ? cur : ''}</p>
+                <p className="text-lg font-bold font-mono">{v.count}</p>
+              </CardContent>
+            </Card>
           </div>
         );
       })}
-      {/* Combined total in PLN when multi-currency */}
       {hasMultiCurrency && eurPlnRate > 0 && (
         <Card className="border-primary/20">
           <CardContent className="py-3 px-4">
@@ -122,7 +101,7 @@ const PeriodSummary = ({ transactions, eurPlnRate }) => {
                   = {formatCurrency(totalNetPln)}
                 </span>
               </div>
-              <span className="text-xs text-muted-foreground">Всего: {transactions.length}</span>
+              <span className="text-xs text-muted-foreground">Всего: {totalCount}</span>
             </div>
           </CardContent>
         </Card>
@@ -197,6 +176,7 @@ export const TransactionsPage = () => {
   const [perPage] = useState(50);
   const [totalItems, setTotalItems] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
+  const [summary, setSummary] = useState({});
 
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
@@ -252,6 +232,7 @@ export const TransactionsPage = () => {
       setTransactions(paginated.items || []);
       setTotalItems(paginated.total || 0);
       setTotalPages(paginated.pages || 1);
+      setSummary(paginated.summary || {});
       setAccounts(accountsRes.data);
       setCategories(categoriesRes.data);
       setDirections(directionsRes.data);
@@ -448,7 +429,7 @@ export const TransactionsPage = () => {
             <Minus className="h-4 w-4 mr-2" />
             Расход
           </Button>
-          <Button onClick={() => openNewTransaction('transfer')} variant="outline" className="text-foreground border-border" data-testid="add-transfer-btn">
+          <Button onClick={() => openNewTransaction('transfer')} variant="secondary" data-testid="add-transfer-btn">
             <ArrowLeftRight className="h-4 w-4 mr-2" />
             Перевод
           </Button>
@@ -559,8 +540,8 @@ export const TransactionsPage = () => {
       </Card>
 
       {/* Period Summary */}
-      {!loading && transactions.length > 0 && (
-        <PeriodSummary transactions={transactions} eurPlnRate={eurPlnRate} />
+      {!loading && totalItems > 0 && (
+        <PeriodSummary summary={summary} totalCount={totalItems} eurPlnRate={eurPlnRate} />
       )}
 
       {/* Transactions Table */}
@@ -689,17 +670,17 @@ export const TransactionsPage = () => {
             Показано {((page - 1) * perPage) + 1}–{Math.min(page * perPage, totalItems)} из {totalItems}
           </p>
           <div className="flex items-center gap-1">
-            <Button variant="outline" size="icon" className="h-8 w-8" disabled={page <= 1} onClick={() => setPage(1)} data-testid="page-first">
+            <Button variant="secondary" size="icon" className="h-8 w-8" disabled={page <= 1} onClick={() => setPage(1)} data-testid="page-first">
               <ChevronsLeft className="h-4 w-4" />
             </Button>
-            <Button variant="outline" size="icon" className="h-8 w-8" disabled={page <= 1} onClick={() => setPage(p => p - 1)} data-testid="page-prev">
+            <Button variant="secondary" size="icon" className="h-8 w-8" disabled={page <= 1} onClick={() => setPage(p => p - 1)} data-testid="page-prev">
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <span className="px-3 text-sm font-medium">{page} / {totalPages}</span>
-            <Button variant="outline" size="icon" className="h-8 w-8" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} data-testid="page-next">
+            <Button variant="secondary" size="icon" className="h-8 w-8" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} data-testid="page-next">
               <ChevronRight className="h-4 w-4" />
             </Button>
-            <Button variant="outline" size="icon" className="h-8 w-8" disabled={page >= totalPages} onClick={() => setPage(totalPages)} data-testid="page-last">
+            <Button variant="secondary" size="icon" className="h-8 w-8" disabled={page >= totalPages} onClick={() => setPage(totalPages)} data-testid="page-last">
               <ChevronsRight className="h-4 w-4" />
             </Button>
           </div>
