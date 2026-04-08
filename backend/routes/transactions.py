@@ -97,28 +97,38 @@ async def get_transactions(
     skip = (page - 1) * per_page
     items = await db.transactions.find(query, {"_id": 0}).sort("date", -1).skip(skip).limit(per_page).to_list(per_page)
 
-    # Aggregate summary for entire filtered period (not just current page)
+    # Aggregate summary for ENTIRE filtered period using a COPY of the query
+    # to prevent any mutation from the find() cursor above
+    match_query = {k: v for k, v in query.items()}
     summary_pipeline = [
-        {"$match": query},
+        {"$match": match_query},
         {"$group": {
-            "_id": {"currency": {"$ifNull": ["$currency", "PLN"]}, "type": "$type"},
+            "_id": {
+                "currency": {"$ifNull": ["$currency", "PLN"]},
+                "type": "$type",
+            },
             "total_amount": {"$sum": "$amount"},
+            "total_amount_base": {"$sum": {"$ifNull": ["$amount_base", "$amount"]}},
             "count": {"$sum": 1},
         }},
     ]
     summary_raw = await db.transactions.aggregate(summary_pipeline).to_list(100)
 
     summary = {}
+    summary_total_count = 0
     for row in summary_raw:
         cur = row["_id"]["currency"]
         t = row["_id"]["type"]
         if cur not in summary:
-            summary[cur] = {"income": 0, "expense": 0, "count": 0}
+            summary[cur] = {"income": 0, "expense": 0, "income_base": 0, "expense_base": 0, "count": 0}
         if t == "income":
             summary[cur]["income"] = row["total_amount"]
+            summary[cur]["income_base"] = row["total_amount_base"]
         elif t == "expense":
             summary[cur]["expense"] = row["total_amount"]
+            summary[cur]["expense_base"] = row["total_amount_base"]
         summary[cur]["count"] += row["count"]
+        summary_total_count += row["count"]
 
     return {
         "items": items,
@@ -127,6 +137,7 @@ async def get_transactions(
         "per_page": per_page,
         "pages": (total + per_page - 1) // per_page if per_page else 1,
         "summary": summary,
+        "summary_total_count": summary_total_count,
     }
 
 

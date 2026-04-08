@@ -38,12 +38,11 @@ const PeriodSummary = ({ summary, totalCount, eurPlnRate }) => {
   const currencies = Object.keys(summary);
   const hasMultiCurrency = currencies.length > 1;
 
-  // Total in PLN
+  // Total in PLN using amount_base (consistent with dashboard)
   let totalIncomePln = 0, totalExpensePln = 0;
-  for (const [cur, v] of Object.entries(summary)) {
-    const rate = cur === 'EUR' && eurPlnRate > 0 ? eurPlnRate : 1;
-    totalIncomePln += v.income * rate;
-    totalExpensePln += v.expense * rate;
+  for (const [, v] of Object.entries(summary)) {
+    totalIncomePln += v.income_base || v.income || 0;
+    totalExpensePln += v.expense_base || v.expense || 0;
   }
   const totalNetPln = totalIncomePln - totalExpensePln;
 
@@ -87,12 +86,12 @@ const PeriodSummary = ({ summary, totalCount, eurPlnRate }) => {
           </div>
         );
       })}
-      {hasMultiCurrency && eurPlnRate > 0 && (
+      {hasMultiCurrency && (
         <Card className="border-primary/20">
           <CardContent className="py-3 px-4">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <span className="text-xs text-muted-foreground">
-                Итого в PLN (EUR × {eurPlnRate}):
+                Итого в PLN{eurPlnRate > 0 ? ` (EUR × ${eurPlnRate})` : ''}:
               </span>
               <div className="flex gap-4 font-mono text-sm">
                 <span className="text-emerald-500 font-semibold">+{formatCurrency(totalIncomePln)}</span>
@@ -105,6 +104,11 @@ const PeriodSummary = ({ summary, totalCount, eurPlnRate }) => {
             </div>
           </CardContent>
         </Card>
+      )}
+      {!hasMultiCurrency && (
+        <div className="text-xs text-muted-foreground text-right">
+          Всего операций: {totalCount}
+        </div>
       )}
     </div>
   );
