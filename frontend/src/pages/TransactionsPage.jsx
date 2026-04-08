@@ -581,12 +581,18 @@ export const TransactionsPage = () => {
                     </TableCell>
                     <TableCell className="font-mono text-sm">{formatDate(t.date)}</TableCell>
                     <TableCell>
-                      <span className={`font-mono font-semibold ${t.type === 'income' ? 'text-emerald-500' : t.type === 'expense' ? 'text-rose-500' : ''}`}>
+                      <span className={`font-mono font-semibold ${t.type === 'income' ? 'text-emerald-500' : t.type === 'expense' ? 'text-rose-500' : 'text-sky-500'}`}>
                         {t.type === 'income' ? '+' : t.type === 'expense' ? '-' : ''}{formatCurrency(t.amount, t.currency)}
                       </span>
-                      <p className="text-xs text-muted-foreground font-mono">
-                        {formatCurrency(t.balance_after, t.currency)}
-                      </p>
+                      {t.amount_base && t.amount_base !== t.amount && t.exchange_rate ? (
+                        <p className="text-xs text-muted-foreground font-mono">
+                          ≈ {formatCurrency(t.amount_base, 'PLN')}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground font-mono">
+                          {formatCurrency(t.balance_after, t.currency)}
+                        </p>
+                      )}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1.5">

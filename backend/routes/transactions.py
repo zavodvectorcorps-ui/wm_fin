@@ -9,9 +9,43 @@ from database import db
 from auth import get_current_user
 from models import Transaction, TransactionCreate
 from services.balance import update_account_balance
+from routes.exchange_rate import get_nbp_rate
 
 router = APIRouter(prefix="/api")
 logger = logging.getLogger(__name__)
+
+
+async def get_effective_rate(user_id: str) -> float:
+    """Get the effective EUR/PLN rate (manual or NBP)."""
+    settings = await db.integration_settings.find_one(
+        {"user_id": user_id}, {"_id": 0, "manual_eur_pln_rate": 1}
+    )
+    manual = settings.get("manual_eur_pln_rate") if settings else None
+    if manual:
+        return float(manual)
+    return await get_nbp_rate()
+
+
+async def calc_amount_base(amount: float, currency: str, account_id: str, user_id: str):
+    """Convert amount to account's currency. Returns (amount_base, exchange_rate)."""
+    account = await db.accounts.find_one({"id": account_id, "user_id": user_id}, {"_id": 0, "currency": 1})
+    acc_currency = account.get("currency", "PLN") if account else "PLN"
+
+    if currency == acc_currency:
+        return amount, None
+
+    rate = await get_effective_rate(user_id)
+    if rate <= 0:
+        return amount, None
+
+    # EUR -> PLN
+    if currency == "EUR" and acc_currency == "PLN":
+        return round(amount * rate, 2), rate
+    # PLN -> EUR
+    if currency == "PLN" and acc_currency == "EUR":
+        return round(amount / rate, 2), rate
+
+    return amount, None
 
 
 @router.get("/transactions")
@@ -45,7 +79,7 @@ async def get_transactions(
     if status:
         query["status"] = status
     if account_id:
-        query["account_id"] = account_id
+        query["$or"] = [{"account_id": account_id}, {"to_account_id": account_id}]
     if direction_id:
         query["direction_id"] = direction_id
     if category_id:
@@ -106,8 +140,13 @@ async def create_transaction(data: TransactionCreate, current_user: dict = Depen
     direction = await db.directions.find_one({"id": data.direction_id}, {"_id": 0, "name": 1})
     direction_name = direction["name"] if direction else None
 
-    account = await db.accounts.find_one({"id": data.account_id}, {"_id": 0, "name": 1, "current_balance": 1})
+    account = await db.accounts.find_one({"id": data.account_id}, {"_id": 0, "name": 1, "current_balance": 1, "currency": 1})
     account_name = account["name"] if account else None
+
+    # Calculate converted amount if currencies differ
+    amount_base, exchange_rate = await calc_amount_base(
+        data.amount, data.currency, data.account_id, current_user["user_id"]
+    )
 
     to_account_name = None
     if data.to_account_id:
@@ -127,6 +166,8 @@ async def create_transaction(data: TransactionCreate, current_user: dict = Depen
         account_name=account_name,
         to_account_name=to_account_name,
         contractor_name=contractor_name,
+        amount_base=amount_base,
+        exchange_rate=exchange_rate,
         source="manual"
     )
 
@@ -164,6 +205,11 @@ async def update_transaction(transaction_id: str, data: TransactionCreate, curre
     account = await db.accounts.find_one({"id": data.account_id}, {"_id": 0, "name": 1})
     account_name = account["name"] if account else None
 
+    # Calculate converted amount
+    amount_base, exchange_rate = await calc_amount_base(
+        data.amount, data.currency, data.account_id, current_user["user_id"]
+    )
+
     to_account_name = None
     if data.to_account_id:
         to_acc = await db.accounts.find_one({"id": data.to_account_id}, {"_id": 0, "name": 1})
@@ -180,6 +226,8 @@ async def update_transaction(transaction_id: str, data: TransactionCreate, curre
     update_data["account_name"] = account_name
     update_data["to_account_name"] = to_account_name
     update_data["contractor_name"] = contractor_name
+    update_data["amount_base"] = amount_base
+    update_data["exchange_rate"] = exchange_rate
 
     await db.transactions.update_one(
         {"id": transaction_id, "user_id": current_user["user_id"]},

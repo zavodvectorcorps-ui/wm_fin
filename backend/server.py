@@ -117,6 +117,46 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Backfill error: {e}")
 
+    # Backfill amount_base for existing transactions where currency != account currency
+    try:
+        from routes.exchange_rate import get_nbp_rate
+        rate = await get_nbp_rate()
+        if rate > 0:
+            # Find transactions without amount_base that have non-PLN currency on PLN accounts
+            txs = await db.transactions.find(
+                {"amount_base": None},
+                {"_id": 0, "id": 1, "amount": 1, "currency": 1, "account_id": 1}
+            ).to_list(50000)
+            updated = 0
+            for t in txs:
+                acc = await db.accounts.find_one({"id": t["account_id"]}, {"_id": 0, "currency": 1})
+                acc_cur = acc.get("currency", "PLN") if acc else "PLN"
+                tx_cur = t.get("currency", "PLN")
+                if tx_cur != acc_cur and tx_cur == "EUR" and acc_cur == "PLN":
+                    amount_base = round(t["amount"] * rate, 2)
+                    await db.transactions.update_one(
+                        {"id": t["id"]},
+                        {"$set": {"amount_base": amount_base, "exchange_rate": rate}}
+                    )
+                    updated += 1
+                else:
+                    # Same currency — amount_base = amount
+                    await db.transactions.update_one(
+                        {"id": t["id"]},
+                        {"$set": {"amount_base": t["amount"]}}
+                    )
+                    updated += 1
+            if updated:
+                logger.info(f"Backfilled amount_base for {updated} transactions (rate={rate})")
+                # Recalculate all account balances
+                accounts = await db.accounts.find({}, {"_id": 0, "id": 1, "user_id": 1}).to_list(100)
+                from services.balance import update_account_balance
+                for a in accounts:
+                    await update_account_balance(a["id"], a["user_id"])
+                logger.info(f"Recalculated balances for {len(accounts)} accounts")
+    except Exception as e:
+        logger.error(f"Backfill amount_base error: {e}")
+
     # Schedule Telegram summary (weekly on Monday at 9:00)
     scheduler.add_job(
         send_scheduled_telegram_summary,

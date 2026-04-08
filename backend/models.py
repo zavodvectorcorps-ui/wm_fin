@@ -109,7 +109,9 @@ class Transaction(BaseModel):
     date: str
     type: Literal["income", "expense", "transfer"]
     amount: float
+    amount_base: Optional[float] = None  # amount in account's currency (after conversion)
     currency: Literal["PLN", "EUR", "USD"] = "PLN"
+    exchange_rate: Optional[float] = None  # rate used for conversion
     category_id: Optional[str] = None
     category_name: Optional[str] = None
     direction_id: str
