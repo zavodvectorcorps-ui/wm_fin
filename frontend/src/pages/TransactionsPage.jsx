@@ -585,18 +585,51 @@ export const TransactionsPage = () => {
                     </TableCell>
                     <TableCell className="font-mono text-sm">{formatDate(t.date)}</TableCell>
                     <TableCell>
-                      <span className={`font-mono font-semibold ${t.type === 'income' ? 'text-emerald-500' : t.type === 'expense' ? 'text-rose-500' : 'text-sky-500'}`}>
-                        {t.type === 'income' ? '+' : t.type === 'expense' ? '-' : ''}{formatCurrency(t.amount, t.currency)}
-                      </span>
-                      {t.amount_base && t.amount_base !== t.amount && t.exchange_rate ? (
-                        <p className="text-xs text-muted-foreground font-mono">
-                          ≈ {formatCurrency(t.amount_base, 'PLN')}
-                        </p>
-                      ) : (
-                        <p className="text-xs text-muted-foreground font-mono">
-                          {formatCurrency(t.balance_after, t.currency)}
-                        </p>
-                      )}
+                      {(() => {
+                        const isAccountFiltered = filters.account_id && filters.account_id !== 'all';
+                        const isTransferIn = t.type === 'transfer' && isAccountFiltered && t.to_account_id === filters.account_id;
+                        const isTransferOut = t.type === 'transfer' && isAccountFiltered && t.account_id === filters.account_id;
+
+                        const colorClass = t.type === 'income' ? 'text-emerald-500'
+                          : t.type === 'expense' ? 'text-rose-500'
+                          : isTransferIn ? 'text-emerald-500'
+                          : isTransferOut ? 'text-rose-500'
+                          : 'text-sky-500';
+
+                        const sign = t.type === 'income' ? '+'
+                          : t.type === 'expense' ? '-'
+                          : isTransferIn ? '+'
+                          : isTransferOut ? '-'
+                          : '';
+
+                        // For incoming cross-currency transfers, show to_amount_base
+                        const displayAmount = isTransferIn && t.to_amount_base && t.to_amount_base !== t.amount
+                          ? t.to_amount_base : t.amount;
+                        // Currency to display for incoming cross-currency transfers
+                        const displayCurrency = isTransferIn && t.to_amount_base && t.to_amount_base !== t.amount
+                          ? (accounts.find(a => a.id === filters.account_id)?.currency || t.currency) : t.currency;
+
+                        return (
+                          <>
+                            <span className={`font-mono font-semibold ${colorClass}`} data-testid={`amount-${t.id}`}>
+                              {sign}{formatCurrency(displayAmount, displayCurrency)}
+                            </span>
+                            {t.type === 'transfer' && isAccountFiltered ? (
+                              <p className={`text-xs font-medium mt-0.5 ${isTransferIn ? 'text-emerald-400/70' : 'text-rose-400/70'}`} data-testid={`transfer-direction-${t.id}`}>
+                                {isTransferIn ? '↓ Приход' : '↑ Расход'}
+                              </p>
+                            ) : t.amount_base && t.amount_base !== t.amount && t.exchange_rate ? (
+                              <p className="text-xs text-muted-foreground font-mono">
+                                ≈ {formatCurrency(t.amount_base, 'PLN')}
+                              </p>
+                            ) : (
+                              <p className="text-xs text-muted-foreground font-mono">
+                                {formatCurrency(t.balance_after, t.currency)}
+                              </p>
+                            )}
+                          </>
+                        );
+                      })()}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1.5">
