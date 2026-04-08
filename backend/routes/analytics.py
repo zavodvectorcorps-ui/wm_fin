@@ -29,8 +29,12 @@ async def get_analytics_summary(
 
     transactions = await db.transactions.find(query, {"_id": 0}).to_list(10000)
 
-    total_income = sum(t["amount"] for t in transactions if t["type"] == "income")
-    total_expense = sum(t["amount"] for t in transactions if t["type"] == "expense")
+    # Helper: get amount in account's currency
+    def base_amount(t):
+        return t.get("amount_base") if t.get("amount_base") is not None else t["amount"]
+
+    total_income = sum(base_amount(t) for t in transactions if t["type"] == "income")
+    total_expense = sum(base_amount(t) for t in transactions if t["type"] == "expense")
     profit = total_income - total_expense
 
     by_direction = {}
@@ -39,9 +43,9 @@ async def get_analytics_summary(
         if dir_name not in by_direction:
             by_direction[dir_name] = {"income": 0, "expense": 0, "profit": 0}
         if t["type"] == "income":
-            by_direction[dir_name]["income"] += t["amount"]
+            by_direction[dir_name]["income"] += base_amount(t)
         elif t["type"] == "expense":
-            by_direction[dir_name]["expense"] += t["amount"]
+            by_direction[dir_name]["expense"] += base_amount(t)
         by_direction[dir_name]["profit"] = by_direction[dir_name]["income"] - by_direction[dir_name]["expense"]
 
     income_by_category = {}
@@ -49,23 +53,48 @@ async def get_analytics_summary(
     for t in transactions:
         cat_name = t.get("category_name", "Без категории")
         if t["type"] == "income":
-            income_by_category[cat_name] = income_by_category.get(cat_name, 0) + t["amount"]
+            income_by_category[cat_name] = income_by_category.get(cat_name, 0) + base_amount(t)
         elif t["type"] == "expense":
-            expense_by_category[cat_name] = expense_by_category.get(cat_name, 0) + t["amount"]
+            expense_by_category[cat_name] = expense_by_category.get(cat_name, 0) + base_amount(t)
 
     accounts = await db.accounts.find({"user_id": current_user["user_id"], "is_active": True}, {"_id": 0}).to_list(100)
-    total_balance = sum(a.get("current_balance", 0) for a in accounts)
 
-    # Per-account income/expense for the period
+    # Get exchange rate for total balance calculation
+    eur_rate = 0
+    try:
+        from routes.exchange_rate import get_nbp_rate
+        eur_rate = await get_nbp_rate()
+    except Exception:
+        pass
+
+    total_balance = 0
+    for a in accounts:
+        bal = a.get("current_balance", 0)
+        if a.get("currency") == "EUR" and eur_rate > 0:
+            total_balance += bal * eur_rate
+        else:
+            total_balance += bal
+
+    # Per-account income/expense for the period (using amount_base)
     account_stats = {}
     for t in transactions:
         acc_id = t.get("account_id", "")
         if acc_id not in account_stats:
             account_stats[acc_id] = {"income": 0, "expense": 0}
+        amt = base_amount(t)
         if t["type"] == "income":
-            account_stats[acc_id]["income"] += t["amount"]
+            account_stats[acc_id]["income"] += amt
         elif t["type"] == "expense":
-            account_stats[acc_id]["expense"] += t["amount"]
+            account_stats[acc_id]["expense"] += amt
+        elif t["type"] == "transfer":
+            # Outgoing transfer is expense for source account
+            account_stats[acc_id]["expense"] += amt
+            # Incoming transfer is income for target account
+            to_acc = t.get("to_account_id")
+            if to_acc:
+                if to_acc not in account_stats:
+                    account_stats[to_acc] = {"income": 0, "expense": 0}
+                account_stats[to_acc]["income"] += amt
 
     for a in accounts:
         stats = account_stats.get(a["id"], {"income": 0, "expense": 0})
@@ -126,10 +155,11 @@ async def get_daily_balance(
 
     initial_balance = sum(a.get("initial_balance", 0) for a in accounts)
     for t in prev_transactions:
+        amt = t.get("amount_base") if t.get("amount_base") is not None else t["amount"]
         if t["type"] == "income":
-            initial_balance += t["amount"]
+            initial_balance += amt
         elif t["type"] == "expense":
-            initial_balance -= t["amount"]
+            initial_balance -= amt
 
     daily = {}
     running_balance = initial_balance
@@ -146,12 +176,13 @@ async def get_daily_balance(
     for t in transactions:
         date_str = t["date"]
         if date_str in daily:
+            amt = t.get("amount_base") if t.get("amount_base") is not None else t["amount"]
             if t["type"] == "income":
-                daily[date_str]["income"] += t["amount"]
-                running_balance += t["amount"]
+                daily[date_str]["income"] += amt
+                running_balance += amt
             elif t["type"] == "expense":
-                daily[date_str]["expense"] += t["amount"]
-                running_balance -= t["amount"]
+                daily[date_str]["expense"] += amt
+                running_balance -= amt
             daily[date_str]["balance"] = running_balance
 
     running_balance = initial_balance
@@ -186,10 +217,11 @@ async def get_monthly_analytics(
     for t in transactions:
         month_key = t["date"][:7]
         if month_key in months:
+            amt = t.get("amount_base") if t.get("amount_base") is not None else t["amount"]
             if t["type"] == "income":
-                months[month_key]["income"] += t["amount"]
+                months[month_key]["income"] += amt
             elif t["type"] == "expense":
-                months[month_key]["expense"] += t["amount"]
+                months[month_key]["expense"] += amt
             months[month_key]["profit"] = months[month_key]["income"] - months[month_key]["expense"]
 
     return list(months.values())
@@ -234,21 +266,22 @@ async def get_pnl_report(
     for t in transactions:
         cat_name = t.get("category_name", "Без категории")
         cat = next((c for c in categories if c["name"] == cat_name), None)
+        amt = t.get("amount_base") if t.get("amount_base") is not None else t["amount"]
 
         if t["type"] == "income":
-            total_income += t["amount"]
+            total_income += amt
             if cat:
                 group = cat["group"]
                 if group in income_groups:
-                    income_groups[group]["items"][cat_name] = income_groups[group]["items"].get(cat_name, 0) + t["amount"]
-                    income_groups[group]["total"] += t["amount"]
+                    income_groups[group]["items"][cat_name] = income_groups[group]["items"].get(cat_name, 0) + amt
+                    income_groups[group]["total"] += amt
         elif t["type"] == "expense":
-            total_expense += t["amount"]
+            total_expense += amt
             if cat:
                 group = cat["group"]
                 if group in expense_groups:
-                    expense_groups[group]["items"][cat_name] = expense_groups[group]["items"].get(cat_name, 0) + t["amount"]
-                    expense_groups[group]["total"] += t["amount"]
+                    expense_groups[group]["items"][cat_name] = expense_groups[group]["items"].get(cat_name, 0) + amt
+                    expense_groups[group]["total"] += amt
 
     return {
         "period": {"from": date_from, "to": date_to},
@@ -289,17 +322,18 @@ async def get_cashflow_report(
     for t in transactions:
         month_idx = int(t["date"][5:7]) - 1
         cat_name = t.get("category_name", "Без категории")
+        amt = t.get("amount_base") if t.get("amount_base") is not None else t["amount"]
 
         if t["type"] == "income":
-            months[month_idx]["income"] += t["amount"]
+            months[month_idx]["income"] += amt
         elif t["type"] == "expense":
-            months[month_idx]["expense"] += t["amount"]
+            months[month_idx]["expense"] += amt
 
         if cat_name not in months[month_idx]["by_category"]:
             months[month_idx]["by_category"][cat_name] = 0
 
-        amount = t["amount"] if t["type"] == "income" else -t["amount"]
-        months[month_idx]["by_category"][cat_name] += amount
+        signed_amt = amt if t["type"] == "income" else -amt
+        months[month_idx]["by_category"][cat_name] += signed_amt
         months[month_idx]["net"] = months[month_idx]["income"] - months[month_idx]["expense"]
 
     return {
@@ -403,7 +437,7 @@ async def get_expense_analysis(
         dir_name = t.get("direction_name", "Общее")
         contractor = t.get("contractor_name", "Без контрагента")
         date = t["date"]
-        amount = t["amount"]
+        amount = t.get("amount_base") if t.get("amount_base") is not None else t["amount"]
 
         if cat_name not in by_category:
             by_category[cat_name] = {"amount": 0, "count": 0}
@@ -424,7 +458,7 @@ async def get_expense_analysis(
             daily_expenses[date] = 0
         daily_expenses[date] += amount
 
-    total_expense = sum(t["amount"] for t in transactions)
+    total_expense = sum(t.get("amount_base") if t.get("amount_base") is not None else t["amount"] for t in transactions)
 
     top_categories = sorted(by_category.items(), key=lambda x: x[1]["amount"], reverse=True)[:15]
     top_contractors = sorted(by_contractor.items(), key=lambda x: x[1]["amount"], reverse=True)[:10]
@@ -478,9 +512,9 @@ async def get_profitability_report(
         by_direction[dir_name]["transactions"] += 1
 
         if t["type"] == "income":
-            by_direction[dir_name]["income"] += t["amount"]
+            by_direction[dir_name]["income"] += t.get("amount_base") if t.get("amount_base") is not None else t["amount"]
         elif t["type"] == "expense":
-            by_direction[dir_name]["expense"] += t["amount"]
+            by_direction[dir_name]["expense"] += t.get("amount_base") if t.get("amount_base") is not None else t["amount"]
 
     for name, data in by_direction.items():
         data["profit"] = data["income"] - data["expense"]
@@ -544,11 +578,13 @@ async def get_top_contractors(
         contractor_stats[contractor_id]["transactions"] += 1
 
         if t["type"] == "income":
-            contractor_stats[contractor_id]["income"] += t["amount"]
-            contractor_stats[contractor_id]["total"] += t["amount"]
+            amt = t.get("amount_base") if t.get("amount_base") is not None else t["amount"]
+            contractor_stats[contractor_id]["income"] += amt
+            contractor_stats[contractor_id]["total"] += amt
         elif t["type"] == "expense":
-            contractor_stats[contractor_id]["expense"] += t["amount"]
-            contractor_stats[contractor_id]["total"] += t["amount"]
+            amt = t.get("amount_base") if t.get("amount_base") is not None else t["amount"]
+            contractor_stats[contractor_id]["expense"] += amt
+            contractor_stats[contractor_id]["total"] += amt
 
     sorted_contractors = sorted(contractor_stats.values(), key=lambda x: x["total"], reverse=True)[:limit]
 
