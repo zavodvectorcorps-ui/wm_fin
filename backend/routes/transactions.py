@@ -98,7 +98,6 @@ async def get_transactions(
     items = await db.transactions.find(query, {"_id": 0}).sort("date", -1).skip(skip).limit(per_page).to_list(per_page)
 
     # Aggregate summary for ENTIRE filtered period using a COPY of the query
-    # to prevent any mutation from the find() cursor above
     match_query = {k: v for k, v in query.items()}
     summary_pipeline = [
         {"$match": match_query},
@@ -119,6 +118,11 @@ async def get_transactions(
     for row in summary_raw:
         cur = row["_id"]["currency"]
         t = row["_id"]["type"]
+        # When account filter is active, transfers are handled separately below
+        # to properly distinguish direction (in/out) for the filtered account
+        if t == "transfer" and account_id:
+            summary_total_count += row["count"]
+            continue
         if cur not in summary:
             summary[cur] = {"income": 0, "expense": 0, "income_base": 0, "expense_base": 0, "count": 0}
         if t == "income":
@@ -129,6 +133,52 @@ async def get_transactions(
             summary[cur]["expense_base"] = row["total_amount_base"]
         summary[cur]["count"] += row["count"]
         summary_total_count += row["count"]
+
+    # When filtering by a specific account, transfers should count as
+    # income (money IN) or expense (money OUT) for that account.
+    # Only compute when type filter is absent or explicitly "transfer".
+    type_filter = match_query.get("type")
+    if account_id and type_filter in (None, "transfer"):
+        filtered_acc = await db.accounts.find_one(
+            {"id": account_id}, {"_id": 0, "currency": 1}
+        )
+        acc_currency = filtered_acc.get("currency", "PLN") if filtered_acc else "PLN"
+        base_match = {k: v for k, v in match_query.items() if k not in ("$or", "type")}
+
+        if acc_currency not in summary:
+            summary[acc_currency] = {"income": 0, "expense": 0, "income_base": 0, "expense_base": 0, "count": 0}
+
+        # Transfer OUT (source account = filtered) → expense
+        out_pipeline = [
+            {"$match": {**base_match, "account_id": account_id, "type": "transfer"}},
+            {"$group": {
+                "_id": None,
+                "total": {"$sum": {"$ifNull": ["$amount_base", "$amount"]}},
+                "count": {"$sum": 1},
+            }},
+        ]
+        out_result = await db.transactions.aggregate(out_pipeline).to_list(1)
+        if out_result:
+            summary[acc_currency]["expense"] += out_result[0]["total"]
+            summary[acc_currency]["expense_base"] += out_result[0]["total"]
+            summary[acc_currency]["count"] += out_result[0]["count"]
+
+        # Transfer IN (target account = filtered) → income
+        in_pipeline = [
+            {"$match": {**base_match, "to_account_id": account_id, "type": "transfer"}},
+            {"$group": {
+                "_id": None,
+                "total": {"$sum": {
+                    "$ifNull": ["$to_amount_base", {"$ifNull": ["$amount_base", "$amount"]}]
+                }},
+                "count": {"$sum": 1},
+            }},
+        ]
+        in_result = await db.transactions.aggregate(in_pipeline).to_list(1)
+        if in_result:
+            summary[acc_currency]["income"] += in_result[0]["total"]
+            summary[acc_currency]["income_base"] += in_result[0]["total"]
+            summary[acc_currency]["count"] += in_result[0]["count"]
 
     return {
         "items": items,
