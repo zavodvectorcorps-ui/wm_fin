@@ -45,8 +45,16 @@ async def update_account_balance(account_id: str, user_id: str):
         "user_id": user_id,
         "type": "transfer",
         "status": "fact"
-    }, {"_id": 0, "amount": 1, "amount_base": 1})
-    transfer_in_total = sum([effective_amount(t) async for t in transfer_in_cursor])
+    }, {"_id": 0, "amount": 1, "amount_base": 1, "to_amount_base": 1})
+    transfer_in_total = 0
+    async for t in transfer_in_cursor:
+        # Use to_amount_base (amount in target account's currency) if available
+        if t.get("to_amount_base") is not None:
+            transfer_in_total += t["to_amount_base"]
+        elif t.get("amount_base") is not None:
+            transfer_in_total += t["amount_base"]
+        else:
+            transfer_in_total += t["amount"]
 
     new_balance = initial + income_total - expense_total - transfer_out_total + transfer_in_total
 

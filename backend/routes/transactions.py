@@ -148,10 +148,16 @@ async def create_transaction(data: TransactionCreate, current_user: dict = Depen
         data.amount, data.currency, data.account_id, current_user["user_id"]
     )
 
+    # For transfers: calculate amount in target account's currency
+    to_amount_base = None
     to_account_name = None
     if data.to_account_id:
-        to_acc = await db.accounts.find_one({"id": data.to_account_id}, {"_id": 0, "name": 1})
+        to_acc = await db.accounts.find_one({"id": data.to_account_id}, {"_id": 0, "name": 1, "currency": 1})
         to_account_name = to_acc["name"] if to_acc else None
+        to_amount_base_val, _ = await calc_amount_base(
+            data.amount, data.currency, data.to_account_id, current_user["user_id"]
+        )
+        to_amount_base = to_amount_base_val
 
     contractor_name = None
     if data.contractor_id:
@@ -167,6 +173,7 @@ async def create_transaction(data: TransactionCreate, current_user: dict = Depen
         to_account_name=to_account_name,
         contractor_name=contractor_name,
         amount_base=amount_base,
+        to_amount_base=to_amount_base,
         exchange_rate=exchange_rate,
         source="manual"
     )
@@ -210,10 +217,15 @@ async def update_transaction(transaction_id: str, data: TransactionCreate, curre
         data.amount, data.currency, data.account_id, current_user["user_id"]
     )
 
+    to_amount_base = None
     to_account_name = None
     if data.to_account_id:
         to_acc = await db.accounts.find_one({"id": data.to_account_id}, {"_id": 0, "name": 1})
         to_account_name = to_acc["name"] if to_acc else None
+        to_amount_base_val, _ = await calc_amount_base(
+            data.amount, data.currency, data.to_account_id, current_user["user_id"]
+        )
+        to_amount_base = to_amount_base_val
 
     contractor_name = None
     if data.contractor_id:
@@ -227,6 +239,7 @@ async def update_transaction(transaction_id: str, data: TransactionCreate, curre
     update_data["to_account_name"] = to_account_name
     update_data["contractor_name"] = contractor_name
     update_data["amount_base"] = amount_base
+    update_data["to_amount_base"] = to_amount_base
     update_data["exchange_rate"] = exchange_rate
 
     await db.transactions.update_one(

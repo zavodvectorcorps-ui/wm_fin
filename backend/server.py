@@ -132,20 +132,30 @@ async def startup_event():
                 acc = await db.accounts.find_one({"id": t["account_id"]}, {"_id": 0, "currency": 1})
                 acc_cur = acc.get("currency", "PLN") if acc else "PLN"
                 tx_cur = t.get("currency", "PLN")
+                update_fields = {}
                 if tx_cur != acc_cur and tx_cur == "EUR" and acc_cur == "PLN":
-                    amount_base = round(t["amount"] * rate, 2)
-                    await db.transactions.update_one(
-                        {"id": t["id"]},
-                        {"$set": {"amount_base": amount_base, "exchange_rate": rate}}
-                    )
-                    updated += 1
+                    update_fields["amount_base"] = round(t["amount"] * rate, 2)
+                    update_fields["exchange_rate"] = rate
+                elif tx_cur != acc_cur and tx_cur == "PLN" and acc_cur == "EUR":
+                    update_fields["amount_base"] = round(t["amount"] / rate, 2)
+                    update_fields["exchange_rate"] = rate
                 else:
-                    # Same currency — amount_base = amount
-                    await db.transactions.update_one(
-                        {"id": t["id"]},
-                        {"$set": {"amount_base": t["amount"]}}
-                    )
-                    updated += 1
+                    update_fields["amount_base"] = t["amount"]
+
+                # Backfill to_amount_base for transfers
+                to_acc_id = t.get("to_account_id")
+                if t.get("type") == "transfer" and to_acc_id:
+                    to_acc = await db.accounts.find_one({"id": to_acc_id}, {"_id": 0, "currency": 1})
+                    to_cur = to_acc.get("currency", "PLN") if to_acc else "PLN"
+                    if tx_cur != to_cur and tx_cur == "EUR" and to_cur == "PLN":
+                        update_fields["to_amount_base"] = round(t["amount"] * rate, 2)
+                    elif tx_cur != to_cur and tx_cur == "PLN" and to_cur == "EUR":
+                        update_fields["to_amount_base"] = round(t["amount"] / rate, 2)
+                    else:
+                        update_fields["to_amount_base"] = t["amount"]
+
+                await db.transactions.update_one({"id": t["id"]}, {"$set": update_fields})
+                updated += 1
             if updated:
                 logger.info(f"Backfilled amount_base for {updated} transactions (rate={rate})")
                 # Recalculate all account balances

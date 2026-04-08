@@ -94,7 +94,9 @@ async def get_analytics_summary(
             if to_acc:
                 if to_acc not in account_stats:
                     account_stats[to_acc] = {"income": 0, "expense": 0}
-                account_stats[to_acc]["income"] += amt
+                # Use to_amount_base for target account
+                to_amt = t.get("to_amount_base") if t.get("to_amount_base") is not None else amt
+                account_stats[to_acc]["income"] += to_amt
 
     for a in accounts:
         stats = account_stats.get(a["id"], {"income": 0, "expense": 0})
