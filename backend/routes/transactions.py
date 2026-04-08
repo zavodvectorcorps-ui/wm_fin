@@ -74,6 +74,11 @@ async def create_transaction(data: TransactionCreate, current_user: dict = Depen
     account = await db.accounts.find_one({"id": data.account_id}, {"_id": 0, "name": 1, "current_balance": 1})
     account_name = account["name"] if account else None
 
+    to_account_name = None
+    if data.to_account_id:
+        to_acc = await db.accounts.find_one({"id": data.to_account_id}, {"_id": 0, "name": 1})
+        to_account_name = to_acc["name"] if to_acc else None
+
     contractor_name = None
     if data.contractor_id:
         contractor = await db.contractors.find_one({"id": data.contractor_id}, {"_id": 0, "name": 1})
@@ -85,6 +90,7 @@ async def create_transaction(data: TransactionCreate, current_user: dict = Depen
         category_name=category_name,
         direction_name=direction_name,
         account_name=account_name,
+        to_account_name=to_account_name,
         contractor_name=contractor_name,
         source="manual"
     )
@@ -123,6 +129,11 @@ async def update_transaction(transaction_id: str, data: TransactionCreate, curre
     account = await db.accounts.find_one({"id": data.account_id}, {"_id": 0, "name": 1})
     account_name = account["name"] if account else None
 
+    to_account_name = None
+    if data.to_account_id:
+        to_acc = await db.accounts.find_one({"id": data.to_account_id}, {"_id": 0, "name": 1})
+        to_account_name = to_acc["name"] if to_acc else None
+
     contractor_name = None
     if data.contractor_id:
         contractor = await db.contractors.find_one({"id": data.contractor_id}, {"_id": 0, "name": 1})
@@ -132,6 +143,7 @@ async def update_transaction(transaction_id: str, data: TransactionCreate, curre
     update_data["category_name"] = category_name
     update_data["direction_name"] = direction_name
     update_data["account_name"] = account_name
+    update_data["to_account_name"] = to_account_name
     update_data["contractor_name"] = contractor_name
 
     await db.transactions.update_one(

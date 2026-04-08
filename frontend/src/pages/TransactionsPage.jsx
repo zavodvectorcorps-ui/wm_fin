@@ -551,7 +551,11 @@ export const TransactionsPage = () => {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-muted-foreground">{t.contractor_name || '-'}</TableCell>
-                    <TableCell>{t.account_name}</TableCell>
+                    <TableCell>
+                      {t.type === 'transfer' && t.to_account_name
+                        ? <span>{t.account_name} <span className="text-muted-foreground">→</span> {t.to_account_name}</span>
+                        : t.account_name}
+                    </TableCell>
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>

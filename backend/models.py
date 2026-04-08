@@ -117,6 +117,7 @@ class Transaction(BaseModel):
     account_id: str
     account_name: Optional[str] = None
     to_account_id: Optional[str] = None
+    to_account_name: Optional[str] = None
     contractor_id: Optional[str] = None
     contractor_name: Optional[str] = None
     project_id: Optional[str] = None

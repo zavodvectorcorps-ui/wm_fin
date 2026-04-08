@@ -295,6 +295,7 @@ async def confirm_cash_import(
             "account_id": account_id,
             "account_name": account["name"] if account else t.get("account_name", ""),
             "to_account_id": to_account_id,
+            "to_account_name": None,
             "contractor_id": None,
             "contractor_name": t.get("contractor", ""),
             "description": t.get("description", ""),
@@ -309,6 +310,17 @@ async def confirm_cash_import(
 
         await db.transactions.insert_one(transaction)
         transaction.pop("_id", None)
+
+        # Resolve to_account_name for transfers
+        if to_account_id:
+            to_acc = await db.accounts.find_one({"id": to_account_id}, {"_id": 0, "name": 1})
+            if to_acc:
+                transaction["to_account_name"] = to_acc["name"]
+                await db.transactions.update_one(
+                    {"id": transaction["id"]},
+                    {"$set": {"to_account_name": to_acc["name"]}}
+                )
+
         imported.append(transaction)
 
         # Track balance updates per account

@@ -584,6 +584,7 @@ async def confirm_bank_import(
             "account_id": account_id,
             "account_name": account["name"],
             "to_account_id": t.get("to_account_id") or None,
+            "to_account_name": None,
             "contractor_id": contractor_id,
             "contractor_name": contractor_name,
             "description": t.get("payment_purpose") or t.get("description", ""),
@@ -598,6 +599,15 @@ async def confirm_bank_import(
 
         await db.transactions.insert_one(transaction)
         imported += 1
+
+        # Resolve to_account_name for transfers
+        if transaction.get("to_account_id"):
+            to_acc = await db.accounts.find_one({"id": transaction["to_account_id"]}, {"_id": 0, "name": 1})
+            if to_acc:
+                await db.transactions.update_one(
+                    {"id": transaction["id"]},
+                    {"$set": {"to_account_name": to_acc["name"]}}
+                )
 
         # Update target account balance for transfers
         if t.get("type") == "transfer" and t.get("to_account_id"):

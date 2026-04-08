@@ -99,6 +99,24 @@ async def startup_event():
     from services.google_sheets import backup_to_google_sheets
     from database import db
 
+    # Backfill to_account_name for existing transfer transactions
+    try:
+        transfers = await db.transactions.find(
+            {"type": "transfer", "to_account_id": {"$ne": None}, "to_account_name": None},
+            {"_id": 0, "id": 1, "to_account_id": 1}
+        ).to_list(10000)
+        for t in transfers:
+            acc = await db.accounts.find_one({"id": t["to_account_id"]}, {"_id": 0, "name": 1})
+            if acc:
+                await db.transactions.update_one(
+                    {"id": t["id"]},
+                    {"$set": {"to_account_name": acc["name"]}}
+                )
+        if transfers:
+            logger.info(f"Backfilled to_account_name for {len(transfers)} transfers")
+    except Exception as e:
+        logger.error(f"Backfill error: {e}")
+
     # Schedule Telegram summary (weekly on Monday at 9:00)
     scheduler.add_job(
         send_scheduled_telegram_summary,
