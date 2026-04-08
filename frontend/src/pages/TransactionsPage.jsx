@@ -13,13 +13,18 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Textarea } from '../components/ui/textarea';
 import DescriptionAutocomplete from '../components/DescriptionAutocomplete';
 import { Checkbox } from '../components/ui/checkbox';
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
+import { Calendar as CalendarUI } from '../components/ui/calendar';
 import { 
   Plus, Minus, ArrowLeftRight, Search, Filter, Pencil, ArrowDownToLine, Bot, 
-  Trash2, Calendar, MoreHorizontal, Paperclip, FileText, Link2, Unlink, AlertTriangle
+  Trash2, Calendar, MoreHorizontal, Paperclip, FileText, Link2, Unlink, AlertTriangle,
+  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, CalendarIcon, X
 } from 'lucide-react';
 import { formatCurrency, formatDate, getDirectionClass, getStatusLabel, getPeriodDates, getTypeLabel } from '../lib/utils';
 import { toast } from 'sonner';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/dropdown-menu';
+import { format } from 'date-fns';
+import { ru } from 'date-fns/locale';
 
 const sourceIcons = {
   manual: Pencil,
@@ -126,6 +131,37 @@ const PeriodSummary = ({ transactions, eurPlnRate }) => {
   );
 };
 
+const MonthPickerPopover = ({ value, onChange }) => {
+  const [open, setOpen] = useState(false);
+  const selectedDate = value ? new Date(value + '-01') : null;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" className="min-w-[160px] justify-start text-left font-normal" data-testid="month-picker-btn">
+          <CalendarIcon className="mr-2 h-4 w-4" />
+          {value ? format(new Date(value + '-01'), 'LLLL yyyy', { locale: ru }) : 'Месяц'}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="start">
+        <CalendarUI
+          mode="single"
+          selected={selectedDate}
+          onSelect={(date) => {
+            if (date) {
+              onChange(format(date, 'yyyy-MM'));
+              setOpen(false);
+            }
+          }}
+          locale={ru}
+          data-testid="month-picker-calendar"
+        />
+      </PopoverContent>
+    </Popover>
+  );
+};
+
+
 export const TransactionsPage = () => {
   const { api } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -148,6 +184,7 @@ export const TransactionsPage = () => {
   
   const [filters, setFilters] = useState({
     period: 'current_month',
+    customMonth: '',
     type: 'all',
     status: 'all',
     account_id: 'all',
@@ -155,6 +192,11 @@ export const TransactionsPage = () => {
     needs_review: 'all',
     search: ''
   });
+
+  const [page, setPage] = useState(1);
+  const [perPage] = useState(50);
+  const [totalItems, setTotalItems] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
@@ -174,10 +216,20 @@ export const TransactionsPage = () => {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const dates = getPeriodDates(filters.period);
+      let dates;
+      if (filters.period === 'custom_month' && filters.customMonth) {
+        const [y, m] = filters.customMonth.split('-');
+        const lastDay = new Date(Number(y), Number(m), 0).getDate();
+        dates = { from: `${filters.customMonth}-01`, to: `${filters.customMonth}-${lastDay}` };
+      } else {
+        dates = getPeriodDates(filters.period);
+      }
+
       const params = {
         date_from: dates.from,
         date_to: dates.to,
+        page,
+        per_page: perPage,
         ...(filters.type && filters.type !== 'all' && { type: filters.type }),
         ...(filters.status && filters.status !== 'all' && { status: filters.status }),
         ...(filters.account_id && filters.account_id !== 'all' && { account_id: filters.account_id }),
@@ -196,7 +248,10 @@ export const TransactionsPage = () => {
         api().get('/exchange-rate').catch(() => ({ data: { eur_pln: 0 } })),
       ]);
       
-      setTransactions(transRes.data);
+      const paginated = transRes.data;
+      setTransactions(paginated.items || []);
+      setTotalItems(paginated.total || 0);
+      setTotalPages(paginated.pages || 1);
       setAccounts(accountsRes.data);
       setCategories(categoriesRes.data);
       setDirections(directionsRes.data);
@@ -208,11 +263,16 @@ export const TransactionsPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [api, filters]);
+  }, [api, filters, page, perPage]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [filters]);
 
   const toggleNeedsReview = async (e, transactionId) => {
     e.stopPropagation();
@@ -373,7 +433,10 @@ export const TransactionsPage = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Операции</h1>
-          <p className="text-muted-foreground">Управление доходами и расходами</p>
+          <p className="text-muted-foreground">
+            Управление доходами и расходами
+            {totalItems > 0 && <Badge variant="secondary" className="ml-2">{totalItems}</Badge>}
+          </p>
         </div>
         
         <div className="flex gap-2">
@@ -395,23 +458,33 @@ export const TransactionsPage = () => {
       {/* Filters */}
       <Card>
         <CardContent className="pt-6">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
-            <Select value={filters.period} onValueChange={(v) => setFilters({ ...filters, period: v })}>
-              <SelectTrigger data-testid="filter-period">
-                <Calendar className="h-4 w-4 mr-2" />
-                <SelectValue placeholder="Период" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="current_month">Текущий месяц</SelectItem>
-                <SelectItem value="prev_month">Прошлый месяц</SelectItem>
-                <SelectItem value="quarter">Квартал</SelectItem>
-                <SelectItem value="year">Текущий год</SelectItem>
-                <SelectItem value="year_2025">2025 год</SelectItem>
-                <SelectItem value="year_2024">2024 год</SelectItem>
-                <SelectItem value="year_2023">2023 год</SelectItem>
-                <SelectItem value="all_time">Всё время</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+            <div className="lg:col-span-2 flex gap-2">
+              <Select value={filters.period} onValueChange={(v) => setFilters({ ...filters, period: v, customMonth: v === 'custom_month' ? filters.customMonth : '' })}>
+                <SelectTrigger data-testid="filter-period" className="flex-1">
+                  <Calendar className="h-4 w-4 mr-2" />
+                  <SelectValue placeholder="Период" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="current_month">Текущий месяц</SelectItem>
+                  <SelectItem value="prev_month">Прошлый месяц</SelectItem>
+                  <SelectItem value="custom_month">Конкретный месяц</SelectItem>
+                  <SelectItem value="quarter">Квартал</SelectItem>
+                  <SelectItem value="year">Текущий год</SelectItem>
+                  <SelectItem value="year_2025">2025 год</SelectItem>
+                  <SelectItem value="year_2024">2024 год</SelectItem>
+                  <SelectItem value="year_2023">2023 год</SelectItem>
+                  <SelectItem value="all_time">Всё время</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {filters.period === 'custom_month' && (
+                <MonthPickerPopover
+                  value={filters.customMonth}
+                  onChange={(v) => setFilters({ ...filters, customMonth: v })}
+                />
+              )}
+            </div>
 
             <Select value={filters.type} onValueChange={(v) => setFilters({ ...filters, type: v })}>
               <SelectTrigger data-testid="filter-type">
@@ -608,6 +681,30 @@ export const TransactionsPage = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between" data-testid="pagination">
+          <p className="text-sm text-muted-foreground">
+            Показано {((page - 1) * perPage) + 1}–{Math.min(page * perPage, totalItems)} из {totalItems}
+          </p>
+          <div className="flex items-center gap-1">
+            <Button variant="outline" size="icon" className="h-8 w-8" disabled={page <= 1} onClick={() => setPage(1)} data-testid="page-first">
+              <ChevronsLeft className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="icon" className="h-8 w-8" disabled={page <= 1} onClick={() => setPage(p => p - 1)} data-testid="page-prev">
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="px-3 text-sm font-medium">{page} / {totalPages}</span>
+            <Button variant="outline" size="icon" className="h-8 w-8" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} data-testid="page-next">
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="icon" className="h-8 w-8" disabled={page >= totalPages} onClick={() => setPage(totalPages)} data-testid="page-last">
+              <ChevronsRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Document Linking Dialog */}
       <Dialog open={linkDocDialogOpen} onOpenChange={setLinkDocDialogOpen}>

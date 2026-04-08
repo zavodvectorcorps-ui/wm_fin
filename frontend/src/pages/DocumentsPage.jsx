@@ -226,7 +226,7 @@ export const DocumentsPage = () => {
         api().get('/documents/pending'),
         api().get('/directions'),
         api().get('/contractors'),
-        api().get('/transactions', { params: { status: 'fact' } }),
+        api().get('/transactions', { params: { status: 'fact', per_page: 50 } }),
         api().get('/documents/folders'),
       ]);
       
@@ -234,7 +234,7 @@ export const DocumentsPage = () => {
       setPendingDocs(pendingRes.data);
       setDirections(directionsRes.data);
       setContractors(contractorsRes.data);
-      setTransactions(transRes.data);
+      setTransactions(transRes.data.items || transRes.data);
       setFolders(foldersRes.data);
     } catch (error) {
       toast.error('Ошибка загрузки данных');

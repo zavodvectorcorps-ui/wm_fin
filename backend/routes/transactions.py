@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api")
 logger = logging.getLogger(__name__)
 
 
-@router.get("/transactions", response_model=List[Transaction])
+@router.get("/transactions")
 async def get_transactions(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
@@ -27,6 +27,8 @@ async def get_transactions(
     source: Optional[str] = None,
     search: Optional[str] = None,
     needs_review: Optional[bool] = None,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=1, le=200),
     current_user: dict = Depends(get_current_user)
 ):
     query = {"user_id": current_user["user_id"]}
@@ -57,8 +59,17 @@ async def get_transactions(
     if needs_review is not None:
         query["needs_review"] = needs_review
 
-    transactions = await db.transactions.find(query, {"_id": 0}).sort("date", -1).to_list(1000)
-    return transactions
+    total = await db.transactions.count_documents(query)
+    skip = (page - 1) * per_page
+    items = await db.transactions.find(query, {"_id": 0}).sort("date", -1).skip(skip).limit(per_page).to_list(per_page)
+
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "pages": (total + per_page - 1) // per_page if per_page else 1,
+    }
 
 
 @router.post("/transactions", response_model=Transaction)
