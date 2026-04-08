@@ -27,6 +27,8 @@ import IntegrationsPage from './pages/IntegrationsPage';
 import UsersPage from './pages/UsersPage';
 import ExpensePlanPage from './pages/ExpensePlanPage';
 
+import MobileHomePage from './pages/MobileHomePage';
+
 // Protected Route wrapper
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -128,6 +130,12 @@ function AppRoutes() {
       
       {/* Protected routes */}
       <Route path="/" element={
+        <ProtectedRoute>
+          <MobileHomePage />
+        </ProtectedRoute>
+      } />
+      
+      <Route path="/dashboard" element={
         <ProtectedRoute>
           <DashboardPage />
         </ProtectedRoute>

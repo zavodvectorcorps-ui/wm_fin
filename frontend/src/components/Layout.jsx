@@ -19,7 +19,7 @@ import { cn } from './ui/utils';
 import { NotificationsDropdown } from './Notifications';
 
 const menuItems = [
-  { icon: LayoutDashboard, label: 'Рабочий стол', path: '/' },
+  { icon: LayoutDashboard, label: 'Рабочий стол', path: '/dashboard' },
   { icon: Receipt, label: 'Операции', path: '/transactions' },
   { icon: FolderKanban, label: 'Проекты', path: '/projects' },
   { icon: Users, label: 'Контрагенты', path: '/contractors' },
@@ -222,7 +222,7 @@ export const Layout = ({ children }) => {
       // D - dashboard
       if (e.key === 'd' || e.key === 'D' || e.key === 'в' || e.key === 'В') {
         e.preventDefault();
-        navigate('/');
+        navigate('/dashboard');
       }
     };
     

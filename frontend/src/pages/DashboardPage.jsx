@@ -11,7 +11,6 @@ import {
 } from 'lucide-react';
 import { formatCurrency, getPeriodDates, getDirectionClass, getChangePercent } from '../lib/utils';
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import MobileHomePage from './MobileHomePage';
 
 const COLORS = {
   'Теплицы': '#3b82f6',
@@ -176,13 +175,7 @@ export const DashboardPage = () => {
   })) : [];
 
   return (
-    <>
-      {/* Mobile: Quick action page */}
-      <div className="lg:hidden">
-        <MobileHomePage />
-      </div>
-      {/* Desktop: Full dashboard */}
-      <div className="hidden lg:block p-6 md:p-8 space-y-6">
+    <div className="p-6 md:p-8 space-y-6">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -608,7 +601,6 @@ export const DashboardPage = () => {
         </Card>
       </div>
     </div>
-    </>
   );
 };
 

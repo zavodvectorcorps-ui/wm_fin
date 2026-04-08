@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -12,6 +13,7 @@ import { toast } from 'sonner';
 
 const MobileHomePage = () => {
   const { api } = useAuth();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [totalBalance, setTotalBalance] = useState(0);
   const [income, setIncome] = useState(0);
@@ -35,6 +37,13 @@ const MobileHomePage = () => {
     category_id: '',
     description: '',
   });
+
+  // Desktop redirect to full dashboard
+  useEffect(() => {
+    if (window.innerWidth >= 1024) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [navigate]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
