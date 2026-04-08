@@ -14,7 +14,7 @@ import { Progress } from '../components/ui/progress';
 import { 
   Plus, Search, FolderKanban, MoreHorizontal, Pencil, Trash2
 } from 'lucide-react';
-import { formatCurrency, getDirectionClass, getStatusClass, getStatusLabel } from '../lib/utils';
+import { formatCurrency, getDirectionClass, getStatusClass, getStatusLabel, todayLocal } from '../lib/utils';
 import { toast } from 'sonner';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '../components/ui/alert-dialog';
@@ -75,7 +75,7 @@ export const ProjectsPage = () => {
       direction_id: directions[0]?.id || '',
       contractor_id: '',
       planned_amount: '',
-      start_date: new Date().toISOString().split('T')[0],
+      start_date: todayLocal(),
       end_date: '',
       comment: ''
     });

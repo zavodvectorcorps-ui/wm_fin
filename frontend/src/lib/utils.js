@@ -5,6 +5,13 @@ export function cn(...inputs) {
   return twMerge(clsx(inputs));
 }
 
+// Local date as YYYY-MM-DD (avoids UTC shift from toISOString)
+export const todayLocal = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+
 // Currency formatting utilities for Polish Zloty
 export const formatCurrency = (amount, currency = 'PLN') => {
   const formatted = new Intl.NumberFormat('pl-PL', {
@@ -143,28 +150,36 @@ export const getPeriodDates = (period) => {
   const today = new Date();
   const year = today.getFullYear();
   const month = today.getMonth();
+
+  // Format date as YYYY-MM-DD in LOCAL timezone (not UTC)
+  const fmt = (d) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
   
   switch (period) {
     case 'current_month':
       return {
-        from: new Date(year, month, 1).toISOString().split('T')[0],
-        to: today.toISOString().split('T')[0]
+        from: fmt(new Date(year, month, 1)),
+        to: fmt(today)
       };
     case 'prev_month':
       return {
-        from: new Date(year, month - 1, 1).toISOString().split('T')[0],
-        to: new Date(year, month, 0).toISOString().split('T')[0]
+        from: fmt(new Date(year, month - 1, 1)),
+        to: fmt(new Date(year, month, 0))
       };
     case 'quarter':
       const quarterStart = Math.floor(month / 3) * 3;
       return {
-        from: new Date(year, quarterStart, 1).toISOString().split('T')[0],
-        to: today.toISOString().split('T')[0]
+        from: fmt(new Date(year, quarterStart, 1)),
+        to: fmt(today)
       };
     case 'year':
       return {
-        from: new Date(year, 0, 1).toISOString().split('T')[0],
-        to: today.toISOString().split('T')[0]
+        from: fmt(new Date(year, 0, 1)),
+        to: fmt(today)
       };
     case 'year_2025':
       return {
@@ -188,8 +203,8 @@ export const getPeriodDates = (period) => {
       };
     default:
       return {
-        from: new Date(year, month, 1).toISOString().split('T')[0],
-        to: today.toISOString().split('T')[0]
+        from: fmt(new Date(year, month, 1)),
+        to: fmt(today)
       };
   }
 };

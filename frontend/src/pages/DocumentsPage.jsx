@@ -18,7 +18,7 @@ import {
   Eye, Trash2, AlertCircle, CheckCircle2, FolderPlus, Folder, FolderOpen,
   CalendarIcon, ChevronRight, ArrowRight, CheckCheck, X, GripVertical
 } from 'lucide-react';
-import { formatDate, getDirectionClass } from '../lib/utils';
+import { formatDate, getDirectionClass, todayLocal } from '../lib/utils';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
@@ -198,7 +198,7 @@ export const DocumentsPage = () => {
   
   const [uploadData, setUploadData] = useState({
     file: null,
-    document_date: new Date().toISOString().split('T')[0],
+    document_date: todayLocal(),
     type: 'other',
     direction_id: '',
     contractor_id: '',
@@ -289,7 +289,7 @@ export const DocumentsPage = () => {
       setUploadDialogOpen(false);
       setUploadData({
         file: null,
-        document_date: new Date().toISOString().split('T')[0],
+        document_date: todayLocal(),
         type: 'other',
         direction_id: '',
         contractor_id: '',

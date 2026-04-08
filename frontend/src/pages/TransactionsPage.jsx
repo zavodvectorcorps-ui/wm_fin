@@ -20,7 +20,7 @@ import {
   Trash2, Calendar, MoreHorizontal, Paperclip, FileText, Link2, Unlink, AlertTriangle,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, CalendarIcon, X
 } from 'lucide-react';
-import { formatCurrency, formatDate, getDirectionClass, getStatusLabel, getPeriodDates, getTypeLabel } from '../lib/utils';
+import { formatCurrency, formatDate, getDirectionClass, getStatusLabel, getPeriodDates, getTypeLabel, todayLocal } from '../lib/utils';
 import { toast } from 'sonner';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/dropdown-menu';
 import { format } from 'date-fns';
@@ -183,7 +183,7 @@ export const TransactionsPage = () => {
   const [summary, setSummary] = useState({});
 
   const [formData, setFormData] = useState({
-    date: new Date().toISOString().split('T')[0],
+    date: todayLocal(),
     type: 'expense',
     amount: '',
     currency: 'PLN',
@@ -327,7 +327,7 @@ export const TransactionsPage = () => {
     setTransactionType(type);
     setEditingTransaction(null);
     setFormData({
-      date: new Date().toISOString().split('T')[0],
+      date: todayLocal(),
       type,
       amount: '',
       currency: 'PLN',

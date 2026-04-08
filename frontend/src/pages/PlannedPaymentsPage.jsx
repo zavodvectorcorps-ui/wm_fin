@@ -15,7 +15,7 @@ import { Calendar } from '../components/ui/calendar';
 import { 
   Plus, Calendar as CalendarIcon, List, ChevronLeft, ChevronRight
 } from 'lucide-react';
-import { formatCurrency, formatDate, getDirectionClass, getStatusClass, getStatusLabel, getRecurrenceLabel } from '../lib/utils';
+import { formatCurrency, formatDate, getDirectionClass, getStatusClass, getStatusLabel, getRecurrenceLabel, todayLocal } from '../lib/utils';
 import { toast } from 'sonner';
 
 export const PlannedPaymentsPage = () => {
@@ -33,7 +33,7 @@ export const PlannedPaymentsPage = () => {
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   
   const [formData, setFormData] = useState({
-    date: new Date().toISOString().split('T')[0],
+    date: todayLocal(),
     type: 'expense',
     amount: '',
     currency: 'PLN',
@@ -74,7 +74,7 @@ export const PlannedPaymentsPage = () => {
 
   const openNewPayment = () => {
     setFormData({
-      date: new Date().toISOString().split('T')[0],
+      date: todayLocal(),
       type: 'expense',
       amount: '',
       currency: 'PLN',

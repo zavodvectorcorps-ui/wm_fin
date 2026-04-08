@@ -34,7 +34,10 @@ export const AdeskMigrationPage = () => {
 
   // Migration params
   const [dateFrom, setDateFrom] = useState('2023-01-01');
-  const [dateTo, setDateTo] = useState(new Date().toISOString().split('T')[0]);
+  const [dateTo, setDateTo] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
 
   // Archive data
   const [drafts, setDrafts] = useState([]);
