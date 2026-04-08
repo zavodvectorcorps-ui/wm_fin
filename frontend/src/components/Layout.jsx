@@ -238,7 +238,7 @@ export const Layout = ({ children }) => {
       </aside>
 
       {/* Mobile Header */}
-      <header className="lg:hidden fixed top-0 left-0 right-0 h-16 border-b border-border bg-background/80 backdrop-blur-xl z-40 flex items-center px-4">
+      <header className="lg:hidden fixed top-0 left-0 right-0 h-16 border-b border-border bg-card z-40 flex items-center px-4">
         <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
           <SheetTrigger asChild>
             <Button variant="ghost" size="icon" data-testid="mobile-menu-btn">
@@ -251,7 +251,7 @@ export const Layout = ({ children }) => {
         </Sheet>
 
         <div className="flex-1 flex items-center justify-center">
-          <span className="font-semibold">WM Finance</span>
+          <span className="font-semibold text-foreground">WM Finance</span>
         </div>
 
         <NotificationsDropdown />

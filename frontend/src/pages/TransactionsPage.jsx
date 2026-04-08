@@ -52,35 +52,35 @@ const PeriodSummary = ({ summary, totalCount, eurPlnRate }) => {
         const v = summary[cur];
         const net = v.income - v.expense;
         return (
-          <div key={cur} className="grid gap-3 grid-cols-4">
+          <div key={cur} className="grid gap-2 sm:gap-3 grid-cols-2 sm:grid-cols-4">
             <Card className="border-emerald-500/20">
-              <CardContent className="py-3 px-4">
+              <CardContent className="py-2 px-2 sm:py-3 sm:px-4">
                 <p className="text-xs text-muted-foreground">Доходы {hasMultiCurrency ? cur : ''}</p>
-                <p className="text-lg font-bold font-mono text-emerald-500">
+                <p className="text-sm sm:text-lg font-bold font-mono text-emerald-500 truncate">
                   +{formatCurrency(v.income, cur)}
                 </p>
               </CardContent>
             </Card>
             <Card className="border-rose-500/20">
-              <CardContent className="py-3 px-4">
+              <CardContent className="py-2 px-2 sm:py-3 sm:px-4">
                 <p className="text-xs text-muted-foreground">Расходы {hasMultiCurrency ? cur : ''}</p>
-                <p className="text-lg font-bold font-mono text-rose-500">
+                <p className="text-sm sm:text-lg font-bold font-mono text-rose-500 truncate">
                   -{formatCurrency(v.expense, cur)}
                 </p>
               </CardContent>
             </Card>
             <Card>
-              <CardContent className="py-3 px-4">
+              <CardContent className="py-2 px-2 sm:py-3 sm:px-4">
                 <p className="text-xs text-muted-foreground">Баланс {hasMultiCurrency ? cur : ''}</p>
-                <p className={`text-lg font-bold font-mono ${net >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                <p className={`text-sm sm:text-lg font-bold font-mono truncate ${net >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
                   {net >= 0 ? '+' : ''}{formatCurrency(net, cur)}
                 </p>
               </CardContent>
             </Card>
             <Card>
-              <CardContent className="py-3 px-4">
+              <CardContent className="py-2 px-2 sm:py-3 sm:px-4">
                 <p className="text-xs text-muted-foreground">Операций {hasMultiCurrency ? cur : ''}</p>
-                <p className="text-lg font-bold font-mono">{v.count}</p>
+                <p className="text-sm sm:text-lg font-bold font-mono">{v.count}</p>
               </CardContent>
             </Card>
           </div>
