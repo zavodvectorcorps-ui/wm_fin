@@ -119,8 +119,9 @@ async def get_transactions(
         cur = row["_id"]["currency"]
         t = row["_id"]["type"]
         # When account filter is active, transfers are handled separately below
-        # to properly distinguish direction (in/out) for the filtered account
-        if t == "transfer" and account_id:
+        # to properly distinguish direction (in/out) for the filtered account.
+        # When no filter, transfers are zero-sum globally — skip them too.
+        if t == "transfer":
             summary_total_count += row["count"]
             continue
         if cur not in summary:
