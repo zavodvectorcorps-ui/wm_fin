@@ -35,10 +35,13 @@ async def get_integration_settings(current_user: dict = Depends(get_current_user
         await db.integration_settings.insert_one(settings)
 
     result = dict(settings)
-    if result.get("telegram_bot_token"):
-        result["telegram_bot_token"] = result["telegram_bot_token"][:10] + "..." + result["telegram_bot_token"][-4:]
-    if result.get("adesk_api_token"):
-        result["adesk_api_token"] = result["adesk_api_token"][:10] + "..." + result["adesk_api_token"][-4:]
+    bot_token = result.get("telegram_bot_token")
+    adesk_token = result.get("adesk_api_token")
+    result["has_telegram_bot_token"] = bool(bot_token)
+    result["has_adesk_api_token"] = bool(adesk_token)
+    # Do NOT send raw/masked secrets to frontend — they would round-trip back on save and overwrite real values
+    result["telegram_bot_token"] = None
+    result["adesk_api_token"] = None
 
     return result
 
@@ -50,8 +53,10 @@ async def update_telegram_settings(
 ):
     update_data = {"updated_at": datetime.now(timezone.utc).isoformat()}
 
-    if data.telegram_bot_token is not None:
-        update_data["telegram_bot_token"] = data.telegram_bot_token
+    # Only update the token if a non-empty value was provided (prevents wiping saved token
+    # when frontend sends empty string because field is intentionally blank for security)
+    if data.telegram_bot_token is not None and data.telegram_bot_token.strip():
+        update_data["telegram_bot_token"] = data.telegram_bot_token.strip()
     if data.telegram_chat_id is not None:
         update_data["telegram_chat_id"] = data.telegram_chat_id
     if data.telegram_auto_summary is not None:
@@ -75,12 +80,27 @@ async def test_telegram_connection(
     data: TelegramTestMessage,
     current_user: dict = Depends(get_current_user)
 ):
+    bot_token = (data.bot_token or "").strip()
+    chat_id = (data.chat_id or "").strip()
+
+    # Fall back to stored credentials when fields are empty
+    if not bot_token or not chat_id:
+        saved = await db.integration_settings.find_one(
+            {"user_id": current_user["user_id"]},
+            {"_id": 0, "telegram_bot_token": 1, "telegram_chat_id": 1}
+        ) or {}
+        bot_token = bot_token or (saved.get("telegram_bot_token") or "")
+        chat_id = chat_id or (saved.get("telegram_chat_id") or "")
+
+    if not bot_token or not chat_id:
+        return {"status": "error", "message": "Не указан токен или Chat ID"}
+
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
-                f"https://api.telegram.org/bot{data.bot_token}/sendMessage",
+                f"https://api.telegram.org/bot{bot_token}/sendMessage",
                 json={
-                    "chat_id": data.chat_id,
+                    "chat_id": chat_id,
                     "text": "✅ *WM Finance подключен!*\n\nТестовое сообщение отправлено успешно.",
                     "parse_mode": "Markdown"
                 }

@@ -94,6 +94,8 @@ export const IntegrationsPage = () => {
     telegram_summary_time: '09:00',
     adesk_api_token: ''
   });
+  const [hasSavedBotToken, setHasSavedBotToken] = useState(false);
+  const [hasSavedAdeskToken, setHasSavedAdeskToken] = useState(false);
   
   const [testStatus, setTestStatus] = useState(null);
 
@@ -117,13 +119,15 @@ export const IntegrationsPage = () => {
         api().get('/backup/status')
       ]);
       setSettings({
-        telegram_bot_token: settingsRes.data.telegram_bot_token || '',
+        telegram_bot_token: '',
         telegram_chat_id: settingsRes.data.telegram_chat_id || '',
         telegram_auto_summary: settingsRes.data.telegram_auto_summary || false,
         telegram_summary_schedule: settingsRes.data.telegram_summary_schedule || 'weekly',
         telegram_summary_time: settingsRes.data.telegram_summary_time || '09:00',
-        adesk_api_token: settingsRes.data.adesk_api_token || ''
+        adesk_api_token: ''
       });
+      setHasSavedBotToken(!!settingsRes.data.has_telegram_bot_token);
+      setHasSavedAdeskToken(!!settingsRes.data.has_adesk_api_token);
       setBackupStatus(backupRes.data);
       setGsUrl(backupRes.data.spreadsheet_url || '');
     } catch (error) {
@@ -261,14 +265,19 @@ export const IntegrationsPage = () => {
   const saveTelegramSettings = async () => {
     setSaving(true);
     try {
-      await api().put('/settings/integrations/telegram', {
-        telegram_bot_token: settings.telegram_bot_token,
+      const payload = {
         telegram_chat_id: settings.telegram_chat_id,
         telegram_auto_summary: settings.telegram_auto_summary,
         telegram_summary_schedule: settings.telegram_summary_schedule,
-        telegram_summary_time: settings.telegram_summary_time
-      });
+        telegram_summary_time: settings.telegram_summary_time,
+      };
+      if (settings.telegram_bot_token && settings.telegram_bot_token.trim()) {
+        payload.telegram_bot_token = settings.telegram_bot_token.trim();
+      }
+      await api().put('/settings/integrations/telegram', payload);
       toast.success('Настройки сохранены');
+      setSettings(s => ({ ...s, telegram_bot_token: '' }));
+      fetchSettings();
     } catch (error) {
       toast.error('Ошибка сохранения');
     } finally {
@@ -277,17 +286,17 @@ export const IntegrationsPage = () => {
   };
 
   const testTelegram = async () => {
-    if (!settings.telegram_bot_token || !settings.telegram_chat_id) {
+    if (!hasSavedBotToken && (!settings.telegram_bot_token || !settings.telegram_chat_id)) {
       toast.error('Заполните токен и Chat ID');
       return;
     }
-    
+
     setTesting(true);
     setTestStatus(null);
     try {
       const res = await api().post('/settings/telegram/test', {
-        bot_token: settings.telegram_bot_token,
-        chat_id: settings.telegram_chat_id
+        bot_token: settings.telegram_bot_token || null,
+        chat_id: settings.telegram_chat_id || null
       });
       
       setTestStatus(res.data.status);
@@ -494,11 +503,11 @@ export const IntegrationsPage = () => {
               {/* Connection Settings */}
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="bot-token">Bot Token</Label>
+                  <Label htmlFor="bot-token">Bot Token {hasSavedBotToken && <Badge variant="outline" className="ml-2 text-xs">сохранён</Badge>}</Label>
                   <Input
                     id="bot-token"
                     type="password"
-                    placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+                    placeholder={hasSavedBotToken ? '••••••• (оставьте пустым чтобы не менять)' : '123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11'}
                     value={settings.telegram_bot_token}
                     onChange={(e) => setSettings({...settings, telegram_bot_token: e.target.value})}
                     data-testid="telegram-bot-token"
@@ -619,7 +628,7 @@ export const IntegrationsPage = () => {
                 <Button 
                   variant="outline" 
                   onClick={sendSummaryNow} 
-                  disabled={sendingSummary || !settings.telegram_bot_token}
+                  disabled={sendingSummary || (!hasSavedBotToken && !settings.telegram_bot_token)}
                   data-testid="send-summary-btn"
                 >
                   {sendingSummary ? (
@@ -689,7 +698,7 @@ export const IntegrationsPage = () => {
               {/* Webhook Actions */}
               <div className="flex gap-2">
                 {!webhookInfo?.webhook_url ? (
-                  <Button onClick={setupWebhook} disabled={webhookLoading || !settings.telegram_bot_token}
+                  <Button onClick={setupWebhook} disabled={webhookLoading || (!hasSavedBotToken && !settings.telegram_bot_token)}
                     data-testid="setup-webhook-btn">
                     {webhookLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Link2 className="h-4 w-4 mr-2" />}
                     Подключить Telegram Кассу

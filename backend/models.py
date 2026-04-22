@@ -372,8 +372,8 @@ class TelegramSettingsUpdate(BaseModel):
 
 
 class TelegramTestMessage(BaseModel):
-    bot_token: str
-    chat_id: str
+    bot_token: Optional[str] = None
+    chat_id: Optional[str] = None
 
 
 class AdminUserCreate(BaseModel):
