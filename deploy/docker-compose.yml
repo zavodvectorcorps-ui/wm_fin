@@ -1,0 +1,48 @@
+version: "3.8"
+
+services:
+  wmfinance-mongo:
+    image: mongo:7
+    container_name: wmfinance-mongo
+    restart: unless-stopped
+    volumes:
+      - wmfinance-mongo-data:/data/db
+      - ./mongo-init:/docker-entrypoint-initdb.d
+    networks:
+      - wmfinance-net
+
+  wmfinance-backend:
+    build:
+      context: ./backend
+      dockerfile: ../backend.Dockerfile
+    container_name: wmfinance-backend
+    restart: unless-stopped
+    depends_on:
+      - wmfinance-mongo
+    env_file:
+      - ./backend/.env
+    environment:
+      - MONGO_URL=mongodb://wmfinance-mongo:27017
+      - DB_NAME=wmfinance
+    networks:
+      - wmfinance-net
+
+  wmfinance-frontend:
+    build:
+      context: ./frontend
+      dockerfile: ../frontend.Dockerfile
+      args:
+        REACT_APP_BACKEND_URL: https://wm-finance.by
+    container_name: wmfinance-frontend
+    restart: unless-stopped
+    depends_on:
+      - wmfinance-backend
+    networks:
+      - wmfinance-net
+
+volumes:
+  wmfinance-mongo-data:
+
+networks:
+  wmfinance-net:
+    driver: bridge
