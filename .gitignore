@@ -98,3 +98,12 @@ frontend/node_modules/.cache/default-development/8.pack
 google_service_account.json
 memory/test_credentials.md
 **/test_credentials.md
+-e 
+# Environment and credential files
+.env
+.env.*
+*.env
+credentials.json
+*.pem
+*.key
+.credentials
