@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Switch } from '../components/ui/switch';
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { 
-  Plus, Wallet, Tags, Compass, Wand2, Users, Key, Trash2, Pencil, AlertTriangle, RefreshCw
+  Plus, Wallet, Tags, Compass, Wand2, Users, Key, Trash2, Pencil, AlertTriangle, RefreshCw, Download, Upload, Database
 } from 'lucide-react';
 import { formatCurrency, getDirectionClass, getAccountTypeLabel } from '../lib/utils';
 import { toast } from 'sonner';
@@ -22,6 +22,10 @@ export const SettingsPage = () => {
   const { api, user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [resetting, setResetting] = useState(false);
+  const [backupLoading, setBackupLoading] = useState(false);
+  const [dbStats, setDbStats] = useState(null);
+  const [importFile, setImportFile] = useState(null);
+  const [importing, setImporting] = useState(false);
   const [activeTab, setActiveTab] = useState('accounts');
   
   const [accounts, setAccounts] = useState([]);
@@ -160,6 +164,65 @@ export const SettingsPage = () => {
     { value: 'purple', label: 'Фиолетовый', class: 'bg-purple-500' },
   ];
 
+  const loadDbStats = async () => {
+    try {
+      const res = await api().get('/admin/db/stats');
+      setDbStats(res.data);
+    } catch (error) {
+      toast.error('Ошибка загрузки статистики БД');
+    }
+  };
+
+  const downloadBackup = async () => {
+    setBackupLoading(true);
+    try {
+      const res = await api().get('/admin/db/export', { responseType: 'blob' });
+      const disposition = res.headers['content-disposition'] || '';
+      const match = disposition.match(/filename="?([^";]+)"?/);
+      const filename = match ? match[1] : `wmfinance-db-${Date.now()}.tar.gz`;
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/gzip' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Архив скачан');
+    } catch (error) {
+      toast.error('Ошибка экспорта БД');
+    } finally {
+      setBackupLoading(false);
+    }
+  };
+
+  const uploadBackup = async () => {
+    if (!importFile) {
+      toast.error('Выберите файл архива');
+      return;
+    }
+    if (!confirm(
+      `ВНИМАНИЕ! Текущая база будет полностью заменена данными из архива "${importFile.name}".\n\n` +
+      `Все существующие коллекции будут перезаписаны. Продолжить?`
+    )) return;
+
+    setImporting(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', importFile);
+      const res = await api().post('/admin/db/import', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      toast.success(`Импортировано: ${res.data.total_documents} документов`);
+      setImportFile(null);
+      loadDbStats();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Ошибка импорта');
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const resetAllData = async () => {
     if (!confirm('ВНИМАНИЕ! Будут удалены ВСЕ данные:\n- Транзакции\n- Плановые платежи\n- Проекты\n- Контрагенты\n- Документы\n- Импортированные категории\n- Импортированные направления\n- Импортированные счета\n\nОставшиеся счета будут обнулены.\n\nПродолжить?')) return;
     
@@ -184,7 +247,7 @@ export const SettingsPage = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid grid-cols-2 lg:grid-cols-6 w-full lg:w-auto">
+        <TabsList className="grid grid-cols-2 lg:grid-cols-7 w-full lg:w-auto">
           <TabsTrigger value="accounts" data-testid="tab-accounts">
             <Wallet className="h-4 w-4 mr-2" />
             Счета
@@ -204,6 +267,10 @@ export const SettingsPage = () => {
           <TabsTrigger value="api" data-testid="tab-api">
             <Key className="h-4 w-4 mr-2" />
             API
+          </TabsTrigger>
+          <TabsTrigger value="backup" data-testid="tab-backup">
+            <Database className="h-4 w-4 mr-2" />
+            Бэкап
           </TabsTrigger>
           <TabsTrigger value="danger" data-testid="tab-danger" className="text-destructive">
             <AlertTriangle className="h-4 w-4 mr-2" />
@@ -488,6 +555,119 @@ export const SettingsPage = () => {
                   </div>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Backup Tab */}
+        <TabsContent value="backup">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Database className="h-5 w-5" />
+                Резервное копирование БД
+              </CardTitle>
+              <CardDescription>
+                Скачайте полный архив базы данных (все коллекции) и восстановите на другом сервере
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="p-4 border rounded-lg space-y-3">
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div>
+                    <h3 className="font-semibold flex items-center gap-2">
+                      <Download className="h-4 w-4" />
+                      Экспорт базы данных
+                    </h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Создаёт tar.gz архив со всеми коллекциями MongoDB. Используйте для переноса на VPS.
+                    </p>
+                  </div>
+                  <div className="flex gap-2 flex-wrap">
+                    <Button
+                      variant="outline"
+                      onClick={loadDbStats}
+                      data-testid="db-stats-btn"
+                    >
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Статистика
+                    </Button>
+                    <Button
+                      onClick={downloadBackup}
+                      disabled={backupLoading}
+                      data-testid="download-backup-btn"
+                    >
+                      {backupLoading ? (
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Download className="h-4 w-4 mr-2" />
+                      )}
+                      Скачать архив
+                    </Button>
+                  </div>
+                </div>
+
+                {dbStats && (
+                  <div className="mt-4 p-3 rounded-lg bg-muted/50 text-sm space-y-1">
+                    <p className="font-medium">
+                      База: <span className="font-mono">{dbStats.db_name}</span> · Всего документов: {dbStats.total_documents}
+                    </p>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1 mt-2 font-mono text-xs">
+                      {Object.entries(dbStats.collections).map(([name, count]) => (
+                        <div key={name} className="flex justify-between border-b border-border/50 py-0.5">
+                          <span>{name}</span>
+                          <span className="text-muted-foreground">{count}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="p-4 border rounded-lg space-y-3">
+                <h3 className="font-semibold flex items-center gap-2">
+                  <Upload className="h-4 w-4" />
+                  Импорт базы данных
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Восстановление из ранее скачанного tar.gz архива. Текущие данные будут перезаписаны.
+                </p>
+                <div className="flex gap-2 flex-wrap items-center">
+                  <Input
+                    type="file"
+                    accept=".tar.gz,.tgz,application/gzip"
+                    onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                    className="max-w-sm"
+                    data-testid="backup-file-input"
+                  />
+                  <Button
+                    variant="destructive"
+                    onClick={uploadBackup}
+                    disabled={!importFile || importing}
+                    data-testid="upload-backup-btn"
+                  >
+                    {importing ? (
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Upload className="h-4 w-4 mr-2" />
+                    )}
+                    Восстановить
+                  </Button>
+                </div>
+                {importFile && (
+                  <p className="text-xs text-muted-foreground">
+                    Выбран: <span className="font-mono">{importFile.name}</span> ({(importFile.size / 1024).toFixed(1)} KB)
+                  </p>
+                )}
+              </div>
+
+              <Alert>
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  Архив содержит все данные: пользователей, транзакции, счета, документы, интеграции.
+                  Храните его в безопасном месте — он даёт полный доступ к вашему аккаунту.
+                </AlertDescription>
+              </Alert>
             </CardContent>
           </Card>
         </TabsContent>

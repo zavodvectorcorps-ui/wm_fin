@@ -39,6 +39,7 @@ from routes.bank_import import router as bank_import_router
 from routes.cash_import import router as cash_import_router
 from routes.telegram_webhook import router as telegram_webhook_router
 from routes.exchange_rate import router as exchange_rate_router
+from routes.backup import router as backup_router
 
 # Import service routers
 from services.google_sheets import router as google_sheets_router
@@ -83,6 +84,7 @@ all_routers = [
     cash_import_router,
     telegram_webhook_router,
     exchange_rate_router,
+    backup_router,
     google_sheets_router,
 ]
 
