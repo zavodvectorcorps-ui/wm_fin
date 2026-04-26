@@ -390,3 +390,98 @@ class AdminUserUpdate(BaseModel):
     password: Optional[str] = None
     name: Optional[str] = None
     role: Optional[Literal["owner", "accountant", "manager"]] = None
+
+
+
+# ============== Recurring Expenses (постоянные расходы / подписки) ==============
+
+class RecurringExpense(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str  # "Аренда склада", "Интернет"
+    category_id: Optional[str] = None
+    category_name: Optional[str] = None
+    contractor_id: Optional[str] = None
+    contractor_name: Optional[str] = None
+    direction_id: str
+    direction_name: Optional[str] = None
+    account_id: str
+    account_name: Optional[str] = None
+    amount: float
+    currency: Literal["PLN", "EUR", "USD"] = "PLN"
+    periodicity: Literal["monthly", "quarterly"] = "monthly"
+    day_of_month: int = 1  # 1..28
+    is_active: bool = True
+    comment: Optional[str] = None
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    user_id: str = ""
+
+
+class RecurringExpenseCreate(BaseModel):
+    name: str
+    category_id: Optional[str] = None
+    contractor_id: Optional[str] = None
+    direction_id: str
+    account_id: str
+    amount: float
+    currency: Literal["PLN", "EUR", "USD"] = "PLN"
+    periodicity: Literal["monthly", "quarterly"] = "monthly"
+    day_of_month: int = 1
+    is_active: bool = True
+    comment: Optional[str] = None
+
+
+# ============== Salaries (зарплаты) ==============
+
+class Employee(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    position: Optional[str] = None
+    default_salary: float = 0
+    currency: Literal["PLN", "EUR", "USD"] = "PLN"
+    direction_id: Optional[str] = None
+    direction_name: Optional[str] = None
+    is_active: bool = True
+    comment: Optional[str] = None
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    user_id: str = ""
+
+
+class EmployeeCreate(BaseModel):
+    name: str
+    position: Optional[str] = None
+    default_salary: float = 0
+    currency: Literal["PLN", "EUR", "USD"] = "PLN"
+    direction_id: Optional[str] = None
+    is_active: bool = True
+    comment: Optional[str] = None
+
+
+class SalaryAccrual(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    month: str  # YYYY-MM
+    employee_id: str
+    employee_name: Optional[str] = None
+    direction_id: Optional[str] = None
+    direction_name: Optional[str] = None
+    salary: float = 0
+    bonus: float = 0
+    deductions: float = 0
+    total_due: float = 0  # computed: salary + bonus - deductions
+    currency: Literal["PLN", "EUR", "USD"] = "PLN"
+    status: Literal["planned", "paid"] = "planned"
+    linked_transaction_id: Optional[str] = None
+    comment: Optional[str] = None
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    user_id: str = ""
+
+
+class SalaryAccrualCreate(BaseModel):
+    month: str
+    employee_id: str
+    salary: float = 0
+    bonus: float = 0
+    deductions: float = 0
+    comment: Optional[str] = None

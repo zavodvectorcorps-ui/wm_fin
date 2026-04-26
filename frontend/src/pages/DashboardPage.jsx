@@ -7,7 +7,7 @@ import { Skeleton } from '../components/ui/skeleton';
 import { Checkbox } from '../components/ui/checkbox';
 import { 
   TrendingUp, TrendingDown, Wallet, PiggyBank, 
-  ArrowUpRight, ArrowDownRight, Calendar, Users, Flame, Info
+  ArrowUpRight, ArrowDownRight, Calendar, Users, Flame, Info, Banknote, Repeat
 } from 'lucide-react';
 import { formatCurrency, getPeriodDates, getDirectionClass, getChangePercent } from '../lib/utils';
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
@@ -30,6 +30,8 @@ export const DashboardPage = () => {
   const [prevData, setPrevData] = useState(null);
   const [topContractors, setTopContractors] = useState([]);
   const [runway, setRunway] = useState(null);
+  const [salarySummary, setSalarySummary] = useState(null);
+  const [fixedCostsMonth, setFixedCostsMonth] = useState(null);
   const [selectedAccountIds, setSelectedAccountIds] = useState(new Set());
   const [eurPlnRate, setEurPlnRate] = useState(0);
 
@@ -39,12 +41,14 @@ export const DashboardPage = () => {
       const dates = getPeriodDates(period);
       const prevDates = getPeriodDates('prev_month');
       
-      const [summaryRes, dailyRes, prevSummaryRes, topContractorsRes, runwayRes] = await Promise.all([
+      const [summaryRes, dailyRes, prevSummaryRes, topContractorsRes, runwayRes, salaryRes, fixedRes] = await Promise.all([
         api().get('/analytics/summary', { params: { date_from: dates.from, date_to: dates.to } }),
         api().get('/analytics/daily-balance', { params: { date_from: dates.from, date_to: dates.to } }),
         api().get('/analytics/summary', { params: { date_from: prevDates.from, date_to: prevDates.to } }),
         api().get('/analytics/top-contractors', { params: { date_from: dates.from, date_to: dates.to, limit: 5 } }),
         api().get('/analytics/runway').catch(() => ({ data: null })),
+        api().get('/salary-accruals/summary').catch(() => ({ data: null })),
+        api().get('/analytics/fixed-costs-month').catch(() => ({ data: null })),
       ]);
       
       setData(summaryRes.data);
@@ -52,6 +56,8 @@ export const DashboardPage = () => {
       setPrevData(prevSummaryRes.data);
       setTopContractors(topContractorsRes.data.contractors || []);
       setRunway(runwayRes.data);
+      setSalarySummary(salaryRes.data);
+      setFixedCostsMonth(fixedRes.data);
       // Auto-select all accounts on first load
       if (summaryRes.data?.accounts?.length > 0 && selectedAccountIds.size === 0) {
         setSelectedAccountIds(new Set(summaryRes.data.accounts.map(a => a.id)));
@@ -305,6 +311,73 @@ export const DashboardPage = () => {
             )}
           </CardContent>
         </Card>
+      )}
+
+      {/* FOT + Fixed Costs Widget */}
+      {(salarySummary || fixedCostsMonth) && (
+        <div className="grid gap-4 md:grid-cols-2">
+          {fixedCostsMonth && (
+            <Card className="border-l-4 border-l-rose-500" data-testid="fixed-costs-card">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Repeat className="h-5 w-5 text-rose-500" />
+                  Постоянные расходы — {fixedCostsMonth.month}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-3xl font-bold font-mono text-rose-500">
+                  {formatCurrency(fixedCostsMonth.total)}
+                </p>
+                {data?.total_income > 0 && fixedCostsMonth.total > 0 && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {((fixedCostsMonth.total / data.total_income) * 100).toFixed(1)}% от доходов
+                  </p>
+                )}
+                {fixedCostsMonth.by_category.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-border space-y-1">
+                    {fixedCostsMonth.by_category.slice(0, 5).map(c => (
+                      <div key={c.name} className="flex justify-between text-sm">
+                        <span className="text-muted-foreground truncate">{c.name}</span>
+                        <span className="font-mono">{formatCurrency(c.amount)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+          {salarySummary && salarySummary.employees_count > 0 && (
+            <Card className="border-l-4 border-l-emerald-500" data-testid="fot-card">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Banknote className="h-5 w-5 text-emerald-500" />
+                  ФОТ — {salarySummary.month}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase">Начислено</p>
+                    <p className="text-xl font-bold font-mono">{formatCurrency(salarySummary.total_accrued)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase">Выплачено</p>
+                    <p className="text-xl font-bold font-mono text-emerald-500">{formatCurrency(salarySummary.total_paid)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase">Осталось</p>
+                    <p className="text-xl font-bold font-mono text-amber-500">{formatCurrency(salarySummary.total_pending)}</p>
+                  </div>
+                </div>
+                {data?.total_income > 0 && salarySummary.total_accrued > 0 && (
+                  <p className="text-xs text-muted-foreground mt-3 text-center">
+                    {((salarySummary.total_accrued / data.total_income) * 100).toFixed(1)}% от доходов · {salarySummary.employees_count} сотрудников
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </div>
       )}
 
       {/* Charts Row */}

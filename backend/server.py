@@ -40,6 +40,8 @@ from routes.cash_import import router as cash_import_router
 from routes.telegram_webhook import router as telegram_webhook_router
 from routes.exchange_rate import router as exchange_rate_router
 from routes.backup import router as backup_router
+from routes.recurring import router as recurring_router
+from routes.salaries import router as salaries_router
 
 # Import service routers
 from services.google_sheets import router as google_sheets_router
@@ -85,6 +87,8 @@ all_routers = [
     telegram_webhook_router,
     exchange_rate_router,
     backup_router,
+    recurring_router,
+    salaries_router,
     google_sheets_router,
 ]
 
@@ -213,6 +217,59 @@ async def startup_event():
         minute=0,
         id="google_sheets_daily_backup",
         replace_existing=True
+    )
+
+    # Schedule daily auto-generation of planned payments from recurring expense templates (3:00 AM)
+    async def scheduled_recurring_generation():
+        from routes.recurring import _next_due_date
+        from models import PlannedPayment
+        today = datetime.now(timezone.utc)
+        users = await db.recurring_expenses.distinct("user_id", {"is_active": True})
+        for user_id in users:
+            try:
+                rows = await db.recurring_expenses.find(
+                    {"user_id": user_id, "is_active": True},
+                    {"_id": 0}
+                ).to_list(500)
+                for r in rows:
+                    due_date = _next_due_date(today, int(r.get("day_of_month", 1)), r.get("periodicity", "monthly"))
+                    existing = await db.planned_payments.find_one({
+                        "user_id": user_id,
+                        "date": due_date,
+                        "category_id": r.get("category_id"),
+                        "amount": r.get("amount"),
+                    })
+                    if existing:
+                        continue
+                    payment = PlannedPayment(
+                        date=due_date,
+                        type="expense",
+                        amount=r["amount"],
+                        currency=r.get("currency", "PLN"),
+                        category_id=r.get("category_id"),
+                        category_name=r.get("category_name"),
+                        contractor_id=r.get("contractor_id"),
+                        contractor_name=r.get("contractor_name"),
+                        direction_id=r["direction_id"],
+                        direction_name=r.get("direction_name"),
+                        account_id=r["account_id"],
+                        account_name=r.get("account_name"),
+                        recurrence=r.get("periodicity", "monthly"),
+                        comment=f"[{r['name']}] {r.get('comment') or ''}".strip(),
+                        user_id=user_id,
+                    )
+                    await db.planned_payments.insert_one(payment.model_dump())
+                logger.info(f"Recurring auto-gen ok for user {user_id}: {len(rows)} templates")
+            except Exception as e:
+                logger.error(f"Recurring auto-gen failed for user {user_id}: {e}")
+
+    scheduler.add_job(
+        scheduled_recurring_generation,
+        "cron",
+        hour=3,
+        minute=0,
+        id="recurring_daily_generation",
+        replace_existing=True,
     )
 
     scheduler.start()

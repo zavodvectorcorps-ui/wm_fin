@@ -26,6 +26,8 @@ import FAQPage from './pages/FAQPage';
 import IntegrationsPage from './pages/IntegrationsPage';
 import UsersPage from './pages/UsersPage';
 import ExpensePlanPage from './pages/ExpensePlanPage';
+import RecurringExpensesPage from './pages/RecurringExpensesPage';
+import SalariesPage from './pages/SalariesPage';
 
 import MobileHomePage from './pages/MobileHomePage';
 
@@ -241,6 +243,18 @@ function AppRoutes() {
       <Route path="/planning/expenses" element={
         <ProtectedRoute>
           <ExpensePlanPage />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/planning/recurring" element={
+        <ProtectedRoute>
+          <RecurringExpensesPage />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/planning/salaries" element={
+        <ProtectedRoute>
+          <SalariesPage />
         </ProtectedRoute>
       } />
       

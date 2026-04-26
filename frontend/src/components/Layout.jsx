@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Receipt, FolderKanban, Users, BarChart3, Calendar,
   Settings, HelpCircle, LogOut, ChevronDown, Menu, X, Bell,
   TrendingUp, Wallet, PiggyBank, FileText, Bot, Paperclip, Zap, Plug, Link2, Shield,
-  ClipboardList
+  ClipboardList, Repeat, Banknote
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Sheet, SheetContent, SheetTrigger } from './ui/sheet';
@@ -42,6 +42,8 @@ const documentItems = [
 const planningItems = [
   { icon: Calendar, label: 'Платёжный календарь', path: '/planning/calendar' },
   { icon: ClipboardList, label: 'План расходов', path: '/planning/expenses' },
+  { icon: Repeat, label: 'Регулярные расходы', path: '/planning/recurring' },
+  { icon: Banknote, label: 'Зарплаты', path: '/planning/salaries' },
 ];
 
 const settingsItems = [

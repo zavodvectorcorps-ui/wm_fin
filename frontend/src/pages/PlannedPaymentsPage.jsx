@@ -13,7 +13,7 @@ import { Textarea } from '../components/ui/textarea';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import { Calendar } from '../components/ui/calendar';
 import { 
-  Plus, Calendar as CalendarIcon, List, ChevronLeft, ChevronRight
+  Plus, Calendar as CalendarIcon, List, ChevronLeft, ChevronRight, Link2, Unlink, CheckCircle2
 } from 'lucide-react';
 import { formatCurrency, formatDate, getDirectionClass, getStatusClass, getStatusLabel, getRecurrenceLabel, todayLocal } from '../lib/utils';
 import { toast } from 'sonner';
@@ -116,6 +116,47 @@ export const PlannedPaymentsPage = () => {
       fetchData();
     } catch (error) {
       toast.error('Ошибка обновления');
+    }
+  };
+
+  // Match dialog state
+  const [matchDialogOpen, setMatchDialogOpen] = useState(false);
+  const [matchPayment, setMatchPayment] = useState(null);
+  const [matchCandidates, setMatchCandidates] = useState([]);
+  const [loadingMatches, setLoadingMatches] = useState(false);
+
+  const openMatchDialog = async (payment) => {
+    setMatchPayment(payment);
+    setMatchDialogOpen(true);
+    setLoadingMatches(true);
+    try {
+      const res = await api().get(`/planned-payments/${payment.id}/suggest-matches`);
+      setMatchCandidates(res.data.candidates || []);
+    } catch {
+      setMatchCandidates([]);
+    } finally {
+      setLoadingMatches(false);
+    }
+  };
+
+  const linkTransaction = async (txId) => {
+    try {
+      await api().post(`/planned-payments/${matchPayment.id}/link-transaction`, { transaction_id: txId });
+      toast.success('Привязано — отмечено как оплачено');
+      setMatchDialogOpen(false);
+      fetchData();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || 'Ошибка');
+    }
+  };
+
+  const unlinkTransaction = async (paymentId) => {
+    try {
+      await api().post(`/planned-payments/${paymentId}/unlink-transaction`);
+      toast.success('Отвязано');
+      fetchData();
+    } catch {
+      toast.error('Ошибка');
     }
   };
 
@@ -223,17 +264,41 @@ export const PlannedPaymentsPage = () => {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <Select value={p.status} onValueChange={(v) => updateStatus(p.id, v)}>
-                          <SelectTrigger className="w-32" data-testid={`status-select-${p.id}`}>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="pending">Ожидается</SelectItem>
-                            <SelectItem value="paid">Оплачен</SelectItem>
-                            <SelectItem value="postponed">Перенесён</SelectItem>
-                            <SelectItem value="cancelled">Отменён</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <div className="flex items-center gap-1">
+                          {p.status === 'paid' && p.linked_transaction_id ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => unlinkTransaction(p.id)}
+                              title="Отвязать операцию"
+                              data-testid={`unlink-btn-${p.id}`}
+                            >
+                              <CheckCircle2 className="h-4 w-4 text-emerald-500 mr-1" />
+                              <Unlink className="h-3 w-3" />
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openMatchDialog(p)}
+                              title="Связать с операцией"
+                              data-testid={`link-btn-${p.id}`}
+                            >
+                              <Link2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                          <Select value={p.status} onValueChange={(v) => updateStatus(p.id, v)}>
+                            <SelectTrigger className="w-32" data-testid={`status-select-${p.id}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="pending">Ожидается</SelectItem>
+                              <SelectItem value="paid">Оплачен</SelectItem>
+                              <SelectItem value="postponed">Перенесён</SelectItem>
+                              <SelectItem value="cancelled">Отменён</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -484,6 +549,53 @@ export const PlannedPaymentsPage = () => {
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Отмена</Button>
             <Button onClick={handleSubmit} data-testid="payment-form-submit">Создать</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Match Dialog */}
+      <Dialog open={matchDialogOpen} onOpenChange={setMatchDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Связать с операцией</DialogTitle>
+          </DialogHeader>
+          {matchPayment && (
+            <div className="text-sm text-muted-foreground mb-2">
+              {formatDate(matchPayment.date)} · {matchPayment.category_name || '—'} · {formatCurrency(matchPayment.amount, matchPayment.currency)}
+              {matchPayment.comment ? ` · ${matchPayment.comment}` : ''}
+            </div>
+          )}
+          <div className="space-y-2">
+            {loadingMatches ? (
+              <Skeleton className="h-32 w-full" />
+            ) : matchCandidates.length === 0 ? (
+              <div className="text-center py-6 text-sm text-muted-foreground">
+                Подходящих операций не найдено в окне ±10 дней. Введите фактическую операцию вручную в разделе «Операции», затем повторите.
+              </div>
+            ) : (
+              matchCandidates.map(t => (
+                <div
+                  key={t.id}
+                  className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-muted/50 cursor-pointer"
+                  onClick={() => linkTransaction(t.id)}
+                  data-testid={`candidate-${t.id}`}
+                >
+                  <div>
+                    <p className="font-medium">{t.description || t.contractor_name || t.category_name || 'Операция'}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {t.date} · {t.account_name} · {t.direction_name}
+                      {t.category_name ? ` · ${t.category_name}` : ''}
+                    </p>
+                  </div>
+                  <p className={`text-lg font-mono font-bold ${t.type === 'income' ? 'text-emerald-500' : 'text-rose-500'}`}>
+                    {formatCurrency(t.amount, t.currency)}
+                  </p>
+                </div>
+              ))
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMatchDialogOpen(false)}>Закрыть</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

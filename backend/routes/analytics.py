@@ -215,6 +215,65 @@ async def get_runway(current_user: dict = Depends(get_current_user)):
     }
 
 
+@router.get("/analytics/fixed-costs-month")
+async def get_fixed_costs_month(
+    month: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+):
+    """Постоянные расходы за конкретный месяц (для виджета на дашборде)."""
+    user_id = current_user["user_id"]
+
+    if not month:
+        month = datetime.now(timezone.utc).strftime("%Y-%m")
+
+    fixed_categories = await db.categories.find(
+        {"user_id": user_id, "is_fixed_cost": True, "type": "expense", "is_active": True},
+        {"_id": 0, "id": 1, "name": 1}
+    ).to_list(500)
+    fixed_cat_ids = [c["id"] for c in fixed_categories]
+    if not fixed_cat_ids:
+        return {"month": month, "total": 0, "by_category": []}
+
+    date_from = f"{month}-01"
+    # last day of month
+    y, m = map(int, month.split("-"))
+    if m == 12:
+        date_to = f"{y+1}-01-01"
+    else:
+        date_to = f"{y}-{m+1:02d}-01"
+
+    txs = await db.transactions.find(
+        {
+            "user_id": user_id,
+            "status": "fact",
+            "type": "expense",
+            "category_id": {"$in": fixed_cat_ids},
+            "date": {"$gte": date_from, "$lt": date_to},
+        },
+        {"_id": 0, "category_name": 1, "amount_base": 1, "amount": 1}
+    ).to_list(50000)
+
+    per_cat = {}
+    total = 0.0
+    for t in txs:
+        amt = t.get("amount_base") if t.get("amount_base") is not None else t.get("amount", 0)
+        cat = t.get("category_name", "Без категории")
+        per_cat[cat] = per_cat.get(cat, 0) + amt
+        total += amt
+
+    by_category = sorted(
+        [{"name": k, "amount": round(v, 2)} for k, v in per_cat.items()],
+        key=lambda x: x["amount"],
+        reverse=True
+    )
+
+    return {
+        "month": month,
+        "total": round(total, 2),
+        "by_category": by_category,
+    }
+
+
 @router.get("/analytics/daily-balance")
 async def get_daily_balance(
     date_from: str,
