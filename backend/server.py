@@ -272,6 +272,17 @@ async def startup_event():
         replace_existing=True,
     )
 
+    # Daily Telegram reminders for upcoming/overdue planned payments at 09:30
+    from services.telegram import send_planned_payment_reminders
+    scheduler.add_job(
+        send_planned_payment_reminders,
+        "cron",
+        hour=9,
+        minute=30,
+        id="planned_payments_telegram_reminders",
+        replace_existing=True,
+    )
+
     scheduler.start()
     logger.info("WM Finance API v2.0.0 started with scheduler")
 

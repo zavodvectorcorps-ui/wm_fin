@@ -638,6 +638,23 @@ export const IntegrationsPage = () => {
                   )}
                   Отправить сводку сейчас
                 </Button>
+
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    try {
+                      const res = await api().post('/settings/telegram/send-payment-reminders');
+                      toast.success(res.data.message);
+                    } catch (e) {
+                      toast.error(e.response?.data?.detail || 'Ошибка');
+                    }
+                  }}
+                  disabled={!hasSavedBotToken && !settings.telegram_bot_token}
+                  data-testid="send-payment-reminders-btn"
+                >
+                  <Bell className="h-4 w-4 mr-2" />
+                  Напомнить о платежах
+                </Button>
               </div>
             </CardContent>
           </Card>

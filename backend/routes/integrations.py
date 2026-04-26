@@ -198,6 +198,14 @@ _Отправлено из WM Finance_"""
         raise HTTPException(status_code=500, detail="Таймаут подключения к Telegram")
 
 
+@router.post("/settings/telegram/send-payment-reminders")
+async def send_payment_reminders_now(current_user: dict = Depends(get_current_user)):
+    """Отправить напоминание о плановых платежах прямо сейчас (для теста)."""
+    from services.telegram import send_planned_payment_reminders
+    await send_planned_payment_reminders()
+    return {"status": "ok", "message": "Напоминания отправлены (если есть что напоминать)"}
+
+
 @router.delete("/settings/reset-all")
 async def reset_all_data(
     current_user: dict = Depends(get_current_user)
