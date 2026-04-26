@@ -216,20 +216,48 @@ curl -k https://wm-finance.by/ | head -1
 
 ---
 
-## Обновление в будущем
+## Обновление в будущем (одной командой)
+
+После первого деплоя достаточно запустить:
 
 ```bash
 cd /root/wm-finance
-git pull                                                       # Если через git
-docker compose build wmfinance-backend wmfinance-frontend      # Пересобрать только нужные
-docker compose up -d --force-recreate wmfinance-backend wmfinance-frontend
-docker compose logs -f                                         # Проверить логи
+./deploy.sh
 ```
 
+Скрипт лежит в репозитории по пути `/app/deploy/deploy.sh` (на VPS — `/root/wm-finance/deploy/deploy.sh`).
+Сделайте его исполняемым один раз после `git clone`:
+
+```bash
+chmod +x /root/wm-finance/deploy/deploy.sh
+ln -sf /root/wm-finance/deploy/deploy.sh /root/wm-finance/deploy.sh
+```
+
+После этого обновление = `./deploy.sh` одной командой. Скрипт делает:
+1. `git pull origin main`
+2. `cp deploy/{docker-compose.yml,backend.Dockerfile,frontend.Dockerfile,nginx-spa.conf}` → корень проекта
+3. `docker compose build wmfinance-backend wmfinance-frontend`
+4. `docker compose up -d --force-recreate wmfinance-backend wmfinance-frontend`
+5. Показывает статус
+
 > **Сборка фронтенда не требует yarn / corepack локально на VPS.**  
-> Образ собирается внутри Docker через `npm` (встроен в `node:20-alpine`). 
-> Если в репозитории нет `yarn.lock` или `package-lock.json` — Dockerfile сам выберет нужный путь:  
+> Образ собирается внутри Docker через `npm` (встроен в `node:20-alpine`).
+> Если в репозитории нет `yarn.lock` или `package-lock.json` — Dockerfile сам выберет нужный путь:
 > `npm ci` если есть lock-файл, иначе `npm install`.
+
+### Если нужно вручную (без скрипта)
+
+```bash
+cd /root/wm-finance
+git pull origin main
+cp deploy/docker-compose.yml ./docker-compose.yml
+cp deploy/backend.Dockerfile ./backend.Dockerfile
+cp deploy/frontend.Dockerfile ./frontend.Dockerfile
+cp deploy/nginx-spa.conf ./frontend/nginx-spa.conf
+docker compose build wmfinance-backend wmfinance-frontend
+docker compose up -d --force-recreate wmfinance-backend wmfinance-frontend
+docker compose ps
+```
 
 ---
 
