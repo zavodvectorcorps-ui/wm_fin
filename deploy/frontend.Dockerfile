@@ -3,13 +3,17 @@ FROM node:20-alpine AS build
 
 WORKDIR /app
 
-# Copy only package.json. Lock files are optional — if package-lock.json
-# is present we use `npm ci` (faster, reproducible), otherwise `npm install`.
-COPY package.json ./
-COPY package-lock.json* ./
+# Install yarn (Classic) inside the build image. It comes pre-bundled with Node 20-alpine
+# but not always — make sure it's there.
+RUN apk add --no-cache yarn
 
-RUN if [ -f package-lock.json ]; then npm ci --legacy-peer-deps; \
-    else npm install --legacy-peer-deps; fi
+# Copy lockfile + package.json. Use yarn because react-scripts has known
+# ajv/ajv-keywords resolution issues when installed with npm.
+COPY package.json yarn.lock* package-lock.json* ./
+
+RUN if [ -f yarn.lock ]; then yarn install --frozen-lockfile; \
+    elif [ -f package-lock.json ]; then npm ci --legacy-peer-deps; \
+    else yarn install; fi
 
 COPY . .
 
@@ -22,7 +26,8 @@ ENV REACT_APP_BACKEND_URL=$REACT_APP_BACKEND_URL
 ENV CI=false
 ENV DISABLE_ESLINT_PLUGIN=true
 
-RUN npm run build
+# Use the same package manager that did the install
+RUN if [ -f yarn.lock ]; then yarn build; else npm run build; fi
 
 # Stage 2: Serve with nginx
 FROM nginx:alpine
