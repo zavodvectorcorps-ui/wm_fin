@@ -2,21 +2,26 @@
 FROM node:20-alpine AS build
 
 WORKDIR /app
-COPY package.json yarn.lock ./
-RUN yarn install --frozen-lockfile
+
+# Copy only package.json. Lock files are optional — if package-lock.json
+# is present we use `npm ci` (faster, reproducible), otherwise `npm install`.
+COPY package.json ./
+COPY package-lock.json* ./
+
+RUN if [ -f package-lock.json ]; then npm ci --legacy-peer-deps; \
+    else npm install --legacy-peer-deps; fi
 
 COPY . .
 
-# Build-time env (will be baked into the bundle)
+# Build-time env (baked into the bundle)
 ARG REACT_APP_BACKEND_URL
 ENV REACT_APP_BACKEND_URL=$REACT_APP_BACKEND_URL
 
-RUN yarn build
+RUN npm run build
 
 # Stage 2: Serve with nginx
 FROM nginx:alpine
 
-# Custom nginx config for SPA
 RUN rm /etc/nginx/conf.d/default.conf
 COPY nginx-spa.conf /etc/nginx/conf.d/default.conf
 

@@ -220,10 +220,16 @@ curl -k https://wm-finance.by/ | head -1
 
 ```bash
 cd /root/wm-finance
-git pull                           # Если через git
-docker compose up -d --build       # Пересобрать
-docker compose logs -f             # Проверить логи
+git pull                                                       # Если через git
+docker compose build wmfinance-backend wmfinance-frontend      # Пересобрать только нужные
+docker compose up -d --force-recreate wmfinance-backend wmfinance-frontend
+docker compose logs -f                                         # Проверить логи
 ```
+
+> **Сборка фронтенда не требует yarn / corepack локально на VPS.**  
+> Образ собирается внутри Docker через `npm` (встроен в `node:20-alpine`). 
+> Если в репозитории нет `yarn.lock` или `package-lock.json` — Dockerfile сам выберет нужный путь:  
+> `npm ci` если есть lock-файл, иначе `npm install`.
 
 ---
 
