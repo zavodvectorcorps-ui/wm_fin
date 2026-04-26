@@ -172,6 +172,7 @@ export const TransactionsPage = () => {
     status: 'all',
     account_id: 'all',
     direction_id: 'all',
+    category_id: 'all',
     needs_review: 'all',
     search: ''
   });
@@ -218,6 +219,7 @@ export const TransactionsPage = () => {
         ...(filters.status && filters.status !== 'all' && { status: filters.status }),
         ...(filters.account_id && filters.account_id !== 'all' && { account_id: filters.account_id }),
         ...(filters.direction_id && filters.direction_id !== 'all' && { direction_id: filters.direction_id }),
+        ...(filters.category_id && filters.category_id !== 'all' && { category_id: filters.category_id }),
         ...(filters.needs_review && filters.needs_review !== 'all' && { needs_review: filters.needs_review === 'yes' }),
         ...(filters.search && { search: filters.search })
       };
@@ -443,7 +445,7 @@ export const TransactionsPage = () => {
       {/* Filters */}
       <Card>
         <CardContent className="pt-6">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-8">
             <div className="lg:col-span-2 flex gap-2">
               <Select value={filters.period} onValueChange={(v) => setFilters({ ...filters, period: v, customMonth: v === 'custom_month' ? filters.customMonth : '' })}>
                 <SelectTrigger data-testid="filter-period" className="flex-1">
@@ -503,6 +505,20 @@ export const TransactionsPage = () => {
                 <SelectItem value="all">Все направления</SelectItem>
                 {directions.map(d => (
                   <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={filters.category_id} onValueChange={(v) => setFilters({ ...filters, category_id: v })}>
+              <SelectTrigger data-testid="filter-category">
+                <SelectValue placeholder="Статья" />
+              </SelectTrigger>
+              <SelectContent className="max-h-80">
+                <SelectItem value="all">Все статьи</SelectItem>
+                {[...categories].sort((a, b) => a.name.localeCompare(b.name, 'ru')).map(c => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.type === 'income' ? '↑ ' : '↓ '}{c.name}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>

@@ -7,7 +7,7 @@ import { Skeleton } from '../components/ui/skeleton';
 import { Checkbox } from '../components/ui/checkbox';
 import { 
   TrendingUp, TrendingDown, Wallet, PiggyBank, 
-  ArrowUpRight, ArrowDownRight, Calendar, Users
+  ArrowUpRight, ArrowDownRight, Calendar, Users, Flame, Info
 } from 'lucide-react';
 import { formatCurrency, getPeriodDates, getDirectionClass, getChangePercent } from '../lib/utils';
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
@@ -29,6 +29,7 @@ export const DashboardPage = () => {
   const [dailyBalance, setDailyBalance] = useState([]);
   const [prevData, setPrevData] = useState(null);
   const [topContractors, setTopContractors] = useState([]);
+  const [runway, setRunway] = useState(null);
   const [selectedAccountIds, setSelectedAccountIds] = useState(new Set());
   const [eurPlnRate, setEurPlnRate] = useState(0);
 
@@ -38,17 +39,19 @@ export const DashboardPage = () => {
       const dates = getPeriodDates(period);
       const prevDates = getPeriodDates('prev_month');
       
-      const [summaryRes, dailyRes, prevSummaryRes, topContractorsRes] = await Promise.all([
+      const [summaryRes, dailyRes, prevSummaryRes, topContractorsRes, runwayRes] = await Promise.all([
         api().get('/analytics/summary', { params: { date_from: dates.from, date_to: dates.to } }),
         api().get('/analytics/daily-balance', { params: { date_from: dates.from, date_to: dates.to } }),
         api().get('/analytics/summary', { params: { date_from: prevDates.from, date_to: prevDates.to } }),
-        api().get('/analytics/top-contractors', { params: { date_from: dates.from, date_to: dates.to, limit: 5 } })
+        api().get('/analytics/top-contractors', { params: { date_from: dates.from, date_to: dates.to, limit: 5 } }),
+        api().get('/analytics/runway').catch(() => ({ data: null })),
       ]);
       
       setData(summaryRes.data);
       setDailyBalance(dailyRes.data);
       setPrevData(prevSummaryRes.data);
       setTopContractors(topContractorsRes.data.contractors || []);
+      setRunway(runwayRes.data);
       // Auto-select all accounts on first load
       if (summaryRes.data?.accounts?.length > 0 && selectedAccountIds.size === 0) {
         setSelectedAccountIds(new Set(summaryRes.data.accounts.map(a => a.id)));
@@ -233,6 +236,76 @@ export const DashboardPage = () => {
           }
         />
       </div>
+
+      {/* Runway Widget */}
+      {runway && (
+        <Card data-testid="runway-card" className="border-l-4 border-l-amber-500">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <CardTitle className="flex items-center gap-2">
+                <Flame className="h-5 w-5 text-amber-500" />
+                Runway — на сколько хватит денег
+              </CardTitle>
+              {runway.fixed_categories_count === 0 ? (
+                <Badge variant="outline" className="text-xs border-amber-500/40 text-amber-600 dark:text-amber-400">
+                  Отметьте постоянные расходы в Настройках → Статьи
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="text-xs">
+                  {runway.fixed_categories_count} постоянных статей · база за 3 мес
+                </Badge>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <Skeleton className="h-24 w-full" />
+            ) : (
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">Остаток денег</p>
+                  <p className="text-2xl font-bold font-mono text-foreground">
+                    {formatCurrency(runway.total_balance)}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">Постоянные расходы / мес</p>
+                  <p className="text-2xl font-bold font-mono text-rose-500">
+                    {runway.avg_monthly_burn > 0 ? formatCurrency(runway.avg_monthly_burn) : '—'}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">Хватит на</p>
+                  <p className={`text-2xl font-bold font-mono ${
+                    runway.runway_months === null ? 'text-muted-foreground'
+                    : runway.runway_months >= 6 ? 'text-emerald-500'
+                    : runway.runway_months >= 3 ? 'text-amber-500'
+                    : 'text-rose-500'
+                  }`}>
+                    {runway.runway_months === null ? '∞ месяцев' : `${runway.runway_months} мес`}
+                  </p>
+                </div>
+              </div>
+            )}
+            {runway.top_categories && runway.top_categories.length > 0 && (
+              <div className="mt-4 pt-3 border-t border-border space-y-1">
+                <p className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
+                  <Info className="h-3 w-3" />
+                  Что съедает больше всего (среднее в месяц):
+                </p>
+                <div className="grid gap-1 md:grid-cols-2">
+                  {runway.top_categories.slice(0, 6).map(c => (
+                    <div key={c.name} className="flex justify-between text-sm">
+                      <span className="text-muted-foreground truncate">{c.name}</span>
+                      <span className="font-mono">{formatCurrency(c.avg_monthly)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Charts Row */}
       <div className="grid gap-6 lg:grid-cols-2">

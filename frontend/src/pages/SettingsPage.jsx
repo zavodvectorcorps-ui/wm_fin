@@ -37,7 +37,7 @@ export const SettingsPage = () => {
   const [editingItem, setEditingItem] = useState(null);
   
   const [accountForm, setAccountForm] = useState({ name: '', type: 'checking', currency: 'PLN', bank: '', initial_balance: '' });
-  const [categoryForm, setCategoryForm] = useState({ name: '', type: 'expense', group: '', default_direction: '' });
+  const [categoryForm, setCategoryForm] = useState({ name: '', type: 'expense', group: '', default_direction: '', is_fixed_cost: false });
   const [directionForm, setDirectionForm] = useState({ name: '', color: 'blue', description: '' });
   const [ruleForm, setRuleForm] = useState({ pattern: '', category_id: '', direction_id: '', contractor_id: '' });
 
@@ -83,8 +83,9 @@ export const SettingsPage = () => {
         name: item.name,
         type: item.type,
         group: item.group,
-        default_direction: item.default_direction || ''
-      } : { name: '', type: 'expense', group: '', default_direction: '' });
+        default_direction: item.default_direction || '',
+        is_fixed_cost: !!item.is_fixed_cost
+      } : { name: '', type: 'expense', group: '', default_direction: '', is_fixed_cost: false });
     } else if (type === 'direction') {
       setDirectionForm(item ? {
         name: item.name,
@@ -382,7 +383,14 @@ export const SettingsPage = () => {
                       {categories.filter(c => c.type === 'expense').map(c => (
                         <div key={c.id} className="flex items-center justify-between p-2 rounded-lg bg-muted/50">
                           <div>
-                            <p className="font-medium">{c.name}</p>
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium">{c.name}</p>
+                              {c.is_fixed_cost && (
+                                <Badge variant="outline" className="text-xs border-amber-500/40 text-amber-600 dark:text-amber-400">
+                                  Постоянный
+                                </Badge>
+                              )}
+                            </div>
                             <p className="text-xs text-muted-foreground">{c.group}</p>
                           </div>
                           <div className="flex gap-1">
@@ -821,6 +829,24 @@ export const SettingsPage = () => {
                 />
               </div>
             </div>
+            {categoryForm.type === 'expense' && (
+              <div className="flex items-start gap-3 p-3 rounded-lg border border-border bg-muted/30">
+                <input
+                  type="checkbox"
+                  id="is-fixed-cost"
+                  checked={categoryForm.is_fixed_cost}
+                  onChange={(e) => setCategoryForm({ ...categoryForm, is_fixed_cost: e.target.checked })}
+                  className="mt-1 h-4 w-4 accent-primary cursor-pointer"
+                  data-testid="category-fixed-cost"
+                />
+                <div className="flex-1">
+                  <Label htmlFor="is-fixed-cost" className="cursor-pointer">Постоянный расход</Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Аренда, зарплаты, абонплаты, налоги. Учитывается в виджете «Runway» (на сколько хватит денег).
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogType(null)}>Отмена</Button>

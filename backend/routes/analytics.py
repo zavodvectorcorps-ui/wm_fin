@@ -129,6 +129,92 @@ async def get_analytics_summary(
     }
 
 
+@router.get("/analytics/runway")
+async def get_runway(current_user: dict = Depends(get_current_user)):
+    """
+    «На сколько месяцев хватит денег» по постоянным расходам.
+    Берёт средние расходы по категориям с is_fixed_cost=True за последние 3 полных месяца
+    и делит на них общий остаток (в базовой валюте PLN).
+    """
+    user_id = current_user["user_id"]
+
+    # Get fixed-cost category ids
+    fixed_categories = await db.categories.find(
+        {"user_id": user_id, "is_fixed_cost": True, "type": "expense", "is_active": True},
+        {"_id": 0, "id": 1, "name": 1, "group": 1}
+    ).to_list(500)
+    fixed_cat_ids = [c["id"] for c in fixed_categories]
+
+    # Period: last 3 full calendar months, ending yesterday
+    now = datetime.now(timezone.utc)
+    end = now.replace(day=1) - timedelta(days=1)
+    start = (end.replace(day=1) - timedelta(days=1)).replace(day=1)
+    start = (start.replace(day=1) - timedelta(days=1)).replace(day=1)
+    date_from = start.strftime("%Y-%m-%d")
+    date_to = end.strftime("%Y-%m-%d")
+
+    # Per-category 3-month sum
+    per_category = {}
+    total_3m = 0.0
+    if fixed_cat_ids:
+        txs = await db.transactions.find(
+            {
+                "user_id": user_id,
+                "status": "fact",
+                "type": "expense",
+                "category_id": {"$in": fixed_cat_ids},
+                "date": {"$gte": date_from, "$lte": date_to},
+            },
+            {"_id": 0, "category_id": 1, "category_name": 1, "amount_base": 1, "amount": 1}
+        ).to_list(50000)
+
+        for t in txs:
+            amt = t.get("amount_base") if t.get("amount_base") is not None else t.get("amount", 0)
+            cat_name = t.get("category_name", "Без категории")
+            per_category[cat_name] = per_category.get(cat_name, 0) + amt
+            total_3m += amt
+
+    avg_monthly_burn = round(total_3m / 3, 2) if total_3m else 0
+
+    # Total balance in PLN (same logic as summary endpoint)
+    accounts = await db.accounts.find(
+        {"user_id": user_id, "is_active": True},
+        {"_id": 0, "currency": 1, "current_balance": 1}
+    ).to_list(100)
+
+    eur_rate = 0
+    try:
+        from routes.exchange_rate import get_nbp_rate
+        eur_rate = await get_nbp_rate()
+    except Exception:
+        pass
+
+    total_balance = 0.0
+    for a in accounts:
+        bal = a.get("current_balance", 0) or 0
+        if a.get("currency") == "EUR" and eur_rate > 0:
+            total_balance += bal * eur_rate
+        else:
+            total_balance += bal
+
+    runway_months = round(total_balance / avg_monthly_burn, 1) if avg_monthly_burn > 0 else None
+
+    top_categories = sorted(
+        [{"name": k, "amount_3m": round(v, 2), "avg_monthly": round(v / 3, 2)} for k, v in per_category.items()],
+        key=lambda x: x["avg_monthly"],
+        reverse=True
+    )[:10]
+
+    return {
+        "total_balance": round(total_balance, 2),
+        "avg_monthly_burn": avg_monthly_burn,
+        "runway_months": runway_months,
+        "fixed_categories_count": len(fixed_categories),
+        "period": {"from": date_from, "to": date_to},
+        "top_categories": top_categories,
+    }
+
+
 @router.get("/analytics/daily-balance")
 async def get_daily_balance(
     date_from: str,

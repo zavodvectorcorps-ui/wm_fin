@@ -53,6 +53,7 @@ class Category(BaseModel):
     type: Literal["income", "expense"]
     group: str
     default_direction: Optional[str] = None
+    is_fixed_cost: bool = False
     is_active: bool = True
     user_id: str = ""
 
@@ -62,6 +63,7 @@ class CategoryCreate(BaseModel):
     type: Literal["income", "expense"]
     group: str
     default_direction: Optional[str] = None
+    is_fixed_cost: bool = False
 
 
 class BusinessDirection(BaseModel):
