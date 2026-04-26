@@ -30,7 +30,7 @@ services:
       context: ./frontend
       dockerfile: ../frontend.Dockerfile
       args:
-        REACT_APP_BACKEND_URL: https://wm-finance.by
+        REACT_APP_BACKEND_URL: https://wm-finance.pl
     container_name: wmfinance-frontend
     restart: unless-stopped
     depends_on:

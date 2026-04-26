@@ -25,10 +25,10 @@
 ## Шаг 1: Подготовка домена
 
 ```bash
-# DNS: A-запись wm-finance.by → IP вашего VPS
+# DNS: A-запись wm-finance.pl → IP вашего VPS
 
 # SSL сертификат
-sudo certbot certonly --nginx -d wm-finance.by -d www.wm-finance.by
+sudo certbot certonly --nginx -d wm-finance.pl -d www.wm-finance.pl
 ```
 
 ---
@@ -82,7 +82,7 @@ nano backend/.env
 ```env
 MONGO_URL=mongodb://wmfinance-mongo:27017
 DB_NAME=wmfinance
-CORS_ORIGINS=https://wm-finance.by,https://www.wm-finance.by
+CORS_ORIGINS=https://wm-finance.pl,https://www.wm-finance.pl
 EMERGENT_LLM_KEY=sk-emergent-62940379d4dCa73EeE
 JWT_SECRET=wmfinance_jwt_secret_key_2026_secure
 SUPERADMIN_LOGIN=admin
@@ -96,9 +96,9 @@ SUPERADMIN_ID=superadmin-wmfinance-001
 
 Откройте `docker-compose.yml` и проверьте строку:
 ```yaml
-REACT_APP_BACKEND_URL: https://wm-finance.by
+REACT_APP_BACKEND_URL: https://wm-finance.pl
 ```
-Замените `wm-finance.by` на ваш реальный домен, если отличается.
+Замените `wm-finance.pl` на ваш реальный домен, если отличается.
 
 ---
 
@@ -207,10 +207,10 @@ docker exec wmfinance-mongo bash -c '
 
 ```bash
 # Backend API
-curl -k https://wm-finance.by/api/health
+curl -k https://wm-finance.pl/api/health
 
 # Frontend
-curl -k https://wm-finance.by/ | head -1
+curl -k https://wm-finance.pl/ | head -1
 # Должно вернуть: <!doctype html>
 ```
 
