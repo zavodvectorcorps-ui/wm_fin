@@ -26,6 +26,7 @@ export const SettingsPage = () => {
   const [dbStats, setDbStats] = useState(null);
   const [importFile, setImportFile] = useState(null);
   const [importing, setImporting] = useState(false);
+  const [driveBackupLoading, setDriveBackupLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('accounts');
   
   const [accounts, setAccounts] = useState([]);
@@ -196,6 +197,19 @@ export const SettingsPage = () => {
       setBackupLoading(false);
     }
   };
+
+  const driveBackup = async (full = false) => {
+    setDriveBackupLoading(true);
+    try {
+      const res = await api().post(`/admin/drive-backup/now?full=${full}&notify=true`);
+      toast.success(`Загружено в Drive: ${res.data.filename} (${res.data.size_mb} MB). Удалено старых: ${res.data.old_files_deleted}`);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Ошибка бэкапа в Drive');
+    } finally {
+      setDriveBackupLoading(false);
+    }
+  };
+
 
   const uploadBackup = async () => {
     if (!importFile) {
@@ -631,6 +645,53 @@ export const SettingsPage = () => {
                   </div>
                 )}
               </div>
+
+              <div className="p-4 border rounded-lg space-y-3 border-emerald-500/30 bg-emerald-500/5">
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div>
+                    <h3 className="font-semibold flex items-center gap-2">
+                      <Upload className="h-4 w-4 text-emerald-500" />
+                      Бэкап в Google Drive
+                    </h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Авто: ежедневно в 03:00 UTC (БД), по воскресеньям в 03:30 UTC (БД + uploads).
+                      Хранятся 7 дней, потом удаляются. Папка «WM Finance Backups» в корне Drive.
+                    </p>
+                  </div>
+                  <div className="flex gap-2 flex-wrap">
+                    <Button
+                      variant="outline"
+                      onClick={() => driveBackup(false)}
+                      disabled={driveBackupLoading}
+                      data-testid="drive-backup-db-btn"
+                    >
+                      {driveBackupLoading ? (
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Upload className="h-4 w-4 mr-2" />
+                      )}
+                      Только БД
+                    </Button>
+                    <Button
+                      onClick={() => driveBackup(true)}
+                      disabled={driveBackupLoading}
+                      data-testid="drive-backup-full-btn"
+                    >
+                      {driveBackupLoading ? (
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Upload className="h-4 w-4 mr-2" />
+                      )}
+                      Полный (БД + uploads)
+                    </Button>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  💡 Использует тот же Service Account, что и Google Sheets backup.
+                  В Google Cloud Console включите <strong>Drive API</strong> для проекта SA.
+                </p>
+              </div>
+
 
               <div className="p-4 border rounded-lg space-y-3">
                 <h3 className="font-semibold flex items-center gap-2">

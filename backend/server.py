@@ -42,6 +42,7 @@ from routes.exchange_rate import router as exchange_rate_router
 from routes.backup import router as backup_router
 from routes.recurring import router as recurring_router
 from routes.salaries import router as salaries_router
+from routes.drive_backup import router as drive_backup_router
 
 # Import service routers
 from services.google_sheets import router as google_sheets_router
@@ -89,6 +90,7 @@ all_routers = [
     backup_router,
     recurring_router,
     salaries_router,
+    drive_backup_router,
     google_sheets_router,
 ]
 
@@ -280,6 +282,27 @@ async def startup_event():
         hour=9,
         minute=30,
         id="planned_payments_telegram_reminders",
+        replace_existing=True,
+    )
+
+    # Daily Google Drive backup (DB only) at 03:00 UTC
+    from services.google_drive_backup import scheduled_drive_backup_db, scheduled_drive_backup_full
+    scheduler.add_job(
+        scheduled_drive_backup_db,
+        "cron",
+        hour=3,
+        minute=0,
+        id="google_drive_backup_db",
+        replace_existing=True,
+    )
+    # Weekly full backup (DB + uploads) on Sundays at 03:30 UTC
+    scheduler.add_job(
+        scheduled_drive_backup_full,
+        "cron",
+        day_of_week="sun",
+        hour=3,
+        minute=30,
+        id="google_drive_backup_full",
         replace_existing=True,
     )
 
