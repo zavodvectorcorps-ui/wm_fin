@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Receipt, FolderKanban, Users, BarChart3, Calendar,
   Settings, HelpCircle, LogOut, ChevronDown, Menu, X, Bell,
   TrendingUp, Wallet, PiggyBank, FileText, Bot, Paperclip, Zap, Plug, Link2, Shield,
-  ClipboardList, Repeat, Banknote
+  ClipboardList, Repeat, Banknote, Eye, AlertTriangle
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Sheet, SheetContent, SheetTrigger } from './ui/sheet';
@@ -54,10 +54,17 @@ const settingsItems = [
 
 const SidebarContent = ({ onClose }) => {
   const location = useLocation();
-  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const { user, logout, isDemo } = useAuth();
   const [analyticsOpen, setAnalyticsOpen] = useState(location.pathname.startsWith('/analytics'));
   const [documentsOpen, setDocumentsOpen] = useState(location.pathname === '/documents' || location.pathname === '/import' || location.pathname === '/settings/rules');
   const [planningOpen, setPlanningOpen] = useState(location.pathname.startsWith('/planning'));
+
+  const handleExitDemo = () => {
+    logout();
+    navigate('/demo');
+    if (onClose) onClose();
+  };
 
   const NavItem = ({ icon: Icon, label, path }) => (
     <Link
@@ -170,7 +177,18 @@ const SidebarContent = ({ onClose }) => {
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 text-left">
-                <p className="text-sm font-medium">{user?.name || 'Пользователь'}</p>
+                <p className="text-sm font-medium flex items-center gap-1.5">
+                  {user?.name || 'Пользователь'}
+                  {isDemo && (
+                    <span
+                      className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 text-amber-500 text-[10px] font-semibold px-1.5 py-0.5 leading-none"
+                      data-testid="demo-badge-sidebar"
+                    >
+                      <Eye className="h-2.5 w-2.5" />
+                      DEMO
+                    </span>
+                  )}
+                </p>
                 <p className="text-xs text-muted-foreground">{user?.email}</p>
               </div>
             </Button>
@@ -182,6 +200,19 @@ const SidebarContent = ({ onClose }) => {
                 Настройки
               </Link>
             </DropdownMenuItem>
+            {isDemo && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={handleExitDemo}
+                  className="text-amber-500"
+                  data-testid="exit-demo-btn"
+                >
+                  <Eye className="mr-2 h-4 w-4" />
+                  Выйти из демо
+                </DropdownMenuItem>
+              </>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={logout} className="text-destructive" data-testid="logout-btn">
               <LogOut className="mr-2 h-4 w-4" />
@@ -197,6 +228,12 @@ const SidebarContent = ({ onClose }) => {
 export const Layout = ({ children }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const navigate = useNavigate();
+  const { isDemo, logout } = useAuth();
+
+  const handleExitDemo = () => {
+    logout();
+    navigate('/demo');
+  };
   
   // Global hotkeys
   useEffect(() => {
@@ -234,13 +271,49 @@ export const Layout = ({ children }) => {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Demo banner — sticky top, visible only for demo users */}
+      {isDemo && (
+        <div
+          className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-amber-500/95 to-orange-500/95 text-black border-b border-amber-700/40 backdrop-blur-md"
+          data-testid="demo-banner"
+        >
+          <div className="px-4 py-2 flex items-center justify-center gap-3 text-sm font-medium flex-wrap">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span className="hidden sm:inline">
+              Вы в демо-режиме — просмотр данных доступен, изменения отключены.
+            </span>
+            <span className="sm:hidden">Демо-режим (read-only)</span>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 px-3 bg-black/10 hover:bg-black/20 text-black gap-1.5"
+              onClick={handleExitDemo}
+              data-testid="exit-demo-banner-btn"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              Выйти из демо
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Desktop Sidebar */}
-      <aside className="hidden lg:fixed lg:inset-y-0 lg:flex lg:w-64 lg:flex-col border-r border-border bg-card/50 backdrop-blur-xl z-30">
+      <aside
+        className={cn(
+          "hidden lg:fixed lg:inset-y-0 lg:flex lg:w-64 lg:flex-col border-r border-border bg-card/50 backdrop-blur-xl z-30",
+          isDemo && "lg:top-10"
+        )}
+      >
         <SidebarContent />
       </aside>
 
       {/* Mobile Header */}
-      <header className="lg:hidden fixed top-0 left-0 right-0 h-16 border-b border-border bg-card z-40 flex items-center px-4">
+      <header
+        className={cn(
+          "lg:hidden fixed left-0 right-0 h-16 border-b border-border bg-card z-40 flex items-center px-4",
+          isDemo ? "top-10" : "top-0"
+        )}
+      >
         <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
           <SheetTrigger asChild>
             <Button variant="ghost" size="icon" className="text-foreground" data-testid="mobile-menu-btn">
@@ -260,7 +333,12 @@ export const Layout = ({ children }) => {
       </header>
 
       {/* Main Content */}
-      <main className="lg:pl-64 pt-16 lg:pt-0 min-h-screen flex flex-col">
+      <main
+        className={cn(
+          "lg:pl-64 min-h-screen flex flex-col",
+          isDemo ? "pt-[6.5rem] lg:pt-10" : "pt-16 lg:pt-0"
+        )}
+      >
         <div className="flex-1">
           {children}
         </div>

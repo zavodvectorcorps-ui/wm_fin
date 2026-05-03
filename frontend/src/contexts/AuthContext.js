@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import axios from 'axios';
+import { toast } from 'sonner';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL + '/api';
 
@@ -17,22 +18,31 @@ export const AuthProvider = ({ children }) => {
       baseURL: API_URL,
       headers: token ? { Authorization: `Bearer ${token}` } : {}
     });
-    
-    // Add response interceptor for 401 errors
+
     instance.interceptors.response.use(
       response => response,
       error => {
-        if (error.response?.status === 401) {
+        const status = error.response?.status;
+        if (status === 401) {
           // Token expired or invalid - logout
           localStorage.removeItem('wm_token');
           setToken(null);
           setUser(null);
           window.location.href = '/login';
         }
+        if (status === 403) {
+          // Demo read-only mode (or any forbidden write)
+          const detail = error.response?.data?.detail;
+          if (typeof detail === 'string' && detail.toLowerCase().includes('демо')) {
+            toast.error('Демо-режим: изменения запрещены', {
+              description: 'Зарегистрируйтесь для полного доступа.',
+            });
+          }
+        }
         return Promise.reject(error);
       }
     );
-    
+
     return instance;
   }, [token]);
 
@@ -69,15 +79,25 @@ export const AuthProvider = ({ children }) => {
     return res.data;
   };
 
+  const loginAsDemo = async () => {
+    const res = await axios.post(`${API_URL}/auth/demo-login`);
+    localStorage.setItem('wm_token', res.data.token);
+    setToken(res.data.token);
+    setUser(res.data.user);
+    return res.data;
+  };
+
   const logout = () => {
     localStorage.removeItem('wm_token');
     setToken(null);
     setUser(null);
   };
 
+  const isDemo = user?.role === 'demo';
+
   const value = useMemo(() => ({
-    user, token, loading, login, register, logout, api
-  }), [user, token, loading, api]);
+    user, token, loading, login, register, logout, loginAsDemo, isDemo, api
+  }), [user, token, loading, isDemo, api]);
 
   return (
     <AuthContext.Provider value={value}>

@@ -1,12 +1,14 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
+import { useAuth } from '../contexts/AuthContext';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import {
   Wallet, Repeat, FileText, Bot, Cloud, TrendingUp, Banknote, Calendar,
   Globe, Smartphone, Shield, Zap, ExternalLink, Github, Code, Database,
-  Flame, CheckCircle2, ArrowRight
+  Flame, CheckCircle2, ArrowRight, Loader2
 } from 'lucide-react';
 
 const features = [
@@ -104,6 +106,28 @@ const techStack = [
 ];
 
 const DemoPage = () => {
+  const navigate = useNavigate();
+  const { loginAsDemo } = useAuth();
+  const [demoLoading, setDemoLoading] = useState(false);
+
+  const handleDemoLogin = async () => {
+    if (demoLoading) return;
+    setDemoLoading(true);
+    try {
+      await loginAsDemo();
+      toast.success('Вы вошли в демо-режим', {
+        description: 'Просмотр данных доступен, изменения отключены.',
+      });
+      navigate('/dashboard');
+    } catch (e) {
+      toast.error('Не удалось войти в демо', {
+        description: e?.response?.data?.detail || e.message || 'Попробуйте ещё раз',
+      });
+    } finally {
+      setDemoLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Hero */}
@@ -132,12 +156,26 @@ const DemoPage = () => {
                 <ExternalLink className="h-3 w-3" />
               </Button>
             </a>
-            <Link to="/login">
-              <Button size="lg" variant="outline" className="gap-2" data-testid="demo-login-btn">
-                Войти в демо
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-            </Link>
+            <Button
+              size="lg"
+              variant="outline"
+              className="gap-2"
+              onClick={handleDemoLogin}
+              disabled={demoLoading}
+              data-testid="demo-login-btn"
+            >
+              {demoLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Входим...
+                </>
+              ) : (
+                <>
+                  Войти в демо
+                  <ArrowRight className="h-4 w-4" />
+                </>
+              )}
+            </Button>
           </div>
           <div className="mt-10 flex flex-wrap gap-x-8 gap-y-3 text-sm text-muted-foreground">
             <div className="flex items-center gap-2">
