@@ -336,7 +336,7 @@ const DemoPage = () => {
             Это приложение построено под конкретные задачи. Могу сделать похожую систему под ваши процессы — от идеи до production-деплоя на VPS.
           </p>
           <div className="flex flex-wrap justify-center gap-3">
-            <a href="https://t.me/knyazev_mk" target="_blank" rel="noopener noreferrer">
+            <a href="https://t.me/king_saas" target="_blank" rel="noopener noreferrer">
               <Button size="lg" className="gap-2">
                 Написать в Telegram
                 <ArrowRight className="h-4 w-4" />
