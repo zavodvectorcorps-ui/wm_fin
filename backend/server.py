@@ -43,6 +43,7 @@ from routes.backup import router as backup_router
 from routes.recurring import router as recurring_router
 from routes.salaries import router as salaries_router
 from routes.drive_backup import router as drive_backup_router
+from routes.demo import router as demo_router, is_demo_user_from_token, DEMO_WRITE_ALLOWLIST
 
 # Import service routers
 from services.google_sheets import router as google_sheets_router
@@ -64,6 +65,24 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def block_writes_for_demo_users(request, call_next):
+    """Demo users get 403 on any write method except explicit allowlist."""
+    method = request.method.upper()
+    if method in ("POST", "PUT", "PATCH", "DELETE"):
+        path = request.url.path
+        # Skip the demo-login endpoint itself
+        if path != "/api/auth/demo-login" and path not in DEMO_WRITE_ALLOWLIST:
+            auth_header = request.headers.get("authorization")
+            if is_demo_user_from_token(auth_header):
+                from fastapi.responses import JSONResponse
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "Демо-режим: изменения запрещены. Зарегистрируйтесь для полного доступа."}
+                )
+    return await call_next(request)
 
 # Include all routers
 all_routers = [
@@ -91,6 +110,7 @@ all_routers = [
     recurring_router,
     salaries_router,
     drive_backup_router,
+    demo_router,
     google_sheets_router,
 ]
 
