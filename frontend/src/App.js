@@ -28,6 +28,7 @@ import UsersPage from './pages/UsersPage';
 import ExpensePlanPage from './pages/ExpensePlanPage';
 import RecurringExpensesPage from './pages/RecurringExpensesPage';
 import SalariesPage from './pages/SalariesPage';
+import DemoPage from './pages/DemoPage';
 
 import MobileHomePage from './pages/MobileHomePage';
 
@@ -129,6 +130,9 @@ function AppRoutes() {
           <LoginPage />
         </PublicRoute>
       } />
+
+      {/* Public demo/portfolio page — no auth required */}
+      <Route path="/demo" element={<DemoPage />} />
       
       {/* Protected routes */}
       <Route path="/" element={
