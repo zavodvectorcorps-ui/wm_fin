@@ -43,8 +43,8 @@ from routes.backup import router as backup_router
 from routes.recurring import router as recurring_router
 from routes.salaries import router as salaries_router
 from routes.drive_backup import router as drive_backup_router
+from routes.google_oauth import router as google_oauth_router
 from routes.demo import router as demo_router, is_demo_user_from_token, DEMO_WRITE_ALLOWLIST
-
 # Import service routers
 from services.google_sheets import router as google_sheets_router
 
@@ -110,6 +110,7 @@ all_routers = [
     recurring_router,
     salaries_router,
     drive_backup_router,
+    google_oauth_router,
     demo_router,
     google_sheets_router,
 ]

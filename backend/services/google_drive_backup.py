@@ -80,14 +80,40 @@ async def _build_db_archive(include_uploads: bool = False) -> Tuple[bytes, str]:
 
 # ============== Google Drive helpers ==============
 
-def _get_drive_service(service_account_info: dict):
-    """Создать клиент Google Drive API."""
-    from googleapiclient.discovery import build
-    from google.oauth2.service_account import Credentials
+def _get_drive_service(settings: dict):
+    """Build an authenticated Drive client.
 
-    scopes = ["https://www.googleapis.com/auth/drive"]
-    creds = Credentials.from_service_account_info(service_account_info, scopes=scopes)
-    return build("drive", "v3", credentials=creds, cache_discovery=False)
+    Preferred: OAuth 2.0 with user's refresh_token (google_drive_refresh_token in
+    integration_settings). Falls back to Service Account only for read-only
+    scenarios — uploads via SA will fail because service accounts have no storage
+    quota (since 2022). Raises RuntimeError if no working auth is available.
+    """
+    from googleapiclient.discovery import build
+
+    refresh_token = settings.get("google_drive_refresh_token")
+    client_id = settings.get("google_oauth_client_id")
+    client_secret = settings.get("google_oauth_client_secret")
+
+    if refresh_token and client_id and client_secret:
+        from google.oauth2.credentials import Credentials
+        from google.auth.transport.requests import Request as GoogleRequest
+
+        creds = Credentials(
+            token=settings.get("google_drive_access_token"),
+            refresh_token=refresh_token,
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=client_id,
+            client_secret=client_secret,
+            scopes=settings.get("google_drive_scopes") or ["https://www.googleapis.com/auth/drive.file"],
+        )
+        if not creds.valid:
+            creds.refresh(GoogleRequest())
+        return build("drive", "v3", credentials=creds, cache_discovery=False)
+
+    raise RuntimeError(
+        "Google Drive не подключён. Откройте Интеграции → Google Drive и нажмите "
+        "«Подключить Google Drive» (OAuth)."
+    )
 
 
 def _ensure_folder(service, folder_name: str = DRIVE_FOLDER_NAME) -> str:
@@ -149,17 +175,14 @@ async def backup_to_drive(user_id: str, full: bool = False) -> dict:
     """
     settings = await db.integration_settings.find_one(
         {"user_id": user_id},
-        {"_id": 0, "google_service_account": 1}
-    )
-    if not settings or not settings.get("google_service_account"):
-        return {"status": "error", "message": "Service Account не настроен в Интеграциях"}
+        {"_id": 0}
+    ) or {}
 
-    sa_info = settings["google_service_account"]
-    if isinstance(sa_info, str):
-        try:
-            sa_info = json.loads(sa_info)
-        except Exception:
-            return {"status": "error", "message": "Service Account JSON некорректен"}
+    # OAuth must be configured
+    if not settings.get("google_drive_refresh_token"):
+        return {"status": "error", "message": "Google Drive не подключён (OAuth). Откройте Интеграции → Google Drive."}
+    if not (settings.get("google_oauth_client_id") and settings.get("google_oauth_client_secret")):
+        return {"status": "error", "message": "Не заданы OAuth Client ID / Client Secret"}
 
     try:
         # Build archive
@@ -167,7 +190,7 @@ async def backup_to_drive(user_id: str, full: bool = False) -> dict:
         size_mb = len(content) / (1024 * 1024)
 
         # Upload
-        service = _get_drive_service(sa_info)
+        service = _get_drive_service(settings)
         folder_id = _ensure_folder(service)
         uploaded = _upload_file(service, folder_id, filename, content)
 
@@ -237,7 +260,7 @@ async def scheduled_drive_backup_db():
     """Ежедневно в 03:00 UTC: только БД."""
     users = await db.integration_settings.distinct(
         "user_id",
-        {"google_service_account": {"$ne": None}}
+        {"google_drive_refresh_token": {"$ne": None}}
     )
     for user_id in users:
         try:
@@ -252,7 +275,7 @@ async def scheduled_drive_backup_full():
     """Еженедельно в воскресенье 03:30 UTC: полный (БД + uploads)."""
     users = await db.integration_settings.distinct(
         "user_id",
-        {"google_service_account": {"$ne": None}}
+        {"google_drive_refresh_token": {"$ne": None}}
     )
     for user_id in users:
         try:

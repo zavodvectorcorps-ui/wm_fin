@@ -687,8 +687,8 @@ export const SettingsPage = () => {
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  💡 Использует тот же Service Account, что и Google Sheets backup.
-                  В Google Cloud Console включите <strong>Drive API</strong> для проекта SA.
+                  💡 Подключите Google Drive через <strong>OAuth</strong> в Интеграциях
+                  (Google с 2022 г. не даёт Service Accounts хранилище).
                 </p>
               </div>
 

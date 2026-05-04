@@ -13,7 +13,7 @@ import { Separator } from '../components/ui/separator';
 import { 
   Send, CheckCircle2, XCircle, Loader2, Bot, Plug, Settings, 
   Clock, Calendar, MessageSquare, Bell, Database, ExternalLink, RefreshCw, Upload, FileText,
-  Banknote, Link2, Users, Unlink
+  Banknote, Link2, Users, Unlink, Cloud, LogOut
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -74,6 +74,223 @@ const ExchangeRateSettings = ({ api }) => {
         </Button>
       </div>
     </div>
+  );
+};
+
+const GoogleDriveOAuthCard = ({ api }) => {
+  const [status, setStatus] = useState(null);
+  const [clientId, setClientId] = useState('');
+  const [clientSecret, setClientSecret] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await api().get('/settings/google-oauth/status');
+      setStatus(res.data);
+    } catch {
+      // ignore
+    }
+  }, [api]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // Handle callback query params (drive_connected=1 or drive_error=...)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('drive_connected')) {
+      toast.success('Google Drive подключён');
+      load();
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (params.has('drive_error')) {
+      toast.error('Ошибка подключения Google Drive', {
+        description: params.get('drive_error'),
+      });
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, [load]);
+
+  const saveConfig = async () => {
+    if (!clientId.trim() && !clientSecret.trim()) {
+      toast.error('Введите Client ID и Client Secret');
+      return;
+    }
+    setSaving(true);
+    try {
+      await api().put('/settings/google-oauth/config', {
+        client_id: clientId.trim() || null,
+        client_secret: clientSecret.trim() || null,
+      });
+      toast.success('OAuth Client сохранён');
+      setClientId('');
+      setClientSecret('');
+      load();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || 'Ошибка сохранения');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const connect = async () => {
+    setConnecting(true);
+    try {
+      const redirectUri = `${process.env.REACT_APP_BACKEND_URL}/api/settings/google-oauth/callback`;
+      const res = await api().post('/settings/google-oauth/start', { redirect_uri: redirectUri });
+      window.location.href = res.data.authorization_url;
+    } catch (e) {
+      toast.error(e.response?.data?.detail || 'Не удалось начать OAuth');
+      setConnecting(false);
+    }
+  };
+
+  const disconnect = async () => {
+    if (!window.confirm('Отключить Google Drive? Автобэкапы перестанут работать, пока не подключите заново.')) return;
+    setDisconnecting(true);
+    try {
+      await api().post('/settings/google-oauth/disconnect');
+      toast.success('Google Drive отключён');
+      load();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || 'Ошибка отключения');
+    } finally {
+      setDisconnecting(false);
+    }
+  };
+
+  const hasConfig = status?.has_client_config;
+  const connected = status?.connected;
+  const redirectUri = `${process.env.REACT_APP_BACKEND_URL}/api/settings/google-oauth/callback`;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Cloud className="h-5 w-5 text-sky-500" />
+          Google Drive (OAuth 2.0)
+        </CardTitle>
+        <CardDescription>
+          Автобэкап БД и файлов в ваш личный Google Drive. С 2022 г. Service Accounts не имеют
+          квоты хранилища — используется OAuth-делегирование вместо SA.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Status badges */}
+        <div className="flex gap-2 flex-wrap">
+          {hasConfig ? (
+            <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
+              <CheckCircle2 className="h-3 w-3 mr-1" />
+              OAuth Client настроен
+            </Badge>
+          ) : (
+            <Badge className="bg-yellow-500/10 text-yellow-600 border-yellow-500/20">
+              <XCircle className="h-3 w-3 mr-1" />
+              OAuth Client не задан
+            </Badge>
+          )}
+          {connected ? (
+            <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20" data-testid="drive-connected-badge">
+              <CheckCircle2 className="h-3 w-3 mr-1" />
+              Подключён: {status?.connected_email || 'ok'}
+            </Badge>
+          ) : (
+            <Badge className="bg-yellow-500/10 text-yellow-600 border-yellow-500/20">
+              <XCircle className="h-3 w-3 mr-1" />
+              Не подключён
+            </Badge>
+          )}
+        </div>
+
+        {/* Instructions */}
+        <Alert>
+          <AlertDescription className="text-xs space-y-1">
+            <p className="font-semibold text-foreground">Настройка (однократно):</p>
+            <ol className="list-decimal ml-4 space-y-1">
+              <li>Откройте <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="text-primary underline">Google Cloud Console → Credentials</a>.</li>
+              <li>Включите <strong>Google Drive API</strong> (Library → Google Drive API → Enable).</li>
+              <li>OAuth consent screen → External → добавьте email пользователя в <strong>Test users</strong>.</li>
+              <li>Create Credentials → OAuth client ID → Web application.</li>
+              <li>В <strong>Authorized redirect URIs</strong> добавьте ровно этот URL:
+                <div className="mt-1 flex items-center gap-2">
+                  <code className="px-2 py-1 bg-muted rounded text-[11px] break-all flex-1">{redirectUri}</code>
+                  <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => { navigator.clipboard.writeText(redirectUri); toast.success('Скопировано'); }}>
+                    Copy
+                  </Button>
+                </div>
+              </li>
+              <li>Скопируйте <strong>Client ID</strong> и <strong>Client Secret</strong> ниже → «Сохранить» → «Подключить Google Drive».</li>
+            </ol>
+          </AlertDescription>
+        </Alert>
+
+        {/* Client ID / Secret inputs */}
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label>OAuth Client ID {hasConfig && <Badge variant="outline" className="ml-1 text-xs">сохранён</Badge>}</Label>
+            <Input
+              placeholder={hasConfig ? '••••••• (оставьте пустым чтобы не менять)' : 'xxx.apps.googleusercontent.com'}
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+              data-testid="drive-client-id"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>OAuth Client Secret {hasConfig && <Badge variant="outline" className="ml-1 text-xs">сохранён</Badge>}</Label>
+            <Input
+              type="password"
+              placeholder={hasConfig ? '••••••• (оставьте пустым чтобы не менять)' : 'GOCSPX-...'}
+              value={clientSecret}
+              onChange={(e) => setClientSecret(e.target.value)}
+              data-testid="drive-client-secret"
+            />
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-2 flex-wrap">
+          <Button onClick={saveConfig} disabled={saving || (!clientId && !clientSecret)} data-testid="save-drive-config-btn">
+            {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Settings className="h-4 w-4 mr-2" />}
+            Сохранить Client ID/Secret
+          </Button>
+
+          {!connected && (
+            <Button
+              variant="default"
+              onClick={connect}
+              disabled={!hasConfig || connecting}
+              data-testid="connect-drive-btn"
+            >
+              {connecting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Cloud className="h-4 w-4 mr-2" />}
+              Подключить Google Drive
+            </Button>
+          )}
+
+          {connected && (
+            <Button
+              variant="destructive"
+              onClick={disconnect}
+              disabled={disconnecting}
+              data-testid="disconnect-drive-btn"
+            >
+              {disconnecting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Unlink className="h-4 w-4 mr-2" />}
+              Отключить
+            </Button>
+          )}
+        </div>
+
+        {connected && status?.connected_at && (
+          <p className="text-xs text-muted-foreground">
+            Подключено: {new Date(status.connected_at).toLocaleString('ru-RU')}
+            {status.scopes?.length > 0 && (
+              <> · Scopes: {status.scopes.filter(s => s.includes('drive')).join(', ')}</>
+            )}
+          </p>
+        )}
+      </CardContent>
+    </Card>
   );
 };
 
@@ -487,6 +704,9 @@ export const IntegrationsPage = () => {
               </div>
             </CardContent>
           </Card>
+
+          {/* Google Drive (OAuth) Backup */}
+          <GoogleDriveOAuthCard api={api} />
 
           {/* Telegram Integration */}
           <Card>
