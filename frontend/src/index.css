@@ -168,3 +168,14 @@
 .table-row-hover {
   @apply hover:bg-muted/50 transition-colors;
 }
+
+/* Highlight row briefly after edit save */
+@keyframes row-highlight-fade {
+  0% { background-color: rgba(245, 158, 11, 0.35); }
+  60% { background-color: rgba(245, 158, 11, 0.18); }
+  100% { background-color: transparent; }
+}
+.animate-pulse-once {
+  animation: row-highlight-fade 1.8s ease-out forwards;
+}
+

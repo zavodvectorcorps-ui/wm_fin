@@ -20,7 +20,7 @@ import {
   Trash2, Calendar, MoreHorizontal, Paperclip, FileText, Link2, Unlink, AlertTriangle,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, CalendarIcon, X
 } from 'lucide-react';
-import { formatCurrency, formatDate, getDirectionClass, getStatusLabel, getPeriodDates, getTypeLabel, todayLocal } from '../lib/utils';
+import { formatCurrency, formatDate, getDirectionClass, getStatusLabel, getPeriodDates, getTypeLabel, todayLocal, cn } from '../lib/utils';
 import { toast } from 'sonner';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/dropdown-menu';
 import { format } from 'date-fns';
@@ -159,6 +159,7 @@ export const TransactionsPage = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState(null);
   const [transactionType, setTransactionType] = useState('expense');
+  const [lastEditedId, setLastEditedId] = useState(null);
   
   // Document linking state
   const [linkDocDialogOpen, setLinkDocDialogOpen] = useState(false);
@@ -380,6 +381,7 @@ export const TransactionsPage = () => {
         to_account_id: formData.to_account_id || null
       };
 
+      const editedId = editingTransaction?.id || null;
       if (editingTransaction) {
         await api().put(`/transactions/${editingTransaction.id}`, payload);
         toast.success('Операция обновлена');
@@ -396,6 +398,12 @@ export const TransactionsPage = () => {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => window.scrollTo({ top: scrollY, behavior: 'instant' }));
       });
+
+      // Highlight the edited row briefly
+      if (editedId) {
+        setLastEditedId(editedId);
+        setTimeout(() => setLastEditedId((cur) => (cur === editedId ? null : cur)), 1800);
+      }
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Ошибка сохранения');
     }
@@ -605,7 +613,15 @@ export const TransactionsPage = () => {
               </TableHeader>
               <TableBody>
                 {transactions.map((t) => (
-                  <TableRow key={t.id} className="table-row-hover cursor-pointer" onClick={() => openEditTransaction(t)} data-testid={`transaction-row-${t.id}`}>
+                  <TableRow
+                    key={t.id}
+                    className={cn(
+                      "table-row-hover cursor-pointer transition-colors",
+                      lastEditedId === t.id && "bg-amber-500/15 animate-pulse-once"
+                    )}
+                    onClick={() => openEditTransaction(t)}
+                    data-testid={`transaction-row-${t.id}`}
+                  >
                     <TableCell>
                       <SourceIcon source={t.source} />
                     </TableCell>
@@ -841,7 +857,7 @@ export const TransactionsPage = () => {
 
       {/* Transaction Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editingTransaction ? 'Редактировать операцию' : `Новый ${getTypeLabel(transactionType).toLowerCase()}`}
