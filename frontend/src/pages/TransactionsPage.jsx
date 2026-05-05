@@ -918,7 +918,7 @@ export const TransactionsPage = () => {
             </div>
 
             {transactionType === 'transfer' && (
-              <div className="space-y-2">
+              <div className="space-y-2 min-w-0">
                 <Label>На счёт</Label>
                 <Select value={formData.to_account_id} onValueChange={(v) => setFormData({ ...formData, to_account_id: v })}>
                   <SelectTrigger data-testid="form-to-account">
@@ -933,7 +933,7 @@ export const TransactionsPage = () => {
               </div>
             )}
 
-            <div className="space-y-2">
+            <div className="space-y-2 min-w-0">
               <Label>Статья</Label>
               <Select value={formData.category_id} onValueChange={(v) => setFormData({ ...formData, category_id: v })}>
                 <SelectTrigger data-testid="form-category">
@@ -948,7 +948,7 @@ export const TransactionsPage = () => {
               </Select>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2 min-w-0">
               <Label>Направление бизнеса *</Label>
               <Select value={formData.direction_id} onValueChange={(v) => setFormData({ ...formData, direction_id: v })}>
                 <SelectTrigger data-testid="form-direction">
@@ -962,7 +962,7 @@ export const TransactionsPage = () => {
               </Select>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2 min-w-0">
               <Label>Контрагент</Label>
               <Select value={formData.contractor_id} onValueChange={(v) => setFormData({ ...formData, contractor_id: v })}>
                 <SelectTrigger data-testid="form-contractor">
@@ -977,7 +977,7 @@ export const TransactionsPage = () => {
               </Select>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2 min-w-0">
               <Label>Описание</Label>
               <DescriptionAutocomplete
                 value={formData.description}
