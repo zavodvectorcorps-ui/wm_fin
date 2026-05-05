@@ -387,9 +387,15 @@ export const TransactionsPage = () => {
         await api().post('/transactions', payload);
         toast.success('Операция создана');
       }
-      
+
+      // Preserve scroll position across the re-fetch so the user stays where
+      // they were when editing a row deep in the list
+      const scrollY = window.scrollY;
       setDialogOpen(false);
-      fetchData();
+      await fetchData();
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => window.scrollTo({ top: scrollY, behavior: 'instant' }));
+      });
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Ошибка сохранения');
     }
@@ -399,7 +405,11 @@ export const TransactionsPage = () => {
     try {
       await api().delete(`/transactions/${id}`);
       toast.success('Операция удалена');
-      fetchData();
+      const scrollY = window.scrollY;
+      await fetchData();
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => window.scrollTo({ top: scrollY, behavior: 'instant' }));
+      });
     } catch (error) {
       toast.error('Ошибка удаления');
     }
