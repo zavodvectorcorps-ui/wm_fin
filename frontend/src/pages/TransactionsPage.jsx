@@ -866,7 +866,7 @@ export const TransactionsPage = () => {
           
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
+              <div className="space-y-2 min-w-0">
                 <Label>Дата</Label>
                 <Input 
                   type="date" 
@@ -875,7 +875,7 @@ export const TransactionsPage = () => {
                   data-testid="form-date"
                 />
               </div>
-              <div className="space-y-2">
+              <div className="space-y-2 min-w-0">
                 <Label>Сумма *</Label>
                 <Input 
                   type="number"
@@ -889,7 +889,7 @@ export const TransactionsPage = () => {
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
+              <div className="space-y-2 min-w-0">
                 <Label>Валюта</Label>
                 <Select value={formData.currency} onValueChange={(v) => setFormData({ ...formData, currency: v })}>
                   <SelectTrigger data-testid="form-currency">
@@ -902,7 +902,7 @@ export const TransactionsPage = () => {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-2 min-w-0">
                 <Label>Счёт *</Label>
                 <Select value={formData.account_id} onValueChange={(v) => setFormData({ ...formData, account_id: v })}>
                   <SelectTrigger data-testid="form-account">
