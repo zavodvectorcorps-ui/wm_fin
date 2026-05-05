@@ -998,7 +998,7 @@ export const TransactionsPage = () => {
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="sticky bottom-0 bg-background border-t border-border pt-3 -mx-6 px-6 -mb-6 pb-4 mt-2">
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Отмена</Button>
             <Button onClick={handleSubmit} data-testid="form-submit-btn">
               {editingTransaction ? 'Сохранить' : 'Создать'}
