@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Receipt, FolderKanban, Users, BarChart3, Calendar,
   Settings, HelpCircle, LogOut, ChevronDown, Menu, X, Bell,
   TrendingUp, Wallet, PiggyBank, FileText, Bot, Paperclip, Zap, Plug, Link2, Shield,
-  ClipboardList, Repeat, Banknote, Eye, AlertTriangle
+  ClipboardList, Repeat, Banknote, Eye, AlertTriangle, UserPlus
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Sheet, SheetContent, SheetTrigger } from './ui/sheet';
@@ -55,10 +55,18 @@ const settingsItems = [
 const SidebarContent = ({ onClose }) => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout, isDemo } = useAuth();
+  const { user, logout, isDemo, workspaceRole, canManageWorkspace } = useAuth();
   const [analyticsOpen, setAnalyticsOpen] = useState(location.pathname.startsWith('/analytics'));
   const [documentsOpen, setDocumentsOpen] = useState(location.pathname === '/documents' || location.pathname === '/import' || location.pathname === '/settings/rules');
   const [planningOpen, setPlanningOpen] = useState(location.pathname.startsWith('/planning'));
+
+  // Visibility per role
+  const isViewer = workspaceRole === 'viewer';
+  const isAccountantOrViewer = ['accountant', 'viewer'].includes(workspaceRole);
+  const isManagerOrAbove = ['owner', 'admin', 'manager'].includes(workspaceRole) || user?.role === 'superadmin';
+  const showAnalytics = !isViewer; // viewer has only dashboard
+  const showSettings = canManageWorkspace; // settings only for owner/admin/superadmin
+  const showTeam = canManageWorkspace;
 
   const handleExitDemo = () => {
     logout();
@@ -98,13 +106,19 @@ const SidebarContent = ({ onClose }) => {
 
       {/* Navigation */}
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-        {menuItems.map(item => (
-          <NavItem key={item.path} {...item} />
-        ))}
+        {/* Viewer sees only Dashboard */}
+        {isViewer ? (
+          <NavItem icon={LayoutDashboard} label="Рабочий стол" path="/dashboard" />
+        ) : (
+          menuItems.map(item => (
+            <NavItem key={item.path} {...item} />
+          ))
+        )}
 
-        <div className="h-px bg-border my-4" />
+        {!isViewer && <div className="h-px bg-border my-4" />}
 
         {/* Documents Section */}
+        {!isViewer && (
         <Collapsible open={documentsOpen} onOpenChange={setDocumentsOpen}>
           <CollapsibleTrigger className="sidebar-item w-full justify-between" data-testid="nav-documents-toggle">
             <div className="flex items-center gap-3">
@@ -119,8 +133,10 @@ const SidebarContent = ({ onClose }) => {
             ))}
           </CollapsibleContent>
         </Collapsible>
+        )}
 
         {/* Analytics Section */}
+        {showAnalytics && (
         <Collapsible open={analyticsOpen} onOpenChange={setAnalyticsOpen}>
           <CollapsibleTrigger className="sidebar-item w-full justify-between" data-testid="nav-analytics-toggle">
             <div className="flex items-center gap-3">
@@ -135,8 +151,10 @@ const SidebarContent = ({ onClose }) => {
             ))}
           </CollapsibleContent>
         </Collapsible>
+        )}
 
         {/* Planning Section */}
+        {!isViewer && (
         <Collapsible open={planningOpen} onOpenChange={setPlanningOpen}>
           <CollapsibleTrigger className="sidebar-item w-full justify-between" data-testid="nav-planning-toggle">
             <div className="flex items-center gap-3">
@@ -151,18 +169,24 @@ const SidebarContent = ({ onClose }) => {
             ))}
           </CollapsibleContent>
         </Collapsible>
+        )}
 
-        <div className="h-px bg-border my-4" />
+        {showSettings && <div className="h-px bg-border my-4" />}
 
-        {settingsItems.map(item => (
+        {showSettings && settingsItems.map(item => (
           <NavItem key={item.path} {...item} />
         ))}
-        
+
+        {/* Team management - owner/admin */}
+        {showTeam && (
+          <NavItem icon={UserPlus} label="Команда" path="/team" />
+        )}
+
         {/* Admin Users - only for superadmin */}
         {user?.role === 'superadmin' && (
           <NavItem icon={Shield} label="Пользователи" path="/admin/users" />
         )}
-        
+
         <NavItem icon={HelpCircle} label="Справка и FAQ" path="/faq" />
       </nav>
 

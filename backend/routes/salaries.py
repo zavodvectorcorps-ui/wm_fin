@@ -104,7 +104,7 @@ async def create_accrual(data: SalaryAccrualCreate, current_user: dict = Depends
         raise HTTPException(status_code=400, detail="Начисление за этот месяц уже существует")
 
     payload = data.model_dump()
-    payload["total_due"] = round(payload["salary"] + payload["bonus"] - payload["deductions"], 2)
+    payload["total_due"] = round(payload["salary"] + payload["bonus"] - payload.get("taxes", 0) - payload["deductions"], 2)
     payload["employee_name"] = emp.get("name")
     payload["direction_id"] = emp.get("direction_id")
     payload["direction_name"] = emp.get("direction_name")
@@ -136,7 +136,7 @@ async def update_accrual(
         raise HTTPException(status_code=404, detail="Сотрудник не найден")
 
     update = data.model_dump()
-    update["total_due"] = round(update["salary"] + update["bonus"] - update["deductions"], 2)
+    update["total_due"] = round(update["salary"] + update["bonus"] - update.get("taxes", 0) - update["deductions"], 2)
     update["employee_name"] = emp.get("name")
     update["direction_id"] = emp.get("direction_id")
     update["direction_name"] = emp.get("direction_name")

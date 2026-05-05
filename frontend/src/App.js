@@ -29,6 +29,8 @@ import ExpensePlanPage from './pages/ExpensePlanPage';
 import RecurringExpensesPage from './pages/RecurringExpensesPage';
 import SalariesPage from './pages/SalariesPage';
 import DemoPage from './pages/DemoPage';
+import TeamPage from './pages/TeamPage';
+import InviteAcceptPage from './pages/InviteAcceptPage';
 
 import MobileHomePage from './pages/MobileHomePage';
 
@@ -133,6 +135,9 @@ function AppRoutes() {
 
       {/* Public demo/portfolio page — no auth required */}
       <Route path="/demo" element={<DemoPage />} />
+
+      {/* Public invite acceptance — no auth required */}
+      <Route path="/invite/:token" element={<InviteAcceptPage />} />
       
       {/* Protected routes */}
       <Route path="/" element={
@@ -241,6 +246,12 @@ function AppRoutes() {
       <Route path="/admin/users" element={
         <ProtectedRoute>
           <UsersPage />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/team" element={
+        <ProtectedRoute>
+          <TeamPage />
         </ProtectedRoute>
       } />
       

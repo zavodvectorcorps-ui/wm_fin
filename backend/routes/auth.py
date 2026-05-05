@@ -70,6 +70,8 @@ async def login(data: UserLogin):
                 "email": "admin@wmfinance.local",
                 "name": "Super Admin",
                 "role": "superadmin",
+                "workspace_id": SUPERADMIN_ID,
+                "workspace_role": "owner",
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "password_hash": hash_password(SUPERADMIN_PASSWORD)
             }
@@ -77,22 +79,36 @@ async def login(data: UserLogin):
             await seed_user_data(SUPERADMIN_ID)
             superadmin = superadmin_data
 
-        token = create_token(SUPERADMIN_ID, "admin@wmfinance.local", "superadmin")
-        return {"token": token, "user": {"id": SUPERADMIN_ID, "email": "admin@wmfinance.local", "name": "Super Admin", "role": "superadmin"}}
+        ws_id = superadmin.get("workspace_id") or SUPERADMIN_ID
+        ws_role = superadmin.get("workspace_role") or "owner"
+        token = create_token(SUPERADMIN_ID, "admin@wmfinance.local", "superadmin", ws_id, ws_role)
+        return {"token": token, "user": {"id": SUPERADMIN_ID, "email": "admin@wmfinance.local", "name": "Super Admin", "role": "superadmin", "workspace_role": ws_role}}
 
     user = await db.users.find_one({"email": data.email}, {"_id": 0})
     if not user or not verify_password(data.password, user.get("password_hash", "")):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    token = create_token(user["id"], user["email"], user["role"])
-    return {"token": token, "user": {"id": user["id"], "email": user["email"], "name": user["name"], "role": user["role"]}}
+    ws_id = user.get("workspace_id") or user["id"]
+    ws_role = user.get("workspace_role") or "owner"
+    token = create_token(user["id"], user["email"], user["role"], ws_id, ws_role)
+    return {
+        "token": token,
+        "user": {
+            "id": user["id"],
+            "email": user["email"],
+            "name": user["name"],
+            "role": user["role"],
+            "workspace_role": ws_role,
+        },
+    }
 
 
 @router.get("/auth/me")
 async def get_me(current_user: dict = Depends(get_current_user)):
-    user = await db.users.find_one({"id": current_user["user_id"]}, {"_id": 0, "password_hash": 0})
+    user = await db.users.find_one({"id": current_user["login_id"]}, {"_id": 0, "password_hash": 0})
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    user["workspace_role"] = current_user.get("workspace_role", "owner")
     return user
 
 

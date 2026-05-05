@@ -22,7 +22,43 @@ class User(BaseModel):
     email: str
     name: str
     role: str
+    workspace_id: Optional[str] = None  # = id for owners; = inviter's id for invited members
+    workspace_role: Literal["owner", "admin", "accountant", "manager", "viewer"] = "owner"
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+
+class WorkspaceInvite(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    workspace_id: str
+    workspace_name: str
+    invited_email: str
+    invited_name: Optional[str] = None
+    role: Literal["admin", "accountant", "manager", "viewer"] = "manager"
+    token: str  # one-time link token
+    created_by_login_id: str
+    created_by_name: Optional[str] = None
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    expires_at: str  # ISO
+    accepted: bool = False
+    accepted_at: Optional[str] = None
+    accepted_by_login_id: Optional[str] = None
+
+
+class WorkspaceInviteCreate(BaseModel):
+    email: str
+    name: Optional[str] = None
+    role: Literal["admin", "accountant", "manager", "viewer"] = "manager"
+
+
+class WorkspaceMemberRoleUpdate(BaseModel):
+    workspace_role: Literal["admin", "accountant", "manager", "viewer"]
+
+
+class AcceptInviteRequest(BaseModel):
+    token: str
+    name: str
+    password: str
 
 
 class Account(BaseModel):
@@ -439,6 +475,8 @@ class Employee(BaseModel):
     name: str
     position: Optional[str] = None
     default_salary: float = 0
+    default_bonus: float = 0
+    default_tax_rate: float = 0  # percent (0..100)
     currency: Literal["PLN", "EUR", "USD"] = "PLN"
     direction_id: Optional[str] = None
     direction_name: Optional[str] = None
@@ -452,6 +490,8 @@ class EmployeeCreate(BaseModel):
     name: str
     position: Optional[str] = None
     default_salary: float = 0
+    default_bonus: float = 0
+    default_tax_rate: float = 0  # percent (0..100)
     currency: Literal["PLN", "EUR", "USD"] = "PLN"
     direction_id: Optional[str] = None
     is_active: bool = True
@@ -468,8 +508,9 @@ class SalaryAccrual(BaseModel):
     direction_name: Optional[str] = None
     salary: float = 0
     bonus: float = 0
+    taxes: float = 0
     deductions: float = 0
-    total_due: float = 0  # computed: salary + bonus - deductions
+    total_due: float = 0  # computed: salary + bonus - taxes - deductions
     currency: Literal["PLN", "EUR", "USD"] = "PLN"
     status: Literal["planned", "paid"] = "planned"
     linked_transaction_id: Optional[str] = None
@@ -483,5 +524,6 @@ class SalaryAccrualCreate(BaseModel):
     employee_id: str
     salary: float = 0
     bonus: float = 0
+    taxes: float = 0
     deductions: float = 0
     comment: Optional[str] = None

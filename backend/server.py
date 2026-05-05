@@ -44,6 +44,7 @@ from routes.recurring import router as recurring_router
 from routes.salaries import router as salaries_router
 from routes.drive_backup import router as drive_backup_router
 from routes.google_oauth import router as google_oauth_router
+from routes.workspace import router as workspace_router, migrate_users_to_workspaces
 from routes.demo import router as demo_router, is_demo_user_from_token, DEMO_WRITE_ALLOWLIST
 # Import service routers
 from services.google_sheets import router as google_sheets_router
@@ -84,6 +85,84 @@ async def block_writes_for_demo_users(request, call_next):
                 )
     return await call_next(request)
 
+
+# ============== Workspace role-based access control ==============
+
+# Always-writeable endpoints (login flows + own-account actions)
+ROLE_WRITE_ALLOWLIST = {
+    "/api/auth/login",
+    "/api/auth/logout",
+    "/api/auth/demo-login",
+    "/api/auth/accept-invite",
+}
+
+# Read-only roles cannot write anywhere
+READONLY_WORKSPACE_ROLES = {"accountant", "viewer"}
+
+# Manager can write operational data but NOT settings/admin/integrations
+MANAGER_WRITE_DENY_PREFIXES = (
+    "/api/admin/",
+    "/api/settings/",
+    "/api/backup/",
+    "/api/integrations/",
+    "/api/exchange-rate",
+    "/api/categories",
+    "/api/directions",
+    "/api/accounts",
+    "/api/employees",
+    "/api/workspace/",
+)
+
+
+def _decode_jwt_safe(auth_header: str):
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return None
+    import jwt as _jwt
+    from auth import JWT_SECRET as _S, JWT_ALGORITHM as _A
+    try:
+        return _jwt.decode(auth_header[7:], _S, algorithms=[_A])
+    except Exception:
+        return None
+
+
+@app.middleware("http")
+async def enforce_workspace_role(request, call_next):
+    """Enforce workspace_role based write restrictions.
+
+    - accountant / viewer  → no writes anywhere
+    - manager              → no writes to settings/admin/integrations/exchange-rate/categories/directions/accounts/employees/workspace
+    - owner / admin        → unrestricted (subject to other middleware)
+    """
+    method = request.method.upper()
+    if method not in ("POST", "PUT", "PATCH", "DELETE"):
+        return await call_next(request)
+    path = request.url.path
+    if path in ROLE_WRITE_ALLOWLIST:
+        return await call_next(request)
+
+    payload = _decode_jwt_safe(request.headers.get("authorization"))
+    if not payload:
+        return await call_next(request)
+    if payload.get("role") == "superadmin":
+        return await call_next(request)
+
+    wrole = payload.get("workspace_role") or "owner"
+    from fastapi.responses import JSONResponse
+
+    if wrole in READONLY_WORKSPACE_ROLES:
+        return JSONResponse(
+            status_code=403,
+            content={"detail": f"Роль «{wrole}» — только просмотр. Изменения запрещены."}
+        )
+    if wrole == "manager":
+        if any(path.startswith(p) for p in MANAGER_WRITE_DENY_PREFIXES):
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Роль «manager» — настройки и интеграции изменять нельзя. Обратитесь к администратору."}
+            )
+    return await call_next(request)
+
+
 # Include all routers
 all_routers = [
     auth_router,
@@ -111,6 +190,7 @@ all_routers = [
     salaries_router,
     drive_backup_router,
     google_oauth_router,
+    workspace_router,
     demo_router,
     google_sheets_router,
 ]
@@ -127,6 +207,12 @@ async def startup_event():
     from services.telegram import send_scheduled_telegram_summary
     from services.google_sheets import backup_to_google_sheets
     from database import db
+
+    # Migrate legacy users to workspace model (idempotent)
+    try:
+        await migrate_users_to_workspaces()
+    except Exception as e:
+        logger.error(f"Workspace migration error: {e}")
 
     # Backfill to_account_name for existing transfer transactions
     try:

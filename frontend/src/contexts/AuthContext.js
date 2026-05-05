@@ -94,10 +94,14 @@ export const AuthProvider = ({ children }) => {
   };
 
   const isDemo = user?.role === 'demo';
+  const workspaceRole = user?.workspace_role || 'owner';
+  const canManageWorkspace = ['owner', 'admin'].includes(workspaceRole) || user?.role === 'superadmin';
+  const isReadOnlyRole = ['accountant', 'viewer'].includes(workspaceRole);
 
   const value = useMemo(() => ({
-    user, token, loading, login, register, logout, loginAsDemo, isDemo, api
-  }), [user, token, loading, isDemo, api]);
+    user, token, loading, login, register, logout, loginAsDemo, isDemo,
+    workspaceRole, canManageWorkspace, isReadOnlyRole, api
+  }), [user, token, loading, isDemo, workspaceRole, canManageWorkspace, isReadOnlyRole, api]);
 
   return (
     <AuthContext.Provider value={value}>

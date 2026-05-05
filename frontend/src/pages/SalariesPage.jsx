@@ -23,6 +23,8 @@ const blankEmployee = {
   name: '',
   position: '',
   default_salary: '',
+  default_bonus: '0',
+  default_tax_rate: '0',
   currency: 'PLN',
   direction_id: '',
   is_active: true,
@@ -34,6 +36,7 @@ const blankAccrual = {
   employee_id: '',
   salary: '',
   bonus: '0',
+  taxes: '0',
   deductions: '0',
   comment: '',
 };
@@ -98,6 +101,8 @@ export const SalariesPage = () => {
       name: emp.name,
       position: emp.position || '',
       default_salary: String(emp.default_salary || ''),
+      default_bonus: String(emp.default_bonus || '0'),
+      default_tax_rate: String(emp.default_tax_rate || '0'),
       currency: emp.currency || 'PLN',
       direction_id: emp.direction_id || '',
       is_active: emp.is_active,
@@ -114,6 +119,8 @@ export const SalariesPage = () => {
       name: empForm.name,
       position: empForm.position || null,
       default_salary: parseFloat(String(empForm.default_salary || '0').replace(',', '.')) || 0,
+      default_bonus: parseFloat(String(empForm.default_bonus || '0').replace(',', '.')) || 0,
+      default_tax_rate: parseFloat(String(empForm.default_tax_rate || '0').replace(',', '.')) || 0,
       currency: empForm.currency,
       direction_id: empForm.direction_id || null,
       is_active: empForm.is_active,
@@ -156,6 +163,7 @@ export const SalariesPage = () => {
       employee_id: a.employee_id,
       salary: String(a.salary),
       bonus: String(a.bonus || 0),
+      taxes: String(a.taxes || 0),
       deductions: String(a.deductions || 0),
       comment: a.comment || '',
     });
@@ -172,6 +180,7 @@ export const SalariesPage = () => {
       employee_id: accForm.employee_id,
       salary: num(accForm.salary),
       bonus: num(accForm.bonus),
+      taxes: num(accForm.taxes),
       deductions: num(accForm.deductions),
       comment: accForm.comment || null,
     };
@@ -205,11 +214,15 @@ export const SalariesPage = () => {
     let skipped = 0;
     for (const e of employees.filter(emp => emp.is_active)) {
       try {
+        const baseSalary = e.default_salary || 0;
+        const baseBonus = e.default_bonus || 0;
+        const baseTaxes = Math.round((baseSalary + baseBonus) * (e.default_tax_rate || 0)) / 100;
         await api().post('/salary-accruals', {
           month: filterMonth,
           employee_id: e.id,
-          salary: e.default_salary || 0,
-          bonus: 0,
+          salary: baseSalary,
+          bonus: baseBonus,
+          taxes: baseTaxes,
           deductions: 0,
         });
         created += 1;
@@ -374,6 +387,7 @@ export const SalariesPage = () => {
                         <p className="text-xs text-muted-foreground mt-0.5">
                           Оклад {formatCurrency(a.salary, a.currency)}
                           {a.bonus ? ` + премия ${formatCurrency(a.bonus, a.currency)}` : ''}
+                          {a.taxes ? ` − налоги ${formatCurrency(a.taxes, a.currency)}` : ''}
                           {a.deductions ? ` − удержания ${formatCurrency(a.deductions, a.currency)}` : ''}
                           {a.comment ? ` · ${a.comment}` : ''}
                         </p>
@@ -502,6 +516,7 @@ export const SalariesPage = () => {
                   value={empForm.default_salary}
                   onChange={(e) => setEmpForm({ ...empForm, default_salary: e.target.value })}
                   placeholder="5000"
+                  data-testid="emp-default-salary"
                 />
               </div>
               <div className="space-y-2">
@@ -514,6 +529,32 @@ export const SalariesPage = () => {
                     <SelectItem value="USD">USD</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Базовая премия (для менеджеров)</Label>
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  value={empForm.default_bonus}
+                  onChange={(e) => setEmpForm({ ...empForm, default_bonus: e.target.value })}
+                  placeholder="0"
+                  data-testid="emp-default-bonus"
+                />
+                <p className="text-xs text-muted-foreground">Подставится автоматически в новое начисление</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Налоги по умолчанию, %</Label>
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  value={empForm.default_tax_rate}
+                  onChange={(e) => setEmpForm({ ...empForm, default_tax_rate: e.target.value })}
+                  placeholder="0"
+                  data-testid="emp-default-tax-rate"
+                />
+                <p className="text-xs text-muted-foreground">% от (оклад + премия). Для PL обычно 12-32%.</p>
               </div>
             </div>
             <div className="space-y-2">
@@ -558,11 +599,22 @@ export const SalariesPage = () => {
                   value={accForm.employee_id}
                   onValueChange={(v) => {
                     const emp = employees.find(x => x.id === v);
-                    setAccForm({
-                      ...accForm,
-                      employee_id: v,
-                      salary: accEditing || accForm.salary ? accForm.salary : String(emp?.default_salary || ''),
-                    });
+                    if (accEditing) {
+                      setAccForm({ ...accForm, employee_id: v });
+                    } else if (emp) {
+                      const sal = emp.default_salary || 0;
+                      const bon = emp.default_bonus || 0;
+                      const tax = Math.round((sal + bon) * (emp.default_tax_rate || 0)) / 100;
+                      setAccForm({
+                        ...accForm,
+                        employee_id: v,
+                        salary: String(sal),
+                        bonus: String(bon),
+                        taxes: String(tax),
+                      });
+                    } else {
+                      setAccForm({ ...accForm, employee_id: v });
+                    }
                   }}
                 >
                   <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
@@ -574,7 +626,7 @@ export const SalariesPage = () => {
                 </Select>
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Оклад</Label>
                 <Input
@@ -582,6 +634,7 @@ export const SalariesPage = () => {
                   inputMode="decimal"
                   value={accForm.salary}
                   onChange={(e) => setAccForm({ ...accForm, salary: e.target.value })}
+                  data-testid="acc-salary"
                 />
               </div>
               <div className="space-y-2">
@@ -591,24 +644,40 @@ export const SalariesPage = () => {
                   inputMode="decimal"
                   value={accForm.bonus}
                   onChange={(e) => setAccForm({ ...accForm, bonus: e.target.value })}
+                  data-testid="acc-bonus"
                 />
               </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Удержания</Label>
+                <Label>Налоги</Label>
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  value={accForm.taxes}
+                  onChange={(e) => setAccForm({ ...accForm, taxes: e.target.value })}
+                  data-testid="acc-taxes"
+                />
+                <p className="text-xs text-muted-foreground">ZUS, PIT и т.д. Авто из % сотрудника</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Прочие удержания</Label>
                 <Input
                   type="text"
                   inputMode="decimal"
                   value={accForm.deductions}
                   onChange={(e) => setAccForm({ ...accForm, deductions: e.target.value })}
+                  data-testid="acc-deductions"
                 />
               </div>
             </div>
             <div className="p-3 rounded-lg bg-muted/50 text-sm flex justify-between">
-              <span>К выплате:</span>
-              <span className="font-mono font-bold text-lg">
+              <span>К выплате (оклад + премия − налоги − удержания):</span>
+              <span className="font-mono font-bold text-lg" data-testid="acc-total-due">
                 {formatCurrency(
                   (parseFloat(String(accForm.salary || 0).replace(',', '.')) || 0) +
                   (parseFloat(String(accForm.bonus || 0).replace(',', '.')) || 0) -
+                  (parseFloat(String(accForm.taxes || 0).replace(',', '.')) || 0) -
                   (parseFloat(String(accForm.deductions || 0).replace(',', '.')) || 0)
                 )}
               </span>
