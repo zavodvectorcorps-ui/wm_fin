@@ -43,12 +43,18 @@ if [ -f "$MENU_REST2_NGINX_CONF" ] && [ -f "$COMBINED_NGINX_CONF" ]; then
         cp "$COMBINED_NGINX_CONF" "$MENU_REST2_NGINX_CONF"
         if docker exec menu_rest2-nginx-1 nginx -t >/dev/null 2>&1; then
             docker exec menu_rest2-nginx-1 nginx -s reload
-            echo "    nginx reloaded"
+            echo "    nginx reloaded (config + cert files re-read)"
         else
             echo "    ⚠️  nginx config test failed — оставлен старый"
         fi
     else
-        echo "    nginx config already up to date"
+        echo "    nginx config already up to date — sending HUP to pick up any renewed SSL certs"
+        # Defensive: HUP signal makes nginx re-read its config + SSL cert files from disk.
+        # Cheap (~10ms), safe, and prevents stale-cert issues if certbot renewed
+        # between deploys but didn't notify nginx.
+        docker kill -s HUP menu_rest2-nginx-1 >/dev/null 2>&1 \
+            && echo "    HUP sent to menu_rest2-nginx-1" \
+            || echo "    ⚠️  could not send HUP (container not running?)"
     fi
 else
     echo "    skipped (Menu_rest2 nginx not found)"
