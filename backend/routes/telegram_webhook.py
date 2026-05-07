@@ -456,3 +456,16 @@ async def get_bot_users(current_user: dict = Depends(get_current_user)):
         {"owner_user_id": current_user["user_id"]}, {"_id": 0},
     ).to_list(100)
     return {"users": users}
+
+
+@router.delete("/telegram/bot-users/{chat_id}")
+async def delete_bot_user(chat_id: int, current_user: dict = Depends(get_current_user)):
+    """Отвязать пользователя от бота. Он сможет снова подключиться через /start,
+    если ему оставить доступ к боту в Telegram."""
+    res = await db.telegram_bot_users.delete_one({
+        "chat_id": chat_id,
+        "owner_user_id": current_user["user_id"],
+    })
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Пользователь бота не найден")
+    return {"status": "ok"}

@@ -13,7 +13,7 @@ import { Separator } from '../components/ui/separator';
 import { 
   Send, CheckCircle2, XCircle, Loader2, Bot, Plug, Settings, 
   Clock, Calendar, MessageSquare, Bell, Database, ExternalLink, RefreshCw, Upload, FileText,
-  Banknote, Link2, Users, Unlink, Cloud, LogOut
+  Banknote, Link2, Users, Unlink, Cloud, LogOut, Trash2
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -975,6 +975,24 @@ export const IntegrationsPage = () => {
                             {u.current_direction_name}
                           </Badge>
                         )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className={`h-7 w-7 text-destructive hover:bg-destructive/10 ${u.current_direction_name ? '' : 'ml-auto'}`}
+                          onClick={async () => {
+                            if (!window.confirm(`Удалить ${u.telegram_first_name} из чат-бота? Они смогут подключиться снова, отправив /start.`)) return;
+                            try {
+                              await api().delete(`/telegram/bot-users/${u.chat_id}`);
+                              toast.success('Пользователь удалён из бота');
+                              fetchWebhookInfo();
+                            } catch (e) {
+                              toast.error(e.response?.data?.detail || 'Ошибка удаления');
+                            }
+                          }}
+                          data-testid={`bot-user-delete-${u.chat_id}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     ))}
                   </div>
