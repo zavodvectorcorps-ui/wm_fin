@@ -79,6 +79,7 @@ async def ai_chat(
 
     monthly = defaultdict(lambda: {"income": 0.0, "expense": 0.0})
     monthly_by_dir = defaultdict(lambda: defaultdict(lambda: {"income": 0.0, "expense": 0.0}))
+    monthly_by_cat = defaultdict(lambda: defaultdict(float))  # month → category → expense
     for t in monthly_rows:
         m = (t.get("date") or "")[:7]  # YYYY-MM
         if len(m) != 7:
@@ -86,6 +87,9 @@ async def ai_chat(
         monthly[m][t["type"]] += t["amount"]
         dn = t.get("direction_name") or "Общее"
         monthly_by_dir[m][dn][t["type"]] += t["amount"]
+        if t["type"] == "expense":
+            cn = t.get("category_name") or "Без категории"
+            monthly_by_cat[m][cn] += t["amount"]
 
     # ---- Year-to-date and last-year totals
     ytd = await db.transactions.aggregate([
@@ -145,6 +149,14 @@ async def ai_chat(
         if parts:
             monthly_dir_lines.append(f"- {m} → " + "; ".join(parts))
 
+    # Monthly top-8 expense categories (last 12 months)
+    monthly_cat_lines = []
+    for m in sorted(monthly_by_cat.keys()):
+        cats = sorted(monthly_by_cat[m].items(), key=lambda x: x[1], reverse=True)[:8]
+        if cats:
+            parts = [f"{cn} {amt:,.0f}" for cn, amt in cats]
+            monthly_cat_lines.append(f"- {m}: " + "; ".join(parts))
+
     context = f"""Контекст финансовых данных компании WM Finance (теплицы, сауны, купели).
 Сегодня: {today.strftime('%Y-%m-%d')}.
 
@@ -195,11 +207,13 @@ async def ai_chat(
 - Детальные транзакции за текущий и прошлый месяц
 - Помесячные итоги (доход/расход/прибыль) за последние 12 месяцев
 - Помесячные итоги по направлениям бизнеса за последние 6 месяцев
+- Топ-8 категорий расходов по каждому месяцу за последние 12 месяцев
 - Year-to-date текущего года и итоги прошлого календарного года
 
-Используй эти данные, чтобы отвечать на вопросы о трендах, сравнениях, прибыли
-за конкретные периоды (например: «сколько было прибыли в марте?», «как меняется
-выручка теплиц за полгода?», «сравни Q1 этого и прошлого года»).
+Используй эти данные, чтобы отвечать на вопросы о трендах, сравнениях,
+прибыли и категориях расходов за любые периоды последних 12 месяцев
+(например: «как менялись расходы на маркетинг в январе и феврале?»,
+«сравни структуру расходов Q1 этого и прошлого года»).
 
 Отвечай на русском. Форматируй суммы с разделителем тысяч и 2 знаками после
 запятой. Будь кратким и по существу.
