@@ -55,6 +55,7 @@ async def get_transactions(
     type: Optional[str] = None,
     status: Optional[str] = None,
     account_id: Optional[str] = None,
+    account_ids: Optional[str] = None,  # comma-separated include list (overrides account_id)
     direction_id: Optional[str] = None,
     category_id: Optional[str] = None,
     contractor_id: Optional[str] = None,
@@ -78,7 +79,15 @@ async def get_transactions(
         query["type"] = type
     if status:
         query["status"] = status
-    if account_id:
+    # Multi-account filter (comma-separated). Takes precedence over single account_id.
+    if account_ids:
+        ids = [s.strip() for s in account_ids.split(",") if s.strip()]
+        if ids:
+            query["$or"] = [
+                {"account_id": {"$in": ids}},
+                {"to_account_id": {"$in": ids}},
+            ]
+    elif account_id:
         query["$or"] = [{"account_id": account_id}, {"to_account_id": account_id}]
     if direction_id:
         query["direction_id"] = direction_id

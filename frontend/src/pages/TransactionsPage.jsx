@@ -144,6 +144,79 @@ const MonthPickerPopover = ({ value, onChange }) => {
   );
 };
 
+const AccountMultiSelect = ({ accounts, selectedIds, onChange }) => {
+  const [open, setOpen] = useState(false);
+  // null = all selected; otherwise array
+  const allSelected = !selectedIds || selectedIds.length === 0 || selectedIds.length === accounts.length;
+  const selectedSet = new Set(selectedIds || accounts.map(a => a.id));
+
+  const toggleOne = (id) => {
+    const current = allSelected ? new Set(accounts.map(a => a.id)) : new Set(selectedIds);
+    if (current.has(id)) current.delete(id);
+    else current.add(id);
+    if (current.size === accounts.length) onChange(null);
+    else onChange([...current]);
+  };
+
+  const toggleAll = () => {
+    if (allSelected) onChange([]); // deselect all
+    else onChange(null);            // select all
+  };
+
+  const label = allSelected
+    ? 'Все счета'
+    : selectedSet.size === 0
+    ? 'Счета: ни одного'
+    : selectedSet.size === 1
+    ? accounts.find(a => selectedSet.has(a.id))?.name
+    : `Счета: ${selectedSet.size} из ${accounts.length}`;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          className="justify-start text-left font-normal min-w-0"
+          data-testid="filter-account"
+        >
+          <span className="truncate">{label}</span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64 p-2" align="start">
+        <div className="flex items-center gap-2 p-2 border-b border-border mb-1">
+          <Checkbox
+            checked={allSelected}
+            onCheckedChange={toggleAll}
+            id="acc-filter-all"
+            data-testid="filter-account-all"
+          />
+          <label htmlFor="acc-filter-all" className="text-sm font-medium cursor-pointer flex-1">
+            {allSelected ? 'Снять все' : 'Выбрать все'}
+          </label>
+        </div>
+        <div className="max-h-64 overflow-y-auto space-y-1">
+          {accounts.map(a => (
+            <div key={a.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50">
+              <Checkbox
+                checked={selectedSet.has(a.id)}
+                onCheckedChange={() => toggleOne(a.id)}
+                id={`acc-filter-${a.id}`}
+                data-testid={`filter-account-${a.id}`}
+              />
+              <label htmlFor={`acc-filter-${a.id}`} className="text-sm cursor-pointer flex-1 truncate">
+                {a.name}
+                <span className="text-xs text-muted-foreground ml-1">({a.currency})</span>
+              </label>
+            </div>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+};
+
+
+
 
 export const TransactionsPage = () => {
   const { api } = useAuth();
@@ -169,9 +242,12 @@ export const TransactionsPage = () => {
   const [filters, setFilters] = useState({
     period: 'current_month',
     customMonth: '',
+    customDateFrom: '',
+    customDateTo: '',
     type: 'all',
     status: 'all',
-    account_id: 'all',
+    account_id: 'all',           // legacy single-select (kept for backwards compat)
+    selectedAccountIds: null,    // null = all; otherwise array of selected ids
     direction_id: 'all',
     category_id: 'all',
     needs_review: 'all',
@@ -207,18 +283,30 @@ export const TransactionsPage = () => {
         const [y, m] = filters.customMonth.split('-');
         const lastDay = new Date(Number(y), Number(m), 0).getDate();
         dates = { from: `${filters.customMonth}-01`, to: `${filters.customMonth}-${lastDay}` };
+      } else if (filters.period === 'custom_range') {
+        dates = {
+          from: filters.customDateFrom || undefined,
+          to: filters.customDateTo || undefined,
+        };
       } else {
         dates = getPeriodDates(filters.period);
       }
 
+      // Multi-account filter: if user selected a subset, send comma-separated list.
+      // If null or empty (= all), don't send anything.
+      const accountIdsParam = (filters.selectedAccountIds && filters.selectedAccountIds.length > 0 && filters.selectedAccountIds.length < accounts.length)
+        ? filters.selectedAccountIds.join(',')
+        : null;
+
       const params = {
-        date_from: dates.from,
-        date_to: dates.to,
+        ...(dates.from && { date_from: dates.from }),
+        ...(dates.to && { date_to: dates.to }),
         page,
         per_page: perPage,
         ...(filters.type && filters.type !== 'all' && { type: filters.type }),
         ...(filters.status && filters.status !== 'all' && { status: filters.status }),
-        ...(filters.account_id && filters.account_id !== 'all' && { account_id: filters.account_id }),
+        ...(accountIdsParam ? { account_ids: accountIdsParam }
+            : (filters.account_id && filters.account_id !== 'all' && { account_id: filters.account_id })),
         ...(filters.direction_id && filters.direction_id !== 'all' && { direction_id: filters.direction_id }),
         ...(filters.category_id && filters.category_id !== 'all' && { category_id: filters.category_id }),
         ...(filters.needs_review && filters.needs_review !== 'all' && { needs_review: filters.needs_review === 'yes' }),
@@ -465,7 +553,7 @@ export const TransactionsPage = () => {
         <CardContent className="pt-6">
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-8">
             <div className="lg:col-span-2 flex gap-2">
-              <Select value={filters.period} onValueChange={(v) => setFilters({ ...filters, period: v, customMonth: v === 'custom_month' ? filters.customMonth : '' })}>
+              <Select value={filters.period} onValueChange={(v) => setFilters({ ...filters, period: v, customMonth: v === 'custom_month' ? filters.customMonth : '', customDateFrom: v === 'custom_range' ? filters.customDateFrom : '', customDateTo: v === 'custom_range' ? filters.customDateTo : '' })}>
                 <SelectTrigger data-testid="filter-period" className="flex-1">
                   <Calendar className="h-4 w-4 mr-2" />
                   <SelectValue placeholder="Период" />
@@ -474,6 +562,7 @@ export const TransactionsPage = () => {
                   <SelectItem value="current_month">Текущий месяц</SelectItem>
                   <SelectItem value="prev_month">Прошлый месяц</SelectItem>
                   <SelectItem value="custom_month">Конкретный месяц</SelectItem>
+                  <SelectItem value="custom_range">Диапазон дат</SelectItem>
                   <SelectItem value="quarter">Квартал</SelectItem>
                   <SelectItem value="year">Текущий год</SelectItem>
                   <SelectItem value="year_2025">2025 год</SelectItem>
@@ -491,6 +580,26 @@ export const TransactionsPage = () => {
               )}
             </div>
 
+            {filters.period === 'custom_range' && (
+              <div className="lg:col-span-2 flex gap-2 items-center">
+                <Input
+                  type="date"
+                  value={filters.customDateFrom}
+                  onChange={(e) => setFilters({ ...filters, customDateFrom: e.target.value })}
+                  className="flex-1"
+                  data-testid="filter-date-from"
+                />
+                <span className="text-muted-foreground text-sm">—</span>
+                <Input
+                  type="date"
+                  value={filters.customDateTo}
+                  onChange={(e) => setFilters({ ...filters, customDateTo: e.target.value })}
+                  className="flex-1"
+                  data-testid="filter-date-to"
+                />
+              </div>
+            )}
+
             <Select value={filters.type} onValueChange={(v) => setFilters({ ...filters, type: v })}>
               <SelectTrigger data-testid="filter-type">
                 <SelectValue placeholder="Тип" />
@@ -503,17 +612,11 @@ export const TransactionsPage = () => {
               </SelectContent>
             </Select>
 
-            <Select value={filters.account_id} onValueChange={(v) => setFilters({ ...filters, account_id: v })}>
-              <SelectTrigger data-testid="filter-account">
-                <SelectValue placeholder="Счёт" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Все счета</SelectItem>
-                {accounts.map(a => (
-                  <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <AccountMultiSelect
+              accounts={accounts}
+              selectedIds={filters.selectedAccountIds}
+              onChange={(ids) => setFilters({ ...filters, selectedAccountIds: ids, account_id: 'all' })}
+            />
 
             <Select value={filters.direction_id} onValueChange={(v) => setFilters({ ...filters, direction_id: v })}>
               <SelectTrigger data-testid="filter-direction">
