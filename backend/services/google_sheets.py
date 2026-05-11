@@ -145,11 +145,16 @@ async def trigger_backup(current_user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=400, detail="Service Account JSON не загружен")
 
     result = await backup_to_google_sheets(current_user["user_id"], url, sa)
-    if result.get("status") == "success":
-        await db.integration_settings.update_one(
-            {"user_id": current_user["user_id"]},
-            {"$set": {"last_backup_at": datetime.now(timezone.utc).isoformat()}}
-        )
+    update = {
+        "last_backup_at": datetime.now(timezone.utc).isoformat(),
+        "last_backup_status": result.get("status"),
+        "last_backup_error": (result.get("error") or result.get("message")) if result.get("status") != "success" else None,
+        "last_backup_trigger": "manual",
+    }
+    await db.integration_settings.update_one(
+        {"user_id": current_user["user_id"]},
+        {"$set": update}
+    )
     return result
 
 
@@ -175,6 +180,9 @@ async def get_backup_status(current_user: dict = Depends(get_current_user)):
         "service_account_email": sa.get("client_email") if sa else None,
         "auto_backup_enabled": settings.get("auto_backup_enabled", True),
         "last_backup_at": settings.get("last_backup_at"),
+        "last_backup_status": settings.get("last_backup_status"),
+        "last_backup_error": settings.get("last_backup_error"),
+        "last_backup_trigger": settings.get("last_backup_trigger"),
         "message": "Google Sheets настроен" if configured else "Укажите URL таблицы и загрузите Service Account JSON",
     }
 

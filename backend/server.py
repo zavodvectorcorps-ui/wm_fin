@@ -310,13 +310,28 @@ async def startup_event():
                     settings["google_sheets_url"],
                     settings["google_service_account"],
                 )
-                if result.get("status") == "success":
-                    await db.integration_settings.update_one(
-                        {"user_id": settings["user_id"]},
-                        {"$set": {"last_backup_at": datetime.now(timezone.utc).isoformat()}}
-                    )
-                logger.info(f"Scheduled backup for user {settings['user_id']}: {result.get('status')}")
+                ok = result.get("status") == "success"
+                err = None if ok else (result.get("error") or result.get("message"))
+                await db.integration_settings.update_one(
+                    {"user_id": settings["user_id"]},
+                    {"$set": {
+                        "last_backup_at": datetime.now(timezone.utc).isoformat(),
+                        "last_backup_status": result.get("status"),
+                        "last_backup_error": err,
+                        "last_backup_trigger": "auto",
+                    }}
+                )
+                logger.info(f"Scheduled Sheets backup for user {settings['user_id']}: {result.get('status')} {err or ''}")
             except Exception as e:
+                await db.integration_settings.update_one(
+                    {"user_id": settings["user_id"]},
+                    {"$set": {
+                        "last_backup_at": datetime.now(timezone.utc).isoformat(),
+                        "last_backup_status": "error",
+                        "last_backup_error": str(e)[:500],
+                        "last_backup_trigger": "auto",
+                    }}
+                )
                 logger.error(f"Scheduled backup failed for user {settings['user_id']}: {e}")
 
     scheduler.add_job(

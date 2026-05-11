@@ -690,9 +690,35 @@ export const IntegrationsPage = () => {
                   </Badge>
                 </div>
                 {backupStatus?.last_backup_at && (
-                  <p className="text-xs text-muted-foreground">
-                    Последний бэкап: {new Date(backupStatus.last_backup_at).toLocaleString('ru-RU')}
-                  </p>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
+                      <span>
+                        Последний бэкап: {new Date(backupStatus.last_backup_at).toLocaleString('ru-RU')}
+                      </span>
+                      {backupStatus.last_backup_trigger && (
+                        <Badge variant="outline" className="text-[10px] py-0 h-4">
+                          {backupStatus.last_backup_trigger === 'auto' ? 'автоматический' : 'вручную'}
+                        </Badge>
+                      )}
+                      {backupStatus.last_backup_status === 'success' && (
+                        <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] py-0 h-4">
+                          <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
+                          OK
+                        </Badge>
+                      )}
+                      {backupStatus.last_backup_status && backupStatus.last_backup_status !== 'success' && (
+                        <Badge className="bg-red-500/10 text-red-500 border-red-500/20 text-[10px] py-0 h-4">
+                          <XCircle className="h-2.5 w-2.5 mr-0.5" />
+                          Ошибка
+                        </Badge>
+                      )}
+                    </p>
+                    {backupStatus.last_backup_error && (
+                      <p className="text-xs text-red-500 break-all">
+                        {backupStatus.last_backup_error}
+                      </p>
+                    )}
+                  </div>
                 )}
                 <p className="text-sm font-medium mt-2">Выгружаемые данные:</p>
                 <ul className="text-sm text-muted-foreground grid grid-cols-2 gap-1">
