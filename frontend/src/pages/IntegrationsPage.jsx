@@ -686,7 +686,7 @@ export const IntegrationsPage = () => {
                   <p className="text-sm font-medium">Автоматический бэкап</p>
                   <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
                     <Clock className="h-3 w-3 mr-1" />
-                    Ежедневно в 02:00
+                    Каждый час
                   </Badge>
                 </div>
                 {backupStatus?.last_backup_at && (

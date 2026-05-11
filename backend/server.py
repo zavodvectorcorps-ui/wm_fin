@@ -337,7 +337,7 @@ async def startup_event():
     scheduler.add_job(
         scheduled_google_sheets_backup,
         "cron",
-        hour=2,
+        hour="*",
         minute=0,
         id="google_sheets_daily_backup",
         replace_existing=True
