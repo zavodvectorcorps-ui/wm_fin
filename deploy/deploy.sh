@@ -10,8 +10,16 @@
 #   3. Пересобирает образы
 #   4. Перезапускает контейнеры
 #   5. Восстанавливает совместный nginx.conf (для menu_rest2-nginx)
-#      и делает reload — на случай если nginx.conf был перезаписан
-#      деплоем второго проекта.
+#      и делает ПОЛНЫЙ RESTART контейнера — на случай если nginx.conf был
+#      перезаписан деплоем второго проекта.
+#
+# ⚠️ Почему restart вместо reload/HUP:
+#      `nginx -s reload` и SIGHUP перечитывают только основной nginx.conf,
+#      но НЕ подхватывают новые include-файлы (`/etc/nginx/custom-domains/*.conf`)
+#      и свежевыпущенные certbot'ом SSL-сертификаты, если они появились во время
+#      работы воркера. Это приводило к рецидиву бага: после деплоя wm-finance
+#      кастомные домены menu_rest2 начинали отдавать чужой сертификат.
+#      Полный `docker restart` контейнера nginx гарантирует чистую загрузку.
 
 set -e
 
@@ -42,19 +50,23 @@ if [ -f "$MENU_REST2_NGINX_CONF" ] && [ -f "$COMBINED_NGINX_CONF" ]; then
         echo "    nginx config differs — restoring combined version"
         cp "$COMBINED_NGINX_CONF" "$MENU_REST2_NGINX_CONF"
         if docker exec menu_rest2-nginx-1 nginx -t >/dev/null 2>&1; then
-            docker exec menu_rest2-nginx-1 nginx -s reload
-            echo "    nginx reloaded (config + cert files re-read)"
+            # Full container restart instead of `nginx -s reload`:
+            # reload не подхватывает новые include-файлы (custom-domains/*.conf)
+            # и свежие SSL-сертификаты, выпущенные certbot'ом.
+            docker restart menu_rest2-nginx-1 >/dev/null
+            echo "    nginx restarted (config + include-файлы + SSL-сертификаты перечитаны)"
         else
             echo "    ⚠️  nginx config test failed — оставлен старый"
         fi
     else
-        echo "    nginx config already up to date — sending HUP to pick up any renewed SSL certs"
-        # Defensive: HUP signal makes nginx re-read its config + SSL cert files from disk.
-        # Cheap (~10ms), safe, and prevents stale-cert issues if certbot renewed
-        # between deploys but didn't notify nginx.
-        docker kill -s HUP menu_rest2-nginx-1 >/dev/null 2>&1 \
-            && echo "    HUP sent to menu_rest2-nginx-1" \
-            || echo "    ⚠️  could not send HUP (container not running?)"
+        echo "    nginx config already up to date — restarting to pick up renewed SSL certs / include files"
+        # Defensive: full restart guarantees include-файлы (custom-domains/*.conf)
+        # и свежие сертификаты certbot'а будут загружены.
+        # SIGHUP / nginx -s reload не перечитывают новые include-файлы и cert files,
+        # поэтому используется полный docker restart (~1 сек простоя).
+        docker restart menu_rest2-nginx-1 >/dev/null 2>&1 \
+            && echo "    menu_rest2-nginx-1 restarted" \
+            || echo "    ⚠️  could not restart (container not running?)"
     fi
 else
     echo "    skipped (Menu_rest2 nginx not found)"
