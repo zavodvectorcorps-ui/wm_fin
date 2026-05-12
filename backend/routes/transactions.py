@@ -349,6 +349,47 @@ async def delete_transaction(transaction_id: str, current_user: dict = Depends(g
     return {"status": "deleted"}
 
 
+@router.post("/transactions/bulk-delete")
+async def bulk_delete_transactions(
+    payload: dict,
+    current_user: dict = Depends(get_current_user),
+):
+    """Delete multiple transactions at once. Body: {"ids": ["id1", "id2", ...]}."""
+    ids = payload.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        raise HTTPException(status_code=400, detail="Передайте массив ids")
+    if len(ids) > 500:
+        raise HTTPException(status_code=400, detail="За один раз можно удалить до 500 операций")
+
+    # Collect affected accounts so we can refresh balances after deletion
+    to_refresh: set[str] = set()
+    cursor = db.transactions.find(
+        {"id": {"$in": ids}, "user_id": current_user["user_id"]},
+        {"_id": 0, "id": 1, "account_id": 1, "to_account_id": 1}
+    )
+    matched_ids = []
+    async for t in cursor:
+        matched_ids.append(t["id"])
+        if t.get("account_id"):
+            to_refresh.add(t["account_id"])
+        if t.get("to_account_id"):
+            to_refresh.add(t["to_account_id"])
+
+    if not matched_ids:
+        return {"status": "ok", "deleted": 0}
+
+    res = await db.transactions.delete_many({
+        "id": {"$in": matched_ids},
+        "user_id": current_user["user_id"]
+    })
+
+    for acc_id in to_refresh:
+        await update_account_balance(acc_id, current_user["user_id"])
+
+    return {"status": "ok", "deleted": res.deleted_count}
+
+
+
 @router.post("/import/preview")
 async def preview_import(
     file: UploadFile = File(...),

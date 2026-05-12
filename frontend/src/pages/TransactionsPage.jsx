@@ -233,6 +233,8 @@ export const TransactionsPage = () => {
   const [editingTransaction, setEditingTransaction] = useState(null);
   const [transactionType, setTransactionType] = useState('expense');
   const [lastEditedId, setLastEditedId] = useState(null);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   
   // Document linking state
   const [linkDocDialogOpen, setLinkDocDialogOpen] = useState(false);
@@ -512,6 +514,27 @@ export const TransactionsPage = () => {
     }
   };
 
+  const handleBulkDelete = async () => {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    if (!window.confirm(`Удалить ${ids.length} ${ids.length === 1 ? 'операцию' : 'операций'}? Действие необратимо.`)) return;
+    setBulkDeleting(true);
+    try {
+      const res = await api().post('/transactions/bulk-delete', { ids });
+      toast.success(`Удалено: ${res.data.deleted}`);
+      setSelectedIds(new Set());
+      const scrollY = window.scrollY;
+      await fetchData();
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => window.scrollTo({ top: scrollY, behavior: 'instant' }));
+      });
+    } catch (e) {
+      toast.error(e.response?.data?.detail || 'Ошибка массового удаления');
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
   const filteredCategories = categories.filter(c => 
     transactionType === 'transfer' ? true : c.type === transactionType
   );
@@ -687,6 +710,41 @@ export const TransactionsPage = () => {
       )}
 
       {/* Transactions Table */}
+      {/* Bulk action bar — appears when at least one row is selected */}
+      {selectedIds.size > 0 && (
+        <Card className="border-primary/40 bg-primary/5 sticky top-4 z-20">
+          <CardContent className="p-3 flex items-center gap-3 flex-wrap">
+            <span className="text-sm font-medium">
+              Выделено: <span className="font-bold">{selectedIds.size}</span>
+              {selectedIds.size === 1 ? ' операция' : ' операций'}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelectedIds(new Set())}
+              data-testid="clear-selection-btn"
+            >
+              Снять выделение
+            </Button>
+            <div className="flex-1" />
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleBulkDelete}
+              disabled={bulkDeleting}
+              data-testid="bulk-delete-btn"
+            >
+              {bulkDeleting ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-2" />
+              )}
+              Удалить выделенные
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardContent className="p-0">
           {loading ? (
@@ -705,6 +763,19 @@ export const TransactionsPage = () => {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={transactions.length > 0 && transactions.every(t => selectedIds.has(t.id))}
+                      onCheckedChange={(checked) => {
+                        const next = new Set(selectedIds);
+                        if (checked) transactions.forEach(t => next.add(t.id));
+                        else transactions.forEach(t => next.delete(t.id));
+                        setSelectedIds(next);
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      data-testid="select-all-checkbox"
+                    />
+                  </TableHead>
                   <TableHead className="w-12"></TableHead>
                   <TableHead>Дата</TableHead>
                   <TableHead>Сумма</TableHead>
@@ -721,11 +792,24 @@ export const TransactionsPage = () => {
                     key={t.id}
                     className={cn(
                       "table-row-hover cursor-pointer transition-colors",
-                      lastEditedId === t.id && "bg-amber-500/15 animate-pulse-once"
+                      lastEditedId === t.id && "bg-amber-500/15 animate-pulse-once",
+                      selectedIds.has(t.id) && "bg-primary/5"
                     )}
                     onClick={() => openEditTransaction(t)}
                     data-testid={`transaction-row-${t.id}`}
                   >
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={selectedIds.has(t.id)}
+                        onCheckedChange={(checked) => {
+                          const next = new Set(selectedIds);
+                          if (checked) next.add(t.id);
+                          else next.delete(t.id);
+                          setSelectedIds(next);
+                        }}
+                        data-testid={`row-checkbox-${t.id}`}
+                      />
+                    </TableCell>
                     <TableCell>
                       <SourceIcon source={t.source} />
                     </TableCell>
