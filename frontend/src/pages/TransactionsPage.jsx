@@ -463,10 +463,11 @@ export const TransactionsPage = () => {
     try {
       const payload = {
         ...formData,
+        type: transactionType,  // ← взять из кнопок, а не из устаревшего formData.type
         amount: parseFloat(formData.amount),
         category_id: formData.category_id === 'none' ? null : formData.category_id,
         contractor_id: formData.contractor_id === 'none' ? null : formData.contractor_id,
-        to_account_id: formData.to_account_id || null
+        to_account_id: transactionType === 'transfer' ? (formData.to_account_id || null) : null
       };
 
       const editedId = editingTransaction?.id || null;
