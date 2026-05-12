@@ -18,7 +18,7 @@ import { Calendar as CalendarUI } from '../components/ui/calendar';
 import { 
   Plus, Minus, ArrowLeftRight, Search, Filter, Pencil, ArrowDownToLine, Bot, 
   Trash2, Calendar, MoreHorizontal, Paperclip, FileText, Link2, Unlink, AlertTriangle,
-  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, CalendarIcon, X
+  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, CalendarIcon, X, Loader2
 } from 'lucide-react';
 import { formatCurrency, formatDate, getDirectionClass, getStatusLabel, getPeriodDates, getTypeLabel, todayLocal, cn } from '../lib/utils';
 import { toast } from 'sonner';
@@ -235,6 +235,7 @@ export const TransactionsPage = () => {
   const [lastEditedId, setLastEditedId] = useState(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkUpdating, setBulkUpdating] = useState(false);
   
   // Document linking state
   const [linkDocDialogOpen, setLinkDocDialogOpen] = useState(false);
@@ -535,6 +536,29 @@ export const TransactionsPage = () => {
     }
   };
 
+  const handleBulkUpdate = async ({ category_id, direction_id }) => {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    setBulkUpdating(true);
+    try {
+      const payload = { ids };
+      if (category_id) payload.category_id = category_id;
+      if (direction_id) payload.direction_id = direction_id;
+      const res = await api().post('/transactions/bulk-update', payload);
+      toast.success(`Обновлено: ${res.data.modified}`);
+      setSelectedIds(new Set());
+      const scrollY = window.scrollY;
+      await fetchData();
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => window.scrollTo({ top: scrollY, behavior: 'instant' }));
+      });
+    } catch (e) {
+      toast.error(e.response?.data?.detail || 'Ошибка массового обновления');
+    } finally {
+      setBulkUpdating(false);
+    }
+  };
+
   const filteredCategories = categories.filter(c => 
     transactionType === 'transfer' ? true : c.type === transactionType
   );
@@ -726,6 +750,52 @@ export const TransactionsPage = () => {
             >
               Снять выделение
             </Button>
+
+            <div className="h-6 w-px bg-border mx-1" />
+
+            {/* Bulk: change category */}
+            <Select
+              value=""
+              disabled={bulkUpdating}
+              onValueChange={(value) => { if (value) handleBulkUpdate({ category_id: value }); }}
+            >
+              <SelectTrigger className="w-[200px] h-9" data-testid="bulk-category-select">
+                <SelectValue placeholder="Сменить статью..." />
+              </SelectTrigger>
+              <SelectContent>
+                {categories.filter(c => c.is_active !== false).map(c => (
+                  <SelectItem key={c.id} value={c.id} data-testid={`bulk-cat-option-${c.id}`}>
+                    <span className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs px-1.5 py-0">
+                        {c.type === 'income' ? '+' : c.type === 'expense' ? '−' : '↔'}
+                      </Badge>
+                      {c.name}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Bulk: change direction */}
+            <Select
+              value=""
+              disabled={bulkUpdating}
+              onValueChange={(value) => { if (value) handleBulkUpdate({ direction_id: value }); }}
+            >
+              <SelectTrigger className="w-[200px] h-9" data-testid="bulk-direction-select">
+                <SelectValue placeholder="Сменить направление..." />
+              </SelectTrigger>
+              <SelectContent>
+                {directions.filter(d => d.is_active !== false).map(d => (
+                  <SelectItem key={d.id} value={d.id} data-testid={`bulk-dir-option-${d.id}`}>
+                    {d.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {bulkUpdating && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+
             <div className="flex-1" />
             <Button
               variant="destructive"

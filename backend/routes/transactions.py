@@ -389,6 +389,54 @@ async def bulk_delete_transactions(
     return {"status": "ok", "deleted": res.deleted_count}
 
 
+@router.post("/transactions/bulk-update")
+async def bulk_update_transactions(
+    payload: dict,
+    current_user: dict = Depends(get_current_user),
+):
+    """Bulk update category and/or direction for multiple transactions.
+    Body: {"ids": [...], "category_id": "...", "direction_id": "..."}
+    At least one of category_id / direction_id must be provided.
+    """
+    ids = payload.get("ids") or []
+    category_id = payload.get("category_id")
+    direction_id = payload.get("direction_id")
+
+    if not isinstance(ids, list) or not ids:
+        raise HTTPException(status_code=400, detail="Передайте массив ids")
+    if len(ids) > 500:
+        raise HTTPException(status_code=400, detail="За один раз можно обновить до 500 операций")
+    if not category_id and not direction_id:
+        raise HTTPException(status_code=400, detail="Укажите category_id и/или direction_id")
+
+    update_fields: dict = {}
+
+    if category_id:
+        cat = await db.categories.find_one(
+            {"id": category_id, "user_id": current_user["user_id"]},
+            {"_id": 0, "name": 1}
+        )
+        if not cat:
+            raise HTTPException(status_code=404, detail="Статья не найдена")
+        update_fields["category_id"] = category_id
+        update_fields["category_name"] = cat["name"]
+
+    if direction_id:
+        d = await db.directions.find_one(
+            {"id": direction_id, "user_id": current_user["user_id"]},
+            {"_id": 0, "name": 1}
+        )
+        if not d:
+            raise HTTPException(status_code=404, detail="Направление не найдено")
+        update_fields["direction_id"] = direction_id
+
+    res = await db.transactions.update_many(
+        {"id": {"$in": ids}, "user_id": current_user["user_id"]},
+        {"$set": update_fields}
+    )
+
+    return {"status": "ok", "matched": res.matched_count, "modified": res.modified_count}
+
 
 @router.post("/import/preview")
 async def preview_import(
