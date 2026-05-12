@@ -207,8 +207,39 @@ async def backup_to_drive(user_id: str, full: bool = False) -> dict:
             "type": "full" if full else "db",
         }
     except Exception as e:
+        msg = str(e)
+        # Detect expired/revoked OAuth refresh token — surface clearer message
+        # and auto-clear the dead token so the UI shows "disconnected" instead of
+        # silent failures every night.
+        is_token_dead = "invalid_grant" in msg or "Token has been expired or revoked" in msg
+        if is_token_dead:
+            try:
+                await db.integration_settings.update_one(
+                    {"user_id": user_id},
+                    {"$unset": {
+                        "google_drive_refresh_token": "",
+                        "google_drive_access_token": "",
+                        "google_drive_token_expiry": "",
+                    }, "$set": {
+                        "google_drive_token_invalidated_at": datetime.now(timezone.utc).isoformat(),
+                    }}
+                )
+            except Exception as cleanup_err:
+                logger.warning(f"Could not clear dead Drive token: {cleanup_err}")
+            logger.error(f"Drive OAuth token expired/revoked for user {user_id} — cleared")
+            return {
+                "status": "error",
+                "message": (
+                    "Google Drive OAuth-токен протух или отозван. Это бывает если "
+                    "OAuth consent screen в Google Cloud Console в режиме «Testing» — "
+                    "тогда токены живут только 7 дней. "
+                    "ИСПРАВЛЕНИЕ: 1) Опубликуйте приложение в Production "
+                    "(Cloud Console → OAuth consent screen → PUBLISH APP). "
+                    "2) Откройте Интеграции → Google Drive → Подключить заново."
+                ),
+            }
         logger.error(f"Drive backup failed: {e}")
-        return {"status": "error", "message": str(e)}
+        return {"status": "error", "message": msg}
 
 
 # ============== Telegram notification ==============
