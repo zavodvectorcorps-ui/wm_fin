@@ -968,6 +968,37 @@ export const TransactionsPage = () => {
           </DialogHeader>
           
           <div className="grid gap-4 py-4">
+            <div className="space-y-2 min-w-0">
+              <Label>Тип операции</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { value: 'income', label: 'Приход', color: 'text-emerald-500' },
+                  { value: 'expense', label: 'Расход', color: 'text-red-500' },
+                  { value: 'transfer', label: 'Перевод', color: 'text-blue-500' },
+                ].map(opt => (
+                  <Button
+                    key={opt.value}
+                    type="button"
+                    variant={transactionType === opt.value ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => {
+                      setTransactionType(opt.value);
+                      // Reset category — old category was filtered by previous type
+                      setFormData((fd) => ({
+                        ...fd,
+                        category_id: opt.value === 'transfer' ? '' : fd.category_id,
+                        to_account_id: opt.value === 'transfer' ? fd.to_account_id : '',
+                      }));
+                    }}
+                    className={transactionType === opt.value ? '' : opt.color}
+                    data-testid={`form-type-${opt.value}`}
+                  >
+                    {opt.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2 min-w-0">
                 <Label>Дата</Label>

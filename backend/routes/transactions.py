@@ -323,6 +323,12 @@ async def update_transaction(transaction_id: str, data: TransactionCreate, curre
         await update_account_balance(old_transaction["account_id"], current_user["user_id"])
     if data.to_account_id:
         await update_account_balance(data.to_account_id, current_user["user_id"])
+    # If the OLD record had a to_account (was a transfer) and the new one doesn't,
+    # or the new to_account differs — refresh the old to_account too so balance
+    # reflects the change of type/destination.
+    old_to = old_transaction.get("to_account_id")
+    if old_to and old_to != data.to_account_id:
+        await update_account_balance(old_to, current_user["user_id"])
 
     transaction = await db.transactions.find_one({"id": transaction_id}, {"_id": 0})
     return transaction
