@@ -216,7 +216,7 @@ async def get_transactions(
                 {"to_account_id": {"$in": loan_account_ids}, "type": "transfer"},
             ]}},
             {"$group": {
-                "_id": None,
+                "_id": {"$ifNull": ["$currency", "PLN"]},
                 "total_base": {"$sum": {
                     "$ifNull": ["$to_amount_base", {"$ifNull": ["$amount_base", "$amount"]}]
                 }},
@@ -228,13 +228,13 @@ async def get_transactions(
             {"$match": {**loan_match_base, "account_id": {"$in": loan_account_ids},
                         "type": {"$in": ["expense", "transfer"]}}},
             {"$group": {
-                "_id": None,
+                "_id": {"$ifNull": ["$currency", "PLN"]},
                 "total_base": {"$sum": {"$ifNull": ["$amount_base", "$amount"]}},
                 "count": {"$sum": 1},
             }},
         ]
-        inflow = await db.transactions.aggregate(inflow_pipeline).to_list(1)
-        outflow = await db.transactions.aggregate(outflow_pipeline).to_list(1)
+        inflow = await db.transactions.aggregate(inflow_pipeline).to_list(10)
+        outflow = await db.transactions.aggregate(outflow_pipeline).to_list(10)
 
         # Current loan balance (sum of current_balance for all loan accounts, in PLN-ish)
         loan_accounts_full = await db.accounts.find(
@@ -242,11 +242,21 @@ async def get_transactions(
             {"_id": 0, "id": 1, "name": 1, "currency": 1, "current_balance": 1}
         ).to_list(None)
 
+        # Break inflow/outflow down per-currency so frontend can convert EUR→PLN correctly
+        received_by_cur = {row["_id"]: row["total_base"] for row in inflow}
+        repaid_by_cur = {row["_id"]: row["total_base"] for row in outflow}
+        received_total = sum(r["total_base"] for r in inflow)
+        repaid_total = sum(r["total_base"] for r in outflow)
+        received_count = sum(r["count"] for r in inflow)
+        repaid_count = sum(r["count"] for r in outflow)
+
         loans_summary = {
-            "received_base": (inflow[0]["total_base"] if inflow else 0) or 0,
-            "received_count": (inflow[0]["count"] if inflow else 0) or 0,
-            "repaid_base": (outflow[0]["total_base"] if outflow else 0) or 0,
-            "repaid_count": (outflow[0]["count"] if outflow else 0) or 0,
+            "received_base": received_total,
+            "received_by_cur": received_by_cur,
+            "received_count": received_count,
+            "repaid_base": repaid_total,
+            "repaid_by_cur": repaid_by_cur,
+            "repaid_count": repaid_count,
             "accounts": loan_accounts_full,
         }
         # operations on loan accounts are excluded from the main count → add to total count

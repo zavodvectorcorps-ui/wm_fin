@@ -32,13 +32,23 @@ const sourceIcons = {
   telegram_bot: Bot
 };
 
-const LoansSummary = ({ data }) => {
+const LoansSummary = ({ data, eurPlnRate }) => {
   if (!data || !data.accounts || data.accounts.length === 0) return null;
-  const received = data.received_base || 0;
-  const repaid = data.repaid_base || 0;
+
+  // Convert per-currency totals to PLN
+  const toPln = (byCur) => {
+    let total = 0;
+    for (const [cur, val] of Object.entries(byCur || {})) {
+      if (cur === 'EUR' && eurPlnRate > 0) total += val * eurPlnRate;
+      else total += val;
+    }
+    return total;
+  };
+  const received = toPln(data.received_by_cur) || data.received_base || 0;
+  const repaid = toPln(data.repaid_by_cur) || data.repaid_base || 0;
   const netChange = received - repaid;  // positive = долг вырос, negative = долг уменьшился
 
-  // Sum of current balances by currency
+  // Sum of current balances grouped by currency (for the «Остаток долга» card)
   const byCur = {};
   for (const a of data.accounts) {
     const cur = a.currency || 'PLN';
@@ -107,11 +117,20 @@ const PeriodSummary = ({ summary, totalCount, eurPlnRate }) => {
   const currencies = Object.keys(summary);
   const hasMultiCurrency = currencies.length > 1;
 
-  // Total in PLN using amount_base (consistent with dashboard)
+  // Total in PLN: convert EUR (and other non-PLN) into PLN using current rate.
+  // income_base/expense_base is in SOURCE account's currency, so for EUR
+  // accounts it's EUR — we must multiply by eurPlnRate when aggregating.
   let totalIncomePln = 0, totalExpensePln = 0;
-  for (const [, v] of Object.entries(summary)) {
-    totalIncomePln += v.income_base || v.income || 0;
-    totalExpensePln += v.expense_base || v.expense || 0;
+  for (const [cur, v] of Object.entries(summary)) {
+    const inc = v.income_base || v.income || 0;
+    const exp = v.expense_base || v.expense || 0;
+    if (cur === 'EUR' && eurPlnRate > 0) {
+      totalIncomePln += inc * eurPlnRate;
+      totalExpensePln += exp * eurPlnRate;
+    } else {
+      totalIncomePln += inc;
+      totalExpensePln += exp;
+    }
   }
   const totalNetPln = totalIncomePln - totalExpensePln;
 
@@ -895,7 +914,7 @@ export const TransactionsPage = () => {
 
       {/* Loans summary block (separate from main income/expense) */}
       {!loading && loansSummary && (loansSummary.accounts || []).length > 0 && (
-        <LoansSummary data={loansSummary} />
+        <LoansSummary data={loansSummary} eurPlnRate={eurPlnRate} />
       )}
 
       {/* Transactions Table */}
