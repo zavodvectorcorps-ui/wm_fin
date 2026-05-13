@@ -270,6 +270,24 @@ async def get_transactions(
         # operations on loan accounts are excluded from the main count → add to total count
         summary_total_count += loans_summary["received_count"] + loans_summary["repaid_count"]
 
+    # ---- Cash summary (current asset balance, per currency) ----
+    # Total money available right NOW across non-loan accounts. Includes loan
+    # funds that have already been transferred onto bank/cash accounts.
+    asset_accounts = await db.accounts.find(
+        {"user_id": current_user["user_id"],
+         "is_active": {"$ne": False},
+         "is_loan": {"$ne": True}},
+        {"_id": 0, "id": 1, "name": 1, "currency": 1, "current_balance": 1}
+    ).to_list(None)
+    cash_by_cur: dict = {}
+    for a in asset_accounts:
+        cur = a.get("currency") or "PLN"
+        cash_by_cur[cur] = cash_by_cur.get(cur, 0) + (a.get("current_balance") or 0)
+    cash_summary = {
+        "by_currency": cash_by_cur,
+        "accounts": asset_accounts,
+    }
+
     return {
         "items": items,
         "total": total,
@@ -279,6 +297,7 @@ async def get_transactions(
         "summary": summary,
         "summary_total_count": summary_total_count,
         "loans_summary": loans_summary,
+        "cash_summary": cash_summary,
     }
 
 

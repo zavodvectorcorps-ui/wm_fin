@@ -18,7 +18,8 @@ import { Calendar as CalendarUI } from '../components/ui/calendar';
 import { 
   Plus, Minus, ArrowLeftRight, Search, Filter, Pencil, ArrowDownToLine, Bot, 
   Trash2, Calendar, MoreHorizontal, Paperclip, FileText, Link2, Unlink, AlertTriangle,
-  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, CalendarIcon, X, Loader2
+  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, CalendarIcon, X, Loader2,
+  Wallet, Info
 } from 'lucide-react';
 import { formatCurrency, formatDate, getDirectionClass, getStatusLabel, getPeriodDates, getTypeLabel, todayLocal, cn } from '../lib/utils';
 import { toast } from 'sonner';
@@ -30,6 +31,55 @@ const sourceIcons = {
   manual: Pencil,
   import: ArrowDownToLine,
   telegram_bot: Bot
+};
+
+const CashOnHand = ({ data, eurPlnRate }) => {
+  if (!data || !data.by_currency) return null;
+  const entries = Object.entries(data.by_currency).filter(([, v]) => Math.abs(v) > 0.005);
+  if (entries.length === 0) return null;
+
+  // PLN equivalent total (EUR × current NBP rate)
+  let totalPln = 0;
+  for (const [cur, v] of entries) {
+    if (cur === 'EUR' && eurPlnRate > 0) totalPln += v * eurPlnRate;
+    else totalPln += v;
+  }
+
+  return (
+    <Card className="border-sky-500/30 bg-sky-500/5" data-testid="cash-on-hand">
+      <CardContent className="py-3 px-4 space-y-2">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <p className="text-sm font-semibold text-sky-300 flex items-center gap-2">
+            <Wallet className="h-4 w-4" />
+            Денег на счетах (сейчас, включая заёмные средства)
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {(data.accounts || []).map(a => a.name).join(' • ')}
+          </p>
+        </div>
+        <div className="grid gap-2 sm:gap-3 grid-cols-2 sm:grid-cols-3">
+          {entries.map(([cur, v]) => (
+            <Card key={cur}>
+              <CardContent className="py-2 px-2 sm:py-3 sm:px-4">
+                <p className="text-xs text-muted-foreground">Остаток {cur}</p>
+                <p className={`text-sm sm:text-lg font-bold font-mono truncate ${v >= 0 ? 'text-sky-200' : 'text-rose-400'}`}>
+                  {formatCurrency(v, cur)}
+                </p>
+              </CardContent>
+            </Card>
+          ))}
+          <Card className="border-sky-400/40">
+            <CardContent className="py-2 px-2 sm:py-3 sm:px-4">
+              <p className="text-xs text-muted-foreground">Итого в PLN {eurPlnRate ? `(EUR × ${eurPlnRate.toFixed(4)})` : ''}</p>
+              <p className={`text-sm sm:text-lg font-bold font-mono truncate ${totalPln >= 0 ? 'text-sky-100' : 'text-rose-400'}`}>
+                {formatCurrency(totalPln, 'PLN')}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </CardContent>
+    </Card>
+  );
 };
 
 const LoansSummary = ({ data, eurPlnRate }) => {
@@ -386,6 +436,7 @@ export const TransactionsPage = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [summary, setSummary] = useState({});
   const [loansSummary, setLoansSummary] = useState(null);
+  const [cashSummary, setCashSummary] = useState(null);
 
   const [formData, setFormData] = useState({
     date: todayLocal(),
@@ -458,6 +509,7 @@ export const TransactionsPage = () => {
       setTotalPages(paginated.pages || 1);
       setSummary(paginated.summary || {});
       setLoansSummary(paginated.loans_summary || null);
+      setCashSummary(paginated.cash_summary || null);
       setAccounts(accountsRes.data);
       setCategories(categoriesRes.data);
       setDirections(directionsRes.data);
@@ -925,6 +977,11 @@ export const TransactionsPage = () => {
       {/* Period Summary */}
       {!loading && totalItems > 0 && (
         <PeriodSummary summary={summary} totalCount={totalItems} eurPlnRate={eurPlnRate} />
+      )}
+
+      {/* Cash on hand (current balance of asset accounts, includes loan funds already received) */}
+      {!loading && cashSummary && (
+        <CashOnHand data={cashSummary} eurPlnRate={eurPlnRate} />
       )}
 
       {/* Loans summary block (separate from main income/expense) */}
@@ -1420,6 +1477,31 @@ export const TransactionsPage = () => {
                 </Select>
               </div>
             )}
+
+            {transactionType === 'transfer' && (() => {
+              const fromAcc = accounts.find(a => a.id === formData.account_id);
+              const toAcc = accounts.find(a => a.id === formData.to_account_id);
+              const fromLoan = fromAcc?.is_loan;
+              const toLoan = toAcc?.is_loan;
+              const isXCur = toAcc && fromAcc && toAcc.currency !== fromAcc.currency;
+              let msg = null;
+              if (fromLoan && !toLoan) {
+                msg = `Получение займа: со счёта «${fromAcc.name}» уйдёт в минус (долг растёт), на «${toAcc.name}» прилетят деньги. Это НЕ доход.`;
+              } else if (!fromLoan && toLoan) {
+                msg = `Погашение займа: «${fromAcc.name}» уменьшится, на «${toAcc.name}» долг сократится. Это НЕ расход.`;
+              } else if (isXCur && fromAcc && toAcc) {
+                msg = `Обмен валюты: со «${fromAcc.name}» спишется ${fromAcc.currency}, на «${toAcc.name}» прилетит ${toAcc.currency}. Это НЕ доход и НЕ расход.`;
+              } else if (fromAcc && toAcc) {
+                msg = `Перевод между своими счетами: списание + зачисление. Это НЕ доход и НЕ расход.`;
+              }
+              if (!msg) return null;
+              return (
+                <div className="flex items-start gap-2 rounded-md border border-sky-500/30 bg-sky-500/5 p-2.5 text-xs text-sky-200" data-testid="transfer-hint">
+                  <Info className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+                  <span>{msg}</span>
+                </div>
+              );
+            })()}
 
             {/* Cross-currency transfer: manual to_amount + exchange rate */}
             {transactionType === 'transfer' && (() => {
