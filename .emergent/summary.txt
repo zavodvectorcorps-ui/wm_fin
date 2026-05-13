@@ -1,51 +1,55 @@
-<analysis>**original_problem_statement:** The user is building WM Finance, a specialized financial ERP application for a Polish business (Greenhouses, Saunas, etc.). PRODUCT REQUIREMENTS: Multi-currency support (EUR/PLN), Telegram Webhook Bot tracking, Google Sheets/Drive integrations, Salaries (FOT) management, Recurring expenses auto-generation, Multi-tenant Nginx deployment setup alongside another project, Read-Only Demo account, and multi-user Workspaces.
+<analysis>**original_problem_statement**: The user is building WM Finance, a specialized financial ERP application for a Polish business (Greenhouses, Saunas, etc.). PRODUCT REQUIREMENTS: Multi-currency support (EUR/PLN), Telegram Webhook Bot tracking, Google Sheets/Drive integrations, Salaries (FOT) management, Recurring expenses auto-generation, Multi-tenant Nginx deployment setup alongside another project, Read-Only Demo account, and multi-user Workspaces.
 
 **User's preferred language**: Русский (Russian)
 INSTRUCT NEXT AGENT: You MUST automatically detect the user's primary language from their messages inside the <trajectory> tag and INSTRUCT next agent to respond in the user's preferred language only.
 
 **what currently exists?** 
-A mature, full-stack React + FastAPI financial ERP. Features include a complex multi-currency Dashboard, Salaries and Recurring Expenses modules, public Read-Only demo page, automated daily/hourly Google Drive and Google Sheets backups, Telegram webhook notifications, AI Assistant with 12-month context, and a robust Workspace system with role-based access control (owner, admin, accountant, manager, viewer).
+A mature, full-stack React + FastAPI financial ERP. It features a complex multi-currency Dashboard, Salaries/Recurring Expenses modules, automated backups, Telegram webhook notifications, an AI Assistant, and Workspaces. It now also includes advanced transaction filtering with persistence, bulk operations (delete, update, apply rules), a dedicated Net Worth tracker, separated Loan Account logic, and Smart Suggestions for categorization.
 
 **Last working item**:
-    - **Last item agent was working**: Implementing Bulk Delete for transactions. The user requested checkboxes next to each operation in the  table to select and delete multiple transactions at once. The agent created the  backend endpoint and was in the middle of updating the React UI (adding the  and state handlers).
+    - **Last item agent was working**: Implementing the ability to change an account's currency after creation. The user realized their Cash Minsk account was created as PLN but mostly contained EUR transactions, skewing NBP rate conversions. The agent created/updated the backend endpoint in  to allow currency swapping with automatic balance recalculation, but has not yet added the frontend UI or tested it.
     - **Status**: IN PROGRESS
     - **Agent Testing Done**: N
-    - **Which testing method agent to use?**: both. Use curl/python -c to test the bulk delete endpoint, and use the screenshot tool to verify the frontend checkboxes, bulk action bar, and deletion flow.
+    - **Which testing method agent to use?**: both. Use curl to verify the backend  endpoint for currency change, and use the screenshot tool for the frontend  modifications.
     - **User Testing Done**: N
 
 **All Pending/In progress Issue list**:
   None.
 
 **In progress Task List**:
-  Task 1: Bulk Delete Transactions
-     - Where to resume: Review the most recent edits to . Ensure the checkboxes are bound correctly to state, the Bulk Action Bar renders when items are selected, and the delete function successfully calls the backend and updates the UI.
-     - What will be achieved with this?: Users can efficiently clean up bad imports or mistakes without clicking delete on every single row.
-     - Status: TESTING PENDING
-     - Should Test frontend/backend/both after fix?: Both
+  Task 1: Change Account Currency Functionality
+     - Where to resume: Backend endpoint  (or similar) was just added in . You need to review this backend endpoint, test it, and then implement the frontend UI in  (adding a Сменить валюту button/dialog for existing accounts) and wire it up.
+     - What will be achieved with this?: Users can fix incorrectly set currencies on accounts, automatically converting their transactions and fixing analytics skew.
+     - Status: IN PROGRESS
+     - Should Test frontend/backend/both after fix?: both
      - Blocked on something: None
 
 **Upcoming and Future Tasks**
     Upcoming Tasks:
     - Add a second Google Sheet integration specifically for the Сауны (Saunas) direction (P1).
+    
     Future Tasks:
     - AI Weekly Digests (P2).
 
 **Completed work in this session**
-- Read-Only Demo UI ( fixed,  connected) (DONE)
-- Google Drive Auto-Backup OAuth Migration (Moved from Service Account to OAuth 2.0 due to Google's storage quota limitations) (DONE)
-- Salaries Module UI Enhancement (Added default bonuses, tax rates, split deductions/taxes) (DONE)
-- Workspaces & Roles Module (Multi-tenant DB logic via , Team Management UI) (DONE)
-- Transaction UI Fixes (Preserved scroll position on edit, row highlight animation, sticky modal footer, fixed text overflow with ) (DONE)
-- VPS Deployment SSL Fix (Modified  to restart Nginx to pick up Certbot renewals for adjacent apps) (DONE)
-- Telegram Bot Users UI (Added ability to view and delete connected bot users) (DONE)
-- GDrive Backup Frequency (Changed scheduler from daily 02:00 UTC to hourly) (DONE)
-- Transaction Filters (Added Date Range picker and Account Multi-select checkboxes) (DONE)
-- AI Assistant Enhancements (Extended context to 12-months and YTD, renamed Категория to Статья) (DONE)
-- Transaction Type Editing (Allowed changing between Income/Expense/Transfer during editing with balance recalculation) (DONE)
-- Auto-Rules User Mapping Fix (Corrected  mapping via Mongo script so fresh imports auto-categorize correctly) (DONE)
+- Bulk Delete Transactions (DONE)
+- Bulk Update (Category/Direction) Transactions (DONE)
+- Manual exchange rate/amount for cross-currency transfers (Added  logic) (DONE)
+- Architecture Fix: Separated Loan Accounts from regular PnL/Cashflow (Added  flag to accounts) (DONE)
+- Net Worth chart on Balance Page (DONE)
+- Filter and Scroll persistence on Transactions Page (DONE)
+- Bugfix: Total in PLN on frontend EUR+PLN summation fixed with proper conversion (DONE)
+- Bugfix: Loan Semantics (Inverted Received/Repaid transfers fixed) (DONE)
+- Cash on Hand Card with Period Delta (Begin/End/Δ) on Transactions Page (DONE)
+- Bulk Apply Auto-Rules button in Transactions UI (DONE)
+- Create Rule from Transaction context menu item (DONE)
+- Smart Suggestions for Auto-Rules on Rules Page (DONE)
+- Net Worth Widget on Dashboard (DONE)
+- Loan Breakdown by Account with Clickable Drill-down (DONE)
+- Corrected direct income/expenses on loan accounts to be included in PnL (DONE)
 
 **Earlier issues found/mentioned but not fixed**
-None
+None.
 
 **Known issue recurrence from previous fork**
   - Issue recurrence in previous fork: None
@@ -56,57 +60,56 @@ None
 
 
 **Key Technical Concepts**
-- Frontend: React, Tailwind, Shadcn UI
-- Backend: FastAPI, Python, APScheduler (Background jobs)
-- Database: MongoDB (Motor async). Workspaces use  as the workspace identifier for all collections.
-- Auth/Integrations: JWT (stores workspace roles), Google OAuth 2.0 (Drive), Google Service Accounts (Sheets), Telegram Webhook.
+- Frontend: React, Tailwind, Shadcn UI, Recharts
+- Backend: FastAPI, Python, Motor async
+- Database: MongoDB. Workspaces use  as the workspace identifier.
 
 **key DB schema**
-- : Added ,  (owner, admin, accountant, manager, viewer)
-- :  (Note: user_id acts as workspace_id)
 - : 
+- :  
 
 **changes in tech stack**
-- Added Google OAuth 2.0 flow for Google Drive backups (because Google Service Accounts no longer have independent Drive storage quotas).
+- No major tech stack changes, but heavy architectural updates to Analytics APIs and MongoDB Aggregation Pipelines to cleanly separate Loan/Liability transfers from Operational Income/Expense.
 
 **All files of reference**
--  (Created for team management and invites)
--  (Created for Google Drive auth flow)
--  &  (Created for multi-user workspace management)
--  (Heavily modified for advanced filtering, transaction type editing, and bulk deletes)
--  (Updated to handle OAuth tokens and graceful  token expiration)
+-  (Currently modifying to support currency swap)
+-  (Needs UI for currency swap)
+-  (Heavily modified with bulk actions, cash cards, and drill-downs)
+-  (Modified to support net_worth and proper loan handling)
+-  (Added  and )
 
 **Areas that need refactoring**:
--  is getting extremely large (>1200 lines). Consider breaking out modals, filters, or the bulk action bar into separate component files if further UI work is needed there.
+-  is getting massively large (>1800 lines). Sub-components like , , and the  should ideally be extracted into separate component files if any more work is done there.
 
 **key api endpoints**
-- : Deletes multiple transactions and recalculates account balances.
-- : Lists team members.
-- : Initiates Google Drive OAuth flow.
+- : (IN PROGRESS) Changes account currency.
+- : Bulk assigns category/direction.
+- : Runs auto-categorization on selected items.
+- : Returns smart categorization patterns based on unmapped transactions.
+- : Returns Net Worth history.
 
 **Critical Info for New Agent**
-- **Terminology**: The user's business explicitly calls categories Статья (Article). Keep this in mind when writing prompts or UI text.
-- **Google OAuth**: Google Drive token was failing because the Google Cloud App is in Testing mode (tokens expire in 7 days). The user has been instructed to move the app to Production. The code now handles  gracefully by clearing the token and showing a UI warning.
-- **Deployment**: The app shares Nginx with another project () on the VPS.  was updated to issue a  to the shared Nginx container so SSL certificates renew properly.
-- **Workspaces**: All  fields in data models (like transactions, categories) effectively function as . The JWT contains  and the user's specific .
+- **Terminology**: The user's business explicitly calls categories Статья (Article). 
+- **Loans Accounting Logic**: Direct income/expenses on loan accounts are considered operational PnL, but *transfers* between a loan account and a regular asset account are treated strictly as loan issuance/repayment and are explicitly excluded from PnL revenue/expense totals to prevent inflation of turnover metrics.
+- **Cross-Currency**: When an exchange rate is provided manually, the logic uses  (i.e. units of destination currency per 1 unit of source currency). NBP rates are pulled dynamically if omitted.
 
 **documents and test reports created in this job**
-- 
+-  (Updated heavily)
 - 
 
 **Last 10 User Messages and any pending HUMAN messages** 
-1. Бэкап в Google Drive провалился. invalid_grant (Agent explained testing mode expiration, updated code to handle it safely).
-2. все сделал, как проверить? (Agent explained how to test backup manually).
-3. Изменения ИИ сломали категории. Нужна возможность менять тип операции (Agent analyzed DB, found auto-rules user_id was misaligned, fixed it, and added transaction type switching).
-4. mongosh-запроса ничего не показывает (Agent debugged).
-5. (Provided mongosh output).
-6. (Provided more mongosh output).
-7. появилась возможность менять операцию, но она не сохраняется (Agent fixed a state bug in the UI payload).
-8. в окне операций можешь сделать чекбоксы возле каждой операции, что бы я мог выделить нужные и удалить (Agent began implementing bulk delete).
-*Pending*: Complete and test the bulk delete task.
+1. (User) Объясни как и что означают цифры в статистике (Asked for explanation of stats; Agent explained).
+2. (User) да, добавь чистый капитал. И еще, вот есть счет заемный, но его операции я сделал как будто просто расход. А как правильно это оформить... (Agent fixed direct expense logic on loan accounts and added Net Worth widget).
+3. (User) [Uploaded screenshots] вот скрин платежей с заемного счета (Agent confirmed they are direct expenses and handled them).
+4. (User) но если я вручную считаю платежи со счета cash minsk у меня выходит 60995,9 евро и 42148,66 злотых а в блоке займов цифра другая (Agent explained that the Loans block groups ALL loan accounts).
+5. (User) в этом месяце не было займов от аликор (Agent added per-account breakdown to the Loans summary).
+6. (User) сделай улучшения. И можно ли загрузить тебе бэкап или таблицу со всеми операциями, что бы ты мог все проверить? Я не уверен, что мы правильно все считаем... (Agent analyzed the user's Excel backup, confirmed the math is correct, but identified that Cash Minsk is a PLN account with EUR transactions, causing NBP conversions).
+7. (User) [Uploaded Backup File]. (Agent analyzed it).
+8. (User) давай я просто переделаю валюту счета кэш минск и конвертирую две операции в евро
+*Pending*: Finish implementing the backend and frontend for changing an account's currency, and verify it works.
 
 **Project Health Check:**
-- Broken: None. 
+- Broken: None.
 - Mocked: None.
 
 **3rd Party Integrations**
@@ -116,7 +119,7 @@ None
 - Telegram Webhook — requires User Bot Token
 
 **Testing status**
-- Testing agent used after significant changes: NO (Tested via bash scripts, DB queries, and UI screenshot tool).
+- Testing agent used after significant changes: NO (Tested via bash scripts, curl, DB queries, and UI screenshot tool extensively).
 - Troubleshoot agent used after agent stuck in loop: NO
 - Test files created: None
 - Known regressions: None
@@ -125,11 +128,11 @@ None
 Check . (admin / 220066mm)
 
 **What agent forgot to execute**
-The agent was right in the middle of writing the frontend code for the bulk-delete checkboxes in . The implementation needs to be finished, linted, and strictly tested to ensure checking multiple boxes and deleting them correctly calls the backend and updates balances.
+The agent modified  to add the currency swap endpoint, but did not finish saving the file completely, did not test the backend, and did not add the corresponding UI in .
 
 **Debugging checklist for current issue**
-    Issue: Finish Bulk Delete
-    Frontend files to check: 
-    - : Ensure  state is managed correctly. Verify the Delete Selected button triggers the API call and refetches .
+    Issue: Complete Change Account Currency implementation.
     Backend files to check: 
-    - : Verify  exists, deletes the provided IDs, and calls  for associated accounts.</analysis>
+    - : Ensure  exists, accepts the new currency, updates the DB, and properly forces balance recalculation for that account.
+    Frontend files to check: 
+    - : Find the account editing dialog/form. Add a way to change the currency (currently it might be disabled/read-only for existing accounts). Wire it to hit the new endpoint and refresh data.</analysis>
