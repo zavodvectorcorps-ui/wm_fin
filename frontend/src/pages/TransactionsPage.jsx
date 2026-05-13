@@ -806,11 +806,14 @@ export const TransactionsPage = () => {
   };
 
   const openNewTransaction = (type) => {
-    setTransactionType(type);
+    // 'exchange' is a UI-only type — under the hood it's a transfer with is_exchange=true
+    const isExchange = type === 'exchange';
+    const effectiveType = isExchange ? 'transfer' : type;
+    setTransactionType(isExchange ? 'exchange' : type);
     setEditingTransaction(null);
     setFormData({
       date: todayLocal(),
-      type,
+      type: effectiveType,
       amount: '',
       currency: 'PLN',
       category_id: '',
@@ -822,13 +825,16 @@ export const TransactionsPage = () => {
       contractor_id: '',
       description: '',
       status: 'fact',
-      is_recurring: false
+      is_recurring: false,
+      is_exchange: isExchange,
     });
     setDialogOpen(true);
   };
 
   const openEditTransaction = (transaction) => {
-    setTransactionType(transaction.type);
+    // For UI purposes, an "exchange" is a transfer with is_exchange=true
+    const uiType = transaction.is_exchange ? 'exchange' : transaction.type;
+    setTransactionType(uiType);
     setEditingTransaction(transaction);
     const fromAcc = accounts.find(a => a.id === transaction.account_id);
     const toAcc = accounts.find(a => a.id === transaction.to_account_id);
@@ -863,7 +869,8 @@ export const TransactionsPage = () => {
       contractor_id: transaction.contractor_id || '',
       description: transaction.description || '',
       status: transaction.status,
-      is_recurring: transaction.is_recurring
+      is_recurring: transaction.is_recurring,
+      is_exchange: !!transaction.is_exchange,
     });
     setDialogOpen(true);
   };
@@ -875,20 +882,23 @@ export const TransactionsPage = () => {
     }
 
     try {
+      const isExchangeUI = transactionType === 'exchange';
+      const effectiveType = isExchangeUI ? 'transfer' : transactionType;
       const fromAcc = accounts.find(a => a.id === formData.account_id);
       const toAcc = accounts.find(a => a.id === formData.to_account_id);
       // For transfers, source currency = from-account currency (always)
-      const txCurrency = transactionType === 'transfer' && fromAcc ? fromAcc.currency : formData.currency;
-      const isXCur = transactionType === 'transfer' && toAcc && fromAcc && toAcc.currency !== fromAcc.currency;
+      const txCurrency = effectiveType === 'transfer' && fromAcc ? fromAcc.currency : formData.currency;
+      const isXCur = effectiveType === 'transfer' && toAcc && fromAcc && toAcc.currency !== fromAcc.currency;
       const payload = {
         ...formData,
         currency: txCurrency,
-        type: transactionType,  // ← взять из кнопок, а не из устаревшего formData.type
+        type: effectiveType,  // ← взять из кнопок, а не из устаревшего formData.type
         amount: parseFloat(formData.amount),
         category_id: formData.category_id === 'none' ? null : formData.category_id,
         contractor_id: formData.contractor_id === 'none' ? null : formData.contractor_id,
-        to_account_id: transactionType === 'transfer' ? (formData.to_account_id || null) : null,
+        to_account_id: effectiveType === 'transfer' ? (formData.to_account_id || null) : null,
         to_amount: (isXCur && formData.to_amount) ? parseFloat(formData.to_amount) : null,
+        is_exchange: isExchangeUI,
       };
       // Strip helper-only fields the backend doesn't know about
       delete payload.manual_rate;
@@ -1005,7 +1015,7 @@ export const TransactionsPage = () => {
   };
 
   const filteredCategories = categories.filter(c => 
-    transactionType === 'transfer' ? true : c.type === transactionType
+    (transactionType === 'transfer' || transactionType === 'exchange') ? true : c.type === transactionType
   );
 
   const SourceIcon = ({ source }) => {
@@ -1037,6 +1047,14 @@ export const TransactionsPage = () => {
           <Button onClick={() => openNewTransaction('transfer')} variant="secondary" data-testid="add-transfer-btn">
             <ArrowLeftRight className="h-4 w-4 mr-2" />
             Перевод
+          </Button>
+          <Button
+            onClick={() => openNewTransaction('exchange')}
+            className="bg-amber-500 hover:bg-amber-600 text-white"
+            data-testid="add-exchange-btn"
+          >
+            <ArrowLeftRight className="h-4 w-4 mr-2" />
+            Обмен валюты
           </Button>
         </div>
       </div>
@@ -1102,6 +1120,7 @@ export const TransactionsPage = () => {
                 <SelectItem value="income">Приход</SelectItem>
                 <SelectItem value="expense">Расход</SelectItem>
                 <SelectItem value="transfer">Перевод</SelectItem>
+                <SelectItem value="exchange">Обмен валюты</SelectItem>
               </SelectContent>
             </Select>
 
@@ -1371,6 +1390,7 @@ export const TransactionsPage = () => {
 
                         const colorClass = t.type === 'income' ? 'text-emerald-500'
                           : t.type === 'expense' ? 'text-rose-500'
+                          : t.is_exchange ? 'text-amber-400'
                           : isTransferIn ? 'text-emerald-500'
                           : isTransferOut ? 'text-rose-500'
                           : 'text-sky-500';
@@ -1608,16 +1628,20 @@ export const TransactionsPage = () => {
           <div className="grid gap-4 py-4">
             <div className="space-y-2 min-w-0">
               <Label>Тип операции</Label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-4 gap-2">
                 {[
-                  { value: 'income', label: 'Приход', color: 'text-emerald-500' },
-                  { value: 'expense', label: 'Расход', color: 'text-red-500' },
-                  { value: 'transfer', label: 'Перевод', color: 'text-blue-500' },
-                ].map(opt => (
+                  { value: 'income', label: 'Приход', color: 'text-emerald-500', activeClass: '' },
+                  { value: 'expense', label: 'Расход', color: 'text-red-500', activeClass: '' },
+                  { value: 'transfer', label: 'Перевод', color: 'text-blue-500', activeClass: '' },
+                  { value: 'exchange', label: 'Обмен', color: 'text-amber-400', activeClass: 'bg-amber-500 hover:bg-amber-600 text-white border-amber-500' },
+                ].map(opt => {
+                  const isActive = transactionType === opt.value;
+                  const isTransferLike = (val) => val === 'transfer' || val === 'exchange';
+                  return (
                   <Button
                     key={opt.value}
                     type="button"
-                    variant={transactionType === opt.value ? 'default' : 'outline'}
+                    variant={isActive ? 'default' : 'outline'}
                     size="sm"
                     onClick={() => {
                       setTransactionType(opt.value);
@@ -1626,21 +1650,23 @@ export const TransactionsPage = () => {
                         const acc = accounts.find(a => a.id === fd.account_id);
                         return {
                           ...fd,
-                          category_id: opt.value === 'transfer' ? '' : fd.category_id,
-                          to_account_id: opt.value === 'transfer' ? fd.to_account_id : '',
-                          // Sync currency to from-account when switching to transfer
-                          currency: opt.value === 'transfer' && acc ? acc.currency : fd.currency,
-                          // Reset cross-currency helpers
-                          ...(opt.value === 'transfer' ? {} : { to_amount: '', manual_rate: '' }),
+                          category_id: isTransferLike(opt.value) ? '' : fd.category_id,
+                          to_account_id: isTransferLike(opt.value) ? fd.to_account_id : '',
+                          // Sync currency to from-account when switching to transfer/exchange
+                          currency: isTransferLike(opt.value) && acc ? acc.currency : fd.currency,
+                          // Reset cross-currency helpers when leaving transfer-like
+                          ...(isTransferLike(opt.value) ? {} : { to_amount: '', manual_rate: '' }),
+                          is_exchange: opt.value === 'exchange',
                         };
                       });
                     }}
-                    className={transactionType === opt.value ? '' : opt.color}
+                    className={isActive ? (opt.activeClass || '') : opt.color}
                     data-testid={`form-type-${opt.value}`}
                   >
                     {opt.label}
                   </Button>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -1669,11 +1695,11 @@ export const TransactionsPage = () => {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2 min-w-0">
-                <Label>Валюта{transactionType === 'transfer' ? ' (со счёта)' : ''}</Label>
+                <Label>Валюта{(transactionType === 'transfer' || transactionType === 'exchange') ? ' (со счёта)' : ''}</Label>
                 <Select
                   value={formData.currency}
                   onValueChange={(v) => setFormData({ ...formData, currency: v })}
-                  disabled={transactionType === 'transfer'}
+                  disabled={(transactionType === 'transfer' || transactionType === 'exchange')}
                 >
                   <SelectTrigger data-testid="form-currency">
                     <SelectValue />
@@ -1693,16 +1719,16 @@ export const TransactionsPage = () => {
                     ...prev,
                     account_id: v,
                     // For transfers source currency must match from-account
-                    currency: transactionType === 'transfer' && acc ? acc.currency : prev.currency,
+                    currency: (transactionType === 'transfer' || transactionType === 'exchange') && acc ? acc.currency : prev.currency,
                     // Reset cross-currency helper fields when source changes
-                    ...(transactionType === 'transfer' ? { to_amount: '', manual_rate: '' } : {}),
+                    ...((transactionType === 'transfer' || transactionType === 'exchange') ? { to_amount: '', manual_rate: '' } : {}),
                   }));
                 }}>
                   <SelectTrigger data-testid="form-account">
                     <SelectValue placeholder="Выберите счёт" />
                   </SelectTrigger>
                   <SelectContent>
-                    {accounts.map(a => (
+                    {accounts.filter(a => transactionType !== 'exchange' || !a.is_loan).map(a => (
                       <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
                     ))}
                   </SelectContent>
@@ -1710,7 +1736,7 @@ export const TransactionsPage = () => {
               </div>
             </div>
 
-            {transactionType === 'transfer' && (
+            {(transactionType === 'transfer' || transactionType === 'exchange') && (
               <div className="space-y-2 min-w-0">
                 <Label>На счёт</Label>
                 <Select value={formData.to_account_id} onValueChange={(v) => setFormData({ ...formData, to_account_id: v, to_amount: '', manual_rate: '' })}>
@@ -1718,7 +1744,7 @@ export const TransactionsPage = () => {
                     <SelectValue placeholder="Выберите счёт" />
                   </SelectTrigger>
                   <SelectContent>
-                    {accounts.filter(a => a.id !== formData.account_id).map(a => (
+                    {accounts.filter(a => a.id !== formData.account_id && (transactionType !== 'exchange' || !a.is_loan)).map(a => (
                       <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
                     ))}
                   </SelectContent>
@@ -1726,7 +1752,7 @@ export const TransactionsPage = () => {
               </div>
             )}
 
-            {transactionType === 'transfer' && (() => {
+            {(transactionType === 'transfer' || transactionType === 'exchange') && (() => {
               const fromAcc = accounts.find(a => a.id === formData.account_id);
               const toAcc = accounts.find(a => a.id === formData.to_account_id);
               const fromLoan = fromAcc?.is_loan;
@@ -1752,7 +1778,7 @@ export const TransactionsPage = () => {
             })()}
 
             {/* Cross-currency transfer: manual to_amount + exchange rate */}
-            {transactionType === 'transfer' && (() => {
+            {(transactionType === 'transfer' || transactionType === 'exchange') && (() => {
               const fromAcc = accounts.find(a => a.id === formData.account_id);
               const toAcc = accounts.find(a => a.id === formData.to_account_id);
               if (!fromAcc || !toAcc) return null;

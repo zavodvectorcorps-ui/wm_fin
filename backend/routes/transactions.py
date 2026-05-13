@@ -76,7 +76,16 @@ async def get_transactions(
         else:
             query["date"] = {"$lte": date_to}
     if type:
-        query["type"] = type
+        if type == "exchange":
+            # UI-only type — actual rows are stored as "transfer" with is_exchange=True
+            query["type"] = "transfer"
+            query["is_exchange"] = True
+        elif type == "transfer":
+            # Pure transfer = exclude currency exchanges
+            query["type"] = "transfer"
+            query["is_exchange"] = {"$ne": True}
+        else:
+            query["type"] = type
     if status:
         query["status"] = status
     # Multi-account filter (comma-separated). Takes precedence over single account_id.
@@ -216,9 +225,12 @@ async def get_transactions(
     #   Repaid (Погашено)   = debt SHRINKS. Includes:
     #     • transfer where loan acc is TARGET (repaid debt)
     #     • direct income on loan acc (debt partially forgiven / cash returned)
+    # NB: pure currency-exchange transfers (is_exchange=True) are excluded —
+    # they are NOT loan movements, just conversion of own money.
     loans_summary = None
     if loan_account_ids:
         loan_match_base = {k: v for k, v in match_query.items() if k not in ("$or", "account_id", "to_account_id", "type")}
+        loan_match_base["is_exchange"] = {"$ne": True}
 
         # Received = debt grew (loan acc source for transfer/expense)
         received_pipeline = [
@@ -226,14 +238,14 @@ async def get_transactions(
                         "account_id": {"$in": loan_account_ids},
                         "type": {"$in": ["transfer", "expense"]}}},
             {"$group": {
-                "_id": {"acc": "$account_id", "cur": {"$ifNull": ["$currency", "PLN"]}},
+                "_id": "$account_id",
                 "total_base": {"$sum": {"$ifNull": ["$amount_base", "$amount"]}},
                 "count": {"$sum": 1},
             }},
         ]
-        # Repaid = debt shrunk. Two sub-cases combined via $facet-style $unionWith:
-        # 1) transfer where loan acc = TARGET → group by to_account_id
-        # 2) direct income on loan acc → group by account_id
+        # Repaid = debt shrunk.
+        # 1) transfer where loan acc = TARGET → use to_amount_base
+        # 2) direct income on loan acc → use amount_base
         repaid_pipeline = [
             {"$match": {**loan_match_base,
                         "$or": [
@@ -251,7 +263,7 @@ async def get_transactions(
                 ]}
             }},
             {"$group": {
-                "_id": {"acc": "$loan_acc", "cur": {"$ifNull": ["$currency", "PLN"]}},
+                "_id": "$loan_acc",
                 "total_base": {"$sum": "$effective_base"},
                 "count": {"$sum": 1},
             }},
@@ -266,6 +278,8 @@ async def get_transactions(
         ).to_list(None)
 
         # Break inflow/outflow down per-currency AND per-account
+        # Currency is taken from the LOAN ACCOUNT itself (total_base is already
+        # expressed in loan-account currency for both transfers and direct ops).
         received_by_cur: dict = {}
         repaid_by_cur: dict = {}
         per_account: dict = {a["id"]: {
@@ -276,22 +290,24 @@ async def get_transactions(
         } for a in loan_accounts_full}
 
         for row in inflow:
-            acc = row["_id"]["acc"]
-            cur = row["_id"]["cur"]
+            acc = row["_id"]
+            pa = per_account.get(acc)
+            if not pa:
+                continue
+            cur = pa.get("currency") or "PLN"
             received_by_cur[cur] = received_by_cur.get(cur, 0) + row["total_base"]
-            if acc in per_account:
-                pa = per_account[acc]
-                pa["received_by_cur"][cur] = pa["received_by_cur"].get(cur, 0) + row["total_base"]
-                pa["received_count"] += row["count"]
+            pa["received_by_cur"][cur] = pa["received_by_cur"].get(cur, 0) + row["total_base"]
+            pa["received_count"] += row["count"]
 
         for row in outflow:
-            acc = row["_id"]["acc"]
-            cur = row["_id"]["cur"]
+            acc = row["_id"]
+            pa = per_account.get(acc)
+            if not pa:
+                continue
+            cur = pa.get("currency") or "PLN"
             repaid_by_cur[cur] = repaid_by_cur.get(cur, 0) + row["total_base"]
-            if acc in per_account:
-                pa = per_account[acc]
-                pa["repaid_by_cur"][cur] = pa["repaid_by_cur"].get(cur, 0) + row["total_base"]
-                pa["repaid_count"] += row["count"]
+            pa["repaid_by_cur"][cur] = pa["repaid_by_cur"].get(cur, 0) + row["total_base"]
+            pa["repaid_count"] += row["count"]
 
         received_total = sum(r["total_base"] for r in inflow)
         repaid_total = sum(r["total_base"] for r in outflow)

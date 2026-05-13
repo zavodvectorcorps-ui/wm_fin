@@ -214,7 +214,8 @@ export const getTypeLabel = (type) => {
   const labels = {
     'income': 'Приход',
     'expense': 'Расход',
-    'transfer': 'Перевод'
+    'transfer': 'Перевод',
+    'exchange': 'Обмен валюты'
   };
   return labels[type] || type;
 };
