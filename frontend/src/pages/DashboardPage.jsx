@@ -243,7 +243,53 @@ export const DashboardPage = () => {
         />
       </div>
 
-      {/* Runway Widget */}
+      {/* Net Worth (Assets − Liabilities) */}
+      {data && (data.assets_balance !== undefined || data.liabilities_balance !== undefined) && (
+        (() => {
+          const assets = data.assets_balance || 0;
+          const liabilities = data.liabilities_balance || 0;
+          const netWorth = data.net_worth ?? (assets + liabilities);
+          const hasLoans = Math.abs(liabilities) > 0.005;
+          if (!hasLoans) return null;  // hide when user has no loan accounts
+          return (
+            <Card data-testid="net-worth-card" className={`border-l-4 ${netWorth >= 0 ? 'border-l-emerald-500' : 'border-l-rose-500'}`}>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2">
+                  <Wallet className="h-5 w-5 text-primary" />
+                  Чистый капитал
+                  <Badge variant="outline" className="text-xs font-normal">
+                    активы − займы
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Активы</p>
+                    <p className="text-2xl font-bold font-mono text-sky-300">+{formatCurrency(assets)}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Займы (долг)</p>
+                    <p className="text-2xl font-bold font-mono text-amber-400">{formatCurrency(liabilities)}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Чистый капитал</p>
+                    <p className={`text-2xl font-bold font-mono ${netWorth >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                      {netWorth >= 0 ? '+' : ''}{formatCurrency(netWorth)}
+                    </p>
+                  </div>
+                </div>
+                {netWorth < 0 && (
+                  <p className="mt-3 text-xs text-amber-300 flex items-start gap-1.5">
+                    <Info className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+                    Долги сейчас больше, чем имеется на счетах. Это нормально, если бизнес активно растёт за счёт займов, но следите, чтобы тренд месяц-к-месяцу улучшался (см. график «Динамика чистого капитала»).
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })()
+      )}
       {runway && (
         <Card data-testid="runway-card" className="border-l-4 border-l-amber-500">
           <CardHeader className="pb-3">

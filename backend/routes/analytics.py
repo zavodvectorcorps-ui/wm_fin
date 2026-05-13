@@ -18,8 +18,15 @@ async def _get_loan_account_ids(user_id: str) -> list:
 
 
 def _not_loan_op(t: dict, loan_ids: list) -> bool:
-    """True if a transaction doesn't involve any loan account."""
+    """True if a transaction should NOT be excluded from main PnL aggregation.
+
+    Excludes only TRANSFERS that touch a loan account (loan receipt / repayment).
+    Direct income/expense on a loan account is real business cash flow funded by
+    debt (e.g. paying a supplier from a credit line) and stays in the summary.
+    """
     if not loan_ids:
+        return True
+    if t.get("type") != "transfer":
         return True
     if t.get("account_id") in loan_ids:
         return False
@@ -90,13 +97,20 @@ async def get_analytics_summary(
     except Exception:
         pass
 
-    total_balance = 0
+    # Split balance into assets vs liabilities (loans). Net Worth = assets - liabilities.
+    assets_balance = 0
+    liabilities_balance = 0
     for a in accounts:
-        bal = a.get("current_balance", 0)
-        if a.get("currency") == "EUR" and eur_rate > 0:
-            total_balance += bal * eur_rate
+        bal = a.get("current_balance", 0) or 0
+        pln = bal * eur_rate if (a.get("currency") == "EUR" and eur_rate > 0) else bal
+        if a.get("is_loan"):
+            # current_balance on a loan account is typically negative (= debt)
+            liabilities_balance += pln
         else:
-            total_balance += bal
+            assets_balance += pln
+    # Total balance kept for backwards compatibility (sum of all accounts)
+    total_balance = assets_balance + liabilities_balance
+    net_worth = assets_balance + liabilities_balance  # liabilities is already negative
 
     # Per-account income/expense for the period (using amount_base)
     account_stats = {}
@@ -143,6 +157,9 @@ async def get_analytics_summary(
         "total_expense": total_expense,
         "profit": profit,
         "total_balance": total_balance,
+        "assets_balance": assets_balance,
+        "liabilities_balance": liabilities_balance,
+        "net_worth": net_worth,
         "by_direction": by_direction,
         "income_by_category": income_by_category,
         "expense_by_category": expense_by_category,

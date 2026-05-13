@@ -115,11 +115,17 @@ async def get_transactions(
 
     # Aggregate summary for ENTIRE filtered period using a COPY of the query
     match_query = {k: v for k, v in query.items()}
-    # Exclude operations that involve loan accounts from the main income/expense summary
+    # Exclude TRANSFERS that touch a loan account from the main income/expense
+    # summary. Direct income/expense on a loan account remain in the summary —
+    # they represent real business cash flow (e.g. paying a supplier from a
+    # credit line) and the resulting debt change is already visible in the
+    # account balance and in the loans block via `current_balance`.
     main_match = {k: v for k, v in match_query.items()}
     if loan_account_ids:
-        main_match["account_id"] = {"$nin": loan_account_ids}
-        main_match["to_account_id"] = {"$nin": loan_account_ids}
+        main_match["$nor"] = [
+            {"type": "transfer", "account_id": {"$in": loan_account_ids}},
+            {"type": "transfer", "to_account_id": {"$in": loan_account_ids}},
+        ]
     summary_pipeline = [
         {"$match": main_match},
         {"$group": {
