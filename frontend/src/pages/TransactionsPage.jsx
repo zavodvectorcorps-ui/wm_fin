@@ -7,7 +7,7 @@ import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
 import { Skeleton } from '../components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '../components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '../components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '../components/ui/alert-dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Textarea } from '../components/ui/textarea';
@@ -438,6 +438,15 @@ export const TransactionsPage = () => {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [createRuleOpen, setCreateRuleOpen] = useState(false);
+  const [createRuleData, setCreateRuleData] = useState({
+    pattern: '',
+    category_id: '',
+    direction_id: '',
+    apply_to_existing: true,
+    source_tx: null,
+  });
+  const [savingRule, setSavingRule] = useState(false);
   
   // Document linking state
   const [linkDocDialogOpen, setLinkDocDialogOpen] = useState(false);
@@ -640,6 +649,67 @@ export const TransactionsPage = () => {
       setTransactions(prev => prev.map(t => t.id === transactionId ? { ...t, needs_review: res.data.needs_review } : t));
     } catch {
       toast.error('Ошибка обновления');
+    }
+  };
+
+  const openCreateRuleDialog = (t) => {
+    const desc = (t.description || '').trim();
+    let suggested = desc.slice(0, 20);
+    const words = desc.split(/[\s,.;:\-/()]+/).filter(w => w.length >= 4);
+    if (words.length > 0) {
+      words.sort((a, b) => b.length - a.length);
+      suggested = words[0].slice(0, 25);
+    }
+    setCreateRuleData({
+      pattern: suggested,
+      category_id: t.category_id || '',
+      direction_id: t.direction_id || '',
+      apply_to_existing: true,
+      source_tx: t,
+    });
+    setCreateRuleOpen(true);
+  };
+
+  const saveRule = async () => {
+    const pattern = (createRuleData.pattern || '').trim();
+    if (!pattern) {
+      toast.error('Введите паттерн');
+      return;
+    }
+    if (!createRuleData.category_id && !createRuleData.direction_id) {
+      toast.error('Выберите Статью и/или Направление');
+      return;
+    }
+    setSavingRule(true);
+    try {
+      const rulePayload = { pattern, is_active: true };
+      if (createRuleData.category_id) rulePayload.category_id = createRuleData.category_id;
+      if (createRuleData.direction_id) rulePayload.direction_id = createRuleData.direction_id;
+      await api().post('/auto-rules', rulePayload);
+
+      let applied = 0;
+      if (createRuleData.apply_to_existing) {
+        const resp = await api().get('/transactions', { params: { search: pattern, per_page: 500 } });
+        const items = (resp.data?.items || resp.data || []);
+        const ids = items.map(x => x.id);
+        if (ids.length > 0) {
+          const r = await api().post('/transactions/bulk-apply-rules', { ids, overwrite: false });
+          applied = r.data?.updated || 0;
+        }
+      }
+      toast.success(applied > 0
+        ? `Правило создано · обновлено ${applied} существующих операций`
+        : 'Правило создано');
+      setCreateRuleOpen(false);
+      const scrollY = window.scrollY;
+      await fetchData();
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => window.scrollTo({ top: scrollY, behavior: 'instant' }));
+      });
+    } catch (e) {
+      toast.error(e.response?.data?.detail || 'Ошибка создания правила');
+    } finally {
+      setSavingRule(false);
     }
   };
 
@@ -1311,6 +1381,10 @@ export const TransactionsPage = () => {
                             <Paperclip className="h-4 w-4 mr-2" />
                             Документы
                           </DropdownMenuItem>
+                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openCreateRuleDialog(t); }}>
+                            <Bot className="h-4 w-4 mr-2" />
+                            Создать правило из операции
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={(e) => toggleNeedsReview(e, t.id)}>
                             <AlertTriangle className="h-4 w-4 mr-2" />
                             {t.needs_review ? 'Снять отметку "Под вопросом"' : 'Отметить "Под вопросом"'}
@@ -1718,6 +1792,98 @@ export const TransactionsPage = () => {
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Отмена</Button>
             <Button onClick={handleSubmit} data-testid="form-submit-btn">
               {editingTransaction ? 'Сохранить' : 'Создать'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create rule from transaction */}
+      <Dialog open={createRuleOpen} onOpenChange={setCreateRuleOpen}>
+        <DialogContent className="max-w-md" data-testid="create-rule-dialog">
+          <DialogHeader>
+            <DialogTitle>Создать авто-правило</DialogTitle>
+            <DialogDescription>
+              Правило автоматически проставит Статью и/или Направление в операциях,
+              чьё описание содержит указанный паттерн.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {createRuleData.source_tx && (
+              <div className="rounded-md border border-muted bg-muted/30 p-2.5 text-xs">
+                <p className="text-muted-foreground">Из операции:</p>
+                <p className="font-medium truncate">{createRuleData.source_tx.description || '(без описания)'}</p>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>Паттерн (поиск в описании, без учёта регистра)</Label>
+              <Input
+                value={createRuleData.pattern}
+                onChange={(e) => setCreateRuleData({ ...createRuleData, pattern: e.target.value })}
+                placeholder="Например: ALICOR"
+                data-testid="rule-pattern-input"
+              />
+              <p className="text-xs text-muted-foreground">
+                Срабатывает, если описание содержит подстроку «{(createRuleData.pattern || '').trim() || '...'}»
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label>Статья</Label>
+              <Select
+                value={createRuleData.category_id || 'none'}
+                onValueChange={(v) => setCreateRuleData({ ...createRuleData, category_id: v === 'none' ? '' : v })}
+              >
+                <SelectTrigger data-testid="rule-category-select">
+                  <SelectValue placeholder="Не менять" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Не менять</SelectItem>
+                  {categories.filter(c => c.is_active !== false).map(c => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Направление</Label>
+              <Select
+                value={createRuleData.direction_id || 'none'}
+                onValueChange={(v) => setCreateRuleData({ ...createRuleData, direction_id: v === 'none' ? '' : v })}
+              >
+                <SelectTrigger data-testid="rule-direction-select">
+                  <SelectValue placeholder="Не менять" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Не менять</SelectItem>
+                  {directions.filter(d => d.is_active !== false).map(d => (
+                    <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <label className="flex items-start gap-2 cursor-pointer text-sm" htmlFor="apply-existing-cb">
+              <input
+                type="checkbox"
+                id="apply-existing-cb"
+                checked={createRuleData.apply_to_existing}
+                onChange={(e) => setCreateRuleData({ ...createRuleData, apply_to_existing: e.target.checked })}
+                className="mt-1 h-4 w-4 accent-primary"
+                data-testid="apply-existing-cb"
+              />
+              <span>
+                <span className="font-medium">Применить к существующим операциям</span>
+                <span className="block text-xs text-muted-foreground mt-0.5">
+                  Найдёт все операции с таким описанием и заполнит у них пустые Статью/Направление.
+                </span>
+              </span>
+            </label>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateRuleOpen(false)} disabled={savingRule}>
+              Отмена
+            </Button>
+            <Button onClick={saveRule} disabled={savingRule} data-testid="save-rule-btn">
+              {savingRule ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Bot className="h-4 w-4 mr-2" />}
+              Создать правило
             </Button>
           </DialogFooter>
         </DialogContent>
