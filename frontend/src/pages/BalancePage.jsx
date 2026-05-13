@@ -9,7 +9,7 @@ import {
   ArrowUpRight, ArrowDownRight, Calculator
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '../lib/utils';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, AreaChart, Area, XAxis, YAxis, CartesianGrid } from 'recharts';
 
 const COLORS = ['#3b82f6', '#22c55e', '#f97316', '#8b5cf6', '#ec4899', '#14b8a6'];
 
@@ -31,12 +31,17 @@ export const BalancePage = () => {
   const { api } = useAuth();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
+  const [history, setHistory] = useState(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api().get('/analytics/balance');
-      setData(res.data);
+      const [bal, hist] = await Promise.all([
+        api().get('/analytics/balance'),
+        api().get('/analytics/net-worth-history?months=12'),
+      ]);
+      setData(bal.data);
+      setHistory(hist.data);
     } catch (error) {
       console.error('Failed to fetch balance data:', error);
     } finally {
@@ -168,7 +173,54 @@ export const BalancePage = () => {
         </Card>
       </div>
 
-      {/* Main Content */}
+      {/* Net Worth History (12 months) */}
+      {history?.months && history.months.length > 0 && (
+        <Card data-testid="net-worth-history-card">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-primary" />
+              Динамика чистого капитала
+            </CardTitle>
+            <CardDescription>
+              Активы, займы и чистый капитал (активы − займы) на конец каждого месяца, в PLN
+              {history.eur_rate_used ? ` (EUR × ${history.eur_rate_used.toFixed(4)})` : ''}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={history.months}>
+                  <defs>
+                    <linearGradient id="netWorthGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#22c55e" stopOpacity={0.35} />
+                      <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="assetsGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.25} />
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="loansGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.25} />
+                      <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                  <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                  <Tooltip
+                    formatter={(val, name) => [formatCurrency(val), name]}
+                    contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151' }}
+                  />
+                  <Legend />
+                  <Area type="monotone" dataKey="assets" name="Активы" stroke="#3b82f6" fill="url(#assetsGrad)" strokeWidth={2} />
+                  <Area type="monotone" dataKey="loans" name="Займы" stroke="#f59e0b" fill="url(#loansGrad)" strokeWidth={2} />
+                  <Area type="monotone" dataKey="net_worth" name="Чистый капитал" stroke="#22c55e" fill="url(#netWorthGrad)" strokeWidth={2.5} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Assets by Type */}
         <div className="lg:col-span-2 space-y-4">

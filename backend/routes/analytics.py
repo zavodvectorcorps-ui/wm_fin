@@ -582,6 +582,98 @@ async def get_balance_report(
     }
 
 
+@router.get("/analytics/net-worth-history")
+async def get_net_worth_history(
+    months: int = 12,
+    current_user: dict = Depends(get_current_user)
+):
+    """Monthly snapshot of Assets / Loans / Net Worth (in PLN equivalent).
+
+    Computes balance for each account at each month-end by replaying transactions
+    from initial_balance. Loan accounts (is_loan=True) are summed separately so
+    Net Worth = Assets − Loans.
+    """
+    user_id = current_user["user_id"]
+    months = max(1, min(months, 36))
+    today = datetime.now(timezone.utc).date()
+
+    # Build list of month-end dates (oldest → newest)
+    month_ends = []
+    y, m = today.year, today.month
+    for _ in range(months):
+        first_next = datetime(y + (1 if m == 12 else 0), 1 if m == 12 else m + 1, 1)
+        last_day = (first_next - timedelta(days=1)).date()
+        month_ends.append(last_day.isoformat())
+        m -= 1
+        if m == 0:
+            m = 12
+            y -= 1
+    month_ends.reverse()
+
+    accounts = await db.accounts.find(
+        {"user_id": user_id, "is_active": {"$ne": False}}, {"_id": 0}
+    ).to_list(None)
+
+    txs = await db.transactions.find(
+        {"user_id": user_id, "status": "fact"},
+        {"_id": 0, "date": 1, "type": 1, "account_id": 1, "to_account_id": 1,
+         "amount": 1, "amount_base": 1, "to_amount_base": 1}
+    ).sort("date", 1).to_list(50000)
+
+    try:
+        from routes.exchange_rate import get_nbp_rate
+        eur_rate = await get_nbp_rate()
+    except Exception:
+        eur_rate = 4.3
+
+    def to_pln(amount: float, currency: str) -> float:
+        if currency == "EUR" and eur_rate:
+            return amount * eur_rate
+        return amount
+
+    result = []
+    for end_date in month_ends:
+        balances = {a["id"]: float(a.get("initial_balance", 0) or 0) for a in accounts}
+        for t in txs:
+            if (t.get("date") or "") > end_date:
+                break  # txs sorted by date asc
+            acc = t.get("account_id")
+            to_acc = t.get("to_account_id")
+            amt = t.get("amount_base") if t.get("amount_base") is not None else t.get("amount", 0)
+            ttype = t.get("type")
+            if ttype == "income" and acc in balances:
+                balances[acc] += amt
+            elif ttype == "expense" and acc in balances:
+                balances[acc] -= amt
+            elif ttype == "transfer":
+                if acc in balances:
+                    balances[acc] -= amt
+                if to_acc in balances:
+                    to_amt = t.get("to_amount_base") if t.get("to_amount_base") is not None else amt
+                    balances[to_acc] += to_amt
+
+        assets_pln = 0.0
+        loans_pln = 0.0
+        for a in accounts:
+            bal = balances.get(a["id"], 0)
+            pln = to_pln(bal, a.get("currency", "PLN"))
+            if a.get("is_loan"):
+                loans_pln += pln
+            else:
+                assets_pln += pln
+
+        result.append({
+            "month": end_date[:7],
+            "assets": round(assets_pln, 2),
+            "loans": round(loans_pln, 2),
+            "net_worth": round(assets_pln - loans_pln, 2),
+        })
+
+    return {"months": result, "eur_rate_used": eur_rate}
+
+
+
+
 @router.get("/analytics/expense-analysis")
 async def get_expense_analysis(
     date_from: str,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -311,22 +311,42 @@ export const TransactionsPage = () => {
   const [selectedTransactionForDoc, setSelectedTransactionForDoc] = useState(null);
   const [transactionDocuments, setTransactionDocuments] = useState({});
   
-  const [filters, setFilters] = useState({
-    period: 'current_month',
-    customMonth: '',
-    customDateFrom: '',
-    customDateTo: '',
-    type: 'all',
-    status: 'all',
-    account_id: 'all',           // legacy single-select (kept for backwards compat)
-    selectedAccountIds: null,    // null = all; otherwise array of selected ids
-    direction_id: 'all',
-    category_id: 'all',
-    needs_review: 'all',
-    search: ''
+  const STORAGE_KEY = 'wm:transactions:state';
+
+  const [filters, setFilters] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.filters) return parsed.filters;
+      }
+    } catch (e) { /* ignore */ }
+    return {
+      period: 'current_month',
+      customMonth: '',
+      customDateFrom: '',
+      customDateTo: '',
+      type: 'all',
+      status: 'all',
+      account_id: 'all',           // legacy single-select (kept for backwards compat)
+      selectedAccountIds: null,    // null = all; otherwise array of selected ids
+      direction_id: 'all',
+      category_id: 'all',
+      needs_review: 'all',
+      search: ''
+    };
   });
 
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.page) return parsed.page;
+      }
+    } catch (e) { /* ignore */ }
+    return 1;
+  });
   const [perPage] = useState(50);
   const [totalItems, setTotalItems] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -421,8 +441,60 @@ export const TransactionsPage = () => {
     fetchData();
   }, [fetchData]);
 
-  // Reset to page 1 when filters change
+  // Persist filters + page to sessionStorage so they survive navigation away & back.
+  // Scroll Y is persisted on unmount (below).
+  const isFirstRender = useRef(true);
   useEffect(() => {
+    try {
+      const existing = sessionStorage.getItem(STORAGE_KEY);
+      const prev = existing ? JSON.parse(existing) : {};
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ ...prev, filters, page }));
+    } catch (e) { /* ignore */ }
+  }, [filters, page]);
+
+  // Restore scroll position after the first data load, then save it on unmount.
+  useEffect(() => {
+    if (loading) return;
+    if (!isFirstRender.current) return;
+    isFirstRender.current = false;
+    try {
+      const saved = sessionStorage.getItem(STORAGE_KEY);
+      const parsed = saved ? JSON.parse(saved) : null;
+      const y = parsed?.scrollY;
+      if (typeof y === 'number' && y > 0) {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => window.scrollTo({ top: y, behavior: 'instant' }));
+        });
+      }
+    } catch (e) { /* ignore */ }
+  }, [loading]);
+
+  useEffect(() => {
+    // Save scroll Y whenever it changes (debounced via requestAnimationFrame)
+    let ticking = false;
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        try {
+          const saved = sessionStorage.getItem(STORAGE_KEY);
+          const prev = saved ? JSON.parse(saved) : {};
+          sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ ...prev, scrollY: window.scrollY }));
+        } catch (e) { /* ignore */ }
+        ticking = false;
+      });
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  // Reset to page 1 when filters change (but NOT on the initial restore from storage)
+  const filtersInitDone = useRef(false);
+  useEffect(() => {
+    if (!filtersInitDone.current) {
+      filtersInitDone.current = true;
+      return;
+    }
     setPage(1);
   }, [filters]);
 
