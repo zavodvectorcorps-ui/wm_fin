@@ -203,19 +203,37 @@ async def get_transactions(
             summary[acc_currency]["count"] += in_result[0]["count"]
 
     # ---- Loans summary (separate block) ----
-    # For each loan account, compute money received (inflow) and money repaid (outflow)
-    # within the current filter window, plus current balance.
+    # Semantics:
+    #   Received (Получено)   = money taken OUT of a loan account (transfer
+    #     loan→asset means you received the loan in cash/bank). We use
+    #     `amount_base` (source = loan currency).
+    #   Repaid (Погашено)     = money sent INTO a loan account (transfer
+    #     asset→loan means you paid back). We use `to_amount_base` so the
+    #     amount is expressed in loan currency.
+    # Direct income/expense recorded on a loan account is treated as a
+    # neutral movement (kept on the side) to avoid double-counting.
     loans_summary = None
     if loan_account_ids:
         loan_match_base = {k: v for k, v in match_query.items() if k not in ("$or", "account_id", "to_account_id")}
 
-        # Inflow to loan account = transfer-in (to_account_id=loan) + income on loan account
-        inflow_pipeline = [
-            {"$match": {**loan_match_base, "$or": [
-                {"account_id": {"$in": loan_account_ids}, "type": "income"},
-                {"to_account_id": {"$in": loan_account_ids}, "type": "transfer"},
-            ]}},
+        # Received = transfer where loan account is SOURCE (money leaves loan → enters bank)
+        received_pipeline = [
+            {"$match": {**loan_match_base,
+                        "account_id": {"$in": loan_account_ids},
+                        "type": "transfer"}},
             {"$group": {
+                "_id": {"$ifNull": ["$currency", "PLN"]},
+                "total_base": {"$sum": {"$ifNull": ["$amount_base", "$amount"]}},
+                "count": {"$sum": 1},
+            }},
+        ]
+        # Repaid = transfer where loan account is TARGET (money enters loan = pay back)
+        repaid_pipeline = [
+            {"$match": {**loan_match_base,
+                        "to_account_id": {"$in": loan_account_ids},
+                        "type": "transfer"}},
+            {"$group": {
+                # Use to_account currency: it's the loan account currency
                 "_id": {"$ifNull": ["$currency", "PLN"]},
                 "total_base": {"$sum": {
                     "$ifNull": ["$to_amount_base", {"$ifNull": ["$amount_base", "$amount"]}]
@@ -223,18 +241,8 @@ async def get_transactions(
                 "count": {"$sum": 1},
             }},
         ]
-        # Outflow from loan account = transfer-out (account_id=loan, type=transfer) + expense
-        outflow_pipeline = [
-            {"$match": {**loan_match_base, "account_id": {"$in": loan_account_ids},
-                        "type": {"$in": ["expense", "transfer"]}}},
-            {"$group": {
-                "_id": {"$ifNull": ["$currency", "PLN"]},
-                "total_base": {"$sum": {"$ifNull": ["$amount_base", "$amount"]}},
-                "count": {"$sum": 1},
-            }},
-        ]
-        inflow = await db.transactions.aggregate(inflow_pipeline).to_list(10)
-        outflow = await db.transactions.aggregate(outflow_pipeline).to_list(10)
+        inflow = await db.transactions.aggregate(received_pipeline).to_list(10)
+        outflow = await db.transactions.aggregate(repaid_pipeline).to_list(10)
 
         # Current loan balance (sum of current_balance for all loan accounts, in PLN-ish)
         loan_accounts_full = await db.accounts.find(

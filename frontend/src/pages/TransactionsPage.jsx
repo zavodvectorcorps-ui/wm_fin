@@ -35,7 +35,10 @@ const sourceIcons = {
 const LoansSummary = ({ data, eurPlnRate }) => {
   if (!data || !data.accounts || data.accounts.length === 0) return null;
 
-  // Convert per-currency totals to PLN
+  const receivedByCur = data.received_by_cur || {};
+  const repaidByCur = data.repaid_by_cur || {};
+
+  // Helper: combine per-currency totals into PLN (for net-change calc)
   const toPln = (byCur) => {
     let total = 0;
     for (const [cur, val] of Object.entries(byCur || {})) {
@@ -44,9 +47,7 @@ const LoansSummary = ({ data, eurPlnRate }) => {
     }
     return total;
   };
-  const received = toPln(data.received_by_cur) || data.received_base || 0;
-  const repaid = toPln(data.repaid_by_cur) || data.repaid_base || 0;
-  const netChange = received - repaid;  // positive = долг вырос, negative = долг уменьшился
+  const netChangePln = toPln(receivedByCur) - toPln(repaidByCur);  // +positive = долг вырос
 
   // Sum of current balances grouped by currency (for the «Остаток долга» card)
   const byCur = {};
@@ -54,6 +55,23 @@ const LoansSummary = ({ data, eurPlnRate }) => {
     const cur = a.currency || 'PLN';
     byCur[cur] = (byCur[cur] || 0) + (a.current_balance || 0);
   }
+
+  // Renders a list of currency amounts (e.g., "+30 000 € / +26 060 zł")
+  const MultiCurrencyValue = ({ byCur: cur, prefix = '', emptyLabel = '0', className = '' }) => {
+    const entries = Object.entries(cur || {}).filter(([, v]) => Math.abs(v) > 0.005);
+    if (entries.length === 0) {
+      return <p className={`text-sm sm:text-lg font-bold font-mono ${className}`}>{emptyLabel}</p>;
+    }
+    return (
+      <div className="space-y-0.5">
+        {entries.map(([c, v]) => (
+          <p key={c} className={`text-sm sm:text-lg font-bold font-mono truncate ${className}`}>
+            {prefix}{formatCurrency(v, c)}
+          </p>
+        ))}
+      </div>
+    );
+  };
 
   return (
     <Card className="border-amber-500/30 bg-amber-500/5" data-testid="loans-summary">
@@ -71,27 +89,24 @@ const LoansSummary = ({ data, eurPlnRate }) => {
           <Card className="border-emerald-500/20">
             <CardContent className="py-2 px-2 sm:py-3 sm:px-4">
               <p className="text-xs text-muted-foreground">Получено за период</p>
-              <p className="text-sm sm:text-lg font-bold font-mono text-emerald-500 truncate">
-                +{formatCurrency(received)}
-              </p>
+              <MultiCurrencyValue byCur={receivedByCur} prefix="+" className="text-emerald-500" />
               <p className="text-xs text-muted-foreground">{data.received_count} опер.</p>
             </CardContent>
           </Card>
           <Card className="border-rose-500/20">
             <CardContent className="py-2 px-2 sm:py-3 sm:px-4">
-              <p className="text-xs text-muted-foreground">Погашено / израсходовано</p>
-              <p className="text-sm sm:text-lg font-bold font-mono text-rose-500 truncate">
-                -{formatCurrency(repaid)}
-              </p>
+              <p className="text-xs text-muted-foreground">Погашено</p>
+              <MultiCurrencyValue byCur={repaidByCur} prefix="-" className="text-rose-500" />
               <p className="text-xs text-muted-foreground">{data.repaid_count} опер.</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="py-2 px-2 sm:py-3 sm:px-4">
-              <p className="text-xs text-muted-foreground">Чистое изменение долга</p>
-              <p className={`text-sm sm:text-lg font-bold font-mono truncate ${netChange >= 0 ? 'text-amber-400' : 'text-emerald-500'}`}>
-                {netChange >= 0 ? '+' : ''}{formatCurrency(netChange)}
+              <p className="text-xs text-muted-foreground">Чистое изменение долга (PLN)</p>
+              <p className={`text-sm sm:text-lg font-bold font-mono truncate ${netChangePln >= 0 ? 'text-amber-400' : 'text-emerald-500'}`}>
+                {netChangePln >= 0 ? '+' : ''}{formatCurrency(netChangePln)}
               </p>
+              <p className="text-xs text-muted-foreground">{netChangePln >= 0 ? 'долг вырос' : 'долг уменьшился'}</p>
             </CardContent>
           </Card>
           <Card>
