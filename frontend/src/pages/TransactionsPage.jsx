@@ -131,7 +131,7 @@ const CashOnHand = ({ data, eurPlnRate }) => {
   );
 };
 
-const LoansSummary = ({ data, eurPlnRate }) => {
+const LoansSummary = ({ data, eurPlnRate, onAccountClick }) => {
   if (!data || !data.accounts || data.accounts.length === 0) return null;
 
   const receivedByCur = data.received_by_cur || {};
@@ -229,8 +229,15 @@ const LoansSummary = ({ data, eurPlnRate }) => {
             {data.per_account.map(pa => {
               const recEntries = Object.entries(pa.received_by_cur || {}).filter(([, v]) => Math.abs(v) > 0.005);
               const repEntries = Object.entries(pa.repaid_by_cur || {}).filter(([, v]) => Math.abs(v) > 0.005);
+              const hasOps = pa.received_count > 0 || pa.repaid_count > 0;
               return (
-                <div key={pa.id} className="flex items-center justify-between gap-3 flex-wrap text-xs rounded-md bg-background/40 px-2 py-1.5">
+                <div
+                  key={pa.id}
+                  className={`flex items-center justify-between gap-3 flex-wrap text-xs rounded-md bg-background/40 px-2 py-1.5 ${hasOps ? 'cursor-pointer hover:bg-background/70 hover:ring-1 hover:ring-amber-500/30 transition' : ''}`}
+                  onClick={hasOps ? () => onAccountClick && onAccountClick(pa.id) : undefined}
+                  title={hasOps ? 'Кликните, чтобы увидеть только эти операции' : undefined}
+                  data-testid={`loan-acc-row-${pa.id}`}
+                >
                   <span className="font-medium min-w-[140px]">{pa.name}</span>
                   <span className="text-emerald-400 font-mono">
                     {recEntries.length > 0
@@ -1161,7 +1168,19 @@ export const TransactionsPage = () => {
 
       {/* Loans summary block (separate from main income/expense) */}
       {!loading && loansSummary && (loansSummary.accounts || []).length > 0 && (
-        <LoansSummary data={loansSummary} eurPlnRate={eurPlnRate} />
+        <LoansSummary
+          data={loansSummary}
+          eurPlnRate={eurPlnRate}
+          onAccountClick={(accId) => {
+            setFilters(prev => ({
+              ...prev,
+              type: 'transfer',
+              selectedAccountIds: [accId],
+              account_id: 'all',
+            }));
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+        />
       )}
 
       {/* Transactions Table */}
