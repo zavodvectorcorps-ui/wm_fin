@@ -846,11 +846,16 @@ export const TransactionsPage = () => {
 
       let applied = 0;
       if (createRuleData.apply_to_existing) {
-        const resp = await api().get('/transactions', { params: { search: pattern, per_page: 500 } });
-        const items = (resp.data?.items || resp.data || []);
-        const ids = items.map(x => x.id);
-        if (ids.length > 0) {
-          const r = await api().post('/transactions/bulk-apply-rules', { ids, overwrite: false });
+        // Backend caps per_page at 200 — paginate if needed.
+        const collected = [];
+        for (let p = 1; p <= 10; p++) {
+          const resp = await api().get('/transactions', { params: { search: pattern, per_page: 200, page: p } });
+          const items = (resp.data?.items || resp.data || []);
+          collected.push(...items.map(x => x.id));
+          if (items.length < 200) break;
+        }
+        if (collected.length > 0) {
+          const r = await api().post('/transactions/bulk-apply-rules', { ids: collected, overwrite: false });
           applied = r.data?.updated || 0;
         }
       }
@@ -864,7 +869,14 @@ export const TransactionsPage = () => {
         requestAnimationFrame(() => window.scrollTo({ top: scrollY, behavior: 'instant' }));
       });
     } catch (e) {
-      toast.error(e.response?.data?.detail || 'Ошибка создания правила');
+      // Normalise the error message — FastAPI returns array of objects for 422
+      const raw = e.response?.data?.detail;
+      const msg = typeof raw === 'string'
+        ? raw
+        : Array.isArray(raw)
+          ? raw.map(x => x?.msg || JSON.stringify(x)).join('; ')
+          : 'Ошибка создания правила';
+      toast.error(msg);
     } finally {
       setSavingRule(false);
     }
@@ -2068,7 +2080,7 @@ export const TransactionsPage = () => {
 
       {/* Create rule from transaction */}
       <Dialog open={createRuleOpen} onOpenChange={setCreateRuleOpen}>
-        <DialogContent className="max-w-md" data-testid="create-rule-dialog">
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto" data-testid="create-rule-dialog">
           <DialogHeader>
             <DialogTitle>Создать авто-правило</DialogTitle>
             <DialogDescription>
@@ -2076,14 +2088,14 @@ export const TransactionsPage = () => {
               чьё описание содержит указанный паттерн.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-4 min-w-0">
             {createRuleData.source_tx && (
-              <div className="rounded-md border border-muted bg-muted/30 p-2.5 text-xs">
+              <div className="rounded-md border border-muted bg-muted/30 p-2.5 text-xs min-w-0">
                 <p className="text-muted-foreground">Из операции:</p>
                 <p className="font-medium truncate">{createRuleData.source_tx.description || '(без описания)'}</p>
               </div>
             )}
-            <div className="space-y-2">
+            <div className="space-y-2 min-w-0">
               <Label>Паттерн (поиск в описании, без учёта регистра)</Label>
               <Input
                 value={createRuleData.pattern}
@@ -2091,17 +2103,17 @@ export const TransactionsPage = () => {
                 placeholder="Например: ALICOR"
                 data-testid="rule-pattern-input"
               />
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-muted-foreground break-words">
                 Срабатывает, если описание содержит подстроку «{(createRuleData.pattern || '').trim() || '...'}»
               </p>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-2 min-w-0">
               <Label>Статья</Label>
               <Select
                 value={createRuleData.category_id || 'none'}
                 onValueChange={(v) => setCreateRuleData({ ...createRuleData, category_id: v === 'none' ? '' : v })}
               >
-                <SelectTrigger data-testid="rule-category-select">
+                <SelectTrigger data-testid="rule-category-select" className="min-w-0">
                   <SelectValue placeholder="Не менять" />
                 </SelectTrigger>
                 <SelectContent>
@@ -2112,13 +2124,13 @@ export const TransactionsPage = () => {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-2 min-w-0">
               <Label>Направление</Label>
               <Select
                 value={createRuleData.direction_id || 'none'}
                 onValueChange={(v) => setCreateRuleData({ ...createRuleData, direction_id: v === 'none' ? '' : v })}
               >
-                <SelectTrigger data-testid="rule-direction-select">
+                <SelectTrigger data-testid="rule-direction-select" className="min-w-0">
                   <SelectValue placeholder="Не менять" />
                 </SelectTrigger>
                 <SelectContent>
@@ -2138,7 +2150,7 @@ export const TransactionsPage = () => {
                 className="mt-1 h-4 w-4 accent-primary"
                 data-testid="apply-existing-cb"
               />
-              <span>
+              <span className="min-w-0">
                 <span className="font-medium">Применить к существующим операциям</span>
                 <span className="block text-xs text-muted-foreground mt-0.5">
                   Найдёт все операции с таким описанием и заполнит у них пустые Статью/Направление.
@@ -2146,7 +2158,7 @@ export const TransactionsPage = () => {
               </span>
             </label>
           </div>
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setCreateRuleOpen(false)} disabled={savingRule}>
               Отмена
             </Button>
