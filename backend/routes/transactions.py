@@ -225,10 +225,18 @@ async def create_transaction(data: TransactionCreate, current_user: dict = Depen
     if data.to_account_id:
         to_acc = await db.accounts.find_one({"id": data.to_account_id}, {"_id": 0, "name": 1, "currency": 1})
         to_account_name = to_acc["name"] if to_acc else None
-        to_amount_base_val, _ = await calc_amount_base(
-            data.amount, data.currency, data.to_account_id, current_user["user_id"]
-        )
-        to_amount_base = to_amount_base_val
+        to_acc_currency = (to_acc or {}).get("currency", "PLN")
+        # If user provided a manual to_amount AND currencies differ → use it as override
+        if data.to_amount is not None and data.to_amount > 0 and to_acc_currency != data.currency:
+            to_amount_base = float(data.to_amount)
+            if data.amount and data.amount != 0:
+                # Save manual rate (source currency per 1 unit of target currency)
+                exchange_rate = round(data.amount / data.to_amount, 6)
+        else:
+            to_amount_base_val, _ = await calc_amount_base(
+                data.amount, data.currency, data.to_account_id, current_user["user_id"]
+            )
+            to_amount_base = to_amount_base_val
 
     contractor_name = None
     if data.contractor_id:
@@ -291,12 +299,18 @@ async def update_transaction(transaction_id: str, data: TransactionCreate, curre
     to_amount_base = None
     to_account_name = None
     if data.to_account_id:
-        to_acc = await db.accounts.find_one({"id": data.to_account_id}, {"_id": 0, "name": 1})
+        to_acc = await db.accounts.find_one({"id": data.to_account_id}, {"_id": 0, "name": 1, "currency": 1})
         to_account_name = to_acc["name"] if to_acc else None
-        to_amount_base_val, _ = await calc_amount_base(
-            data.amount, data.currency, data.to_account_id, current_user["user_id"]
-        )
-        to_amount_base = to_amount_base_val
+        to_acc_currency = (to_acc or {}).get("currency", "PLN")
+        if data.to_amount is not None and data.to_amount > 0 and to_acc_currency != data.currency:
+            to_amount_base = float(data.to_amount)
+            if data.amount and data.amount != 0:
+                exchange_rate = round(data.amount / data.to_amount, 6)
+        else:
+            to_amount_base_val, _ = await calc_amount_base(
+                data.amount, data.currency, data.to_account_id, current_user["user_id"]
+            )
+            to_amount_base = to_amount_base_val
 
     contractor_name = None
     if data.contractor_id:

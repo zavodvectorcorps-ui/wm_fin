@@ -272,6 +272,8 @@ export const TransactionsPage = () => {
     direction_id: '',
     account_id: '',
     to_account_id: '',
+    to_amount: '',
+    manual_rate: '',
     contractor_id: '',
     description: '',
     status: 'fact',
@@ -429,6 +431,8 @@ export const TransactionsPage = () => {
       direction_id: directions[0]?.id || '',
       account_id: accounts[0]?.id || '',
       to_account_id: '',
+      to_amount: '',
+      manual_rate: '',
       contractor_id: '',
       description: '',
       status: 'fact',
@@ -440,6 +444,12 @@ export const TransactionsPage = () => {
   const openEditTransaction = (transaction) => {
     setTransactionType(transaction.type);
     setEditingTransaction(transaction);
+    const toAcc = accounts.find(a => a.id === transaction.to_account_id);
+    const isXCur = transaction.type === 'transfer' && toAcc && toAcc.currency !== transaction.currency;
+    const initialToAmount = isXCur && transaction.to_amount_base != null
+      ? String(transaction.to_amount_base) : '';
+    const initialRate = isXCur && transaction.amount && transaction.to_amount_base
+      ? String(Number((transaction.amount / transaction.to_amount_base).toFixed(6))) : '';
     setFormData({
       date: transaction.date,
       type: transaction.type,
@@ -449,6 +459,8 @@ export const TransactionsPage = () => {
       direction_id: transaction.direction_id,
       account_id: transaction.account_id,
       to_account_id: transaction.to_account_id || '',
+      to_amount: initialToAmount,
+      manual_rate: initialRate,
       contractor_id: transaction.contractor_id || '',
       description: transaction.description || '',
       status: transaction.status,
@@ -464,14 +476,19 @@ export const TransactionsPage = () => {
     }
 
     try {
+      const toAcc = accounts.find(a => a.id === formData.to_account_id);
+      const isXCur = transactionType === 'transfer' && toAcc && toAcc.currency !== formData.currency;
       const payload = {
         ...formData,
         type: transactionType,  // ← взять из кнопок, а не из устаревшего formData.type
         amount: parseFloat(formData.amount),
         category_id: formData.category_id === 'none' ? null : formData.category_id,
         contractor_id: formData.contractor_id === 'none' ? null : formData.contractor_id,
-        to_account_id: transactionType === 'transfer' ? (formData.to_account_id || null) : null
+        to_account_id: transactionType === 'transfer' ? (formData.to_account_id || null) : null,
+        to_amount: (isXCur && formData.to_amount) ? parseFloat(formData.to_amount) : null,
       };
+      // Strip helper-only fields the backend doesn't know about
+      delete payload.manual_rate;
 
       const editedId = editingTransaction?.id || null;
       if (editingTransaction) {
@@ -1209,7 +1226,7 @@ export const TransactionsPage = () => {
             {transactionType === 'transfer' && (
               <div className="space-y-2 min-w-0">
                 <Label>На счёт</Label>
-                <Select value={formData.to_account_id} onValueChange={(v) => setFormData({ ...formData, to_account_id: v })}>
+                <Select value={formData.to_account_id} onValueChange={(v) => setFormData({ ...formData, to_account_id: v, to_amount: '', manual_rate: '' })}>
                   <SelectTrigger data-testid="form-to-account">
                     <SelectValue placeholder="Выберите счёт" />
                   </SelectTrigger>
@@ -1221,6 +1238,64 @@ export const TransactionsPage = () => {
                 </Select>
               </div>
             )}
+
+            {/* Cross-currency transfer: manual to_amount + exchange rate */}
+            {transactionType === 'transfer' && (() => {
+              const toAcc = accounts.find(a => a.id === formData.to_account_id);
+              if (!toAcc) return null;
+              const toCur = toAcc.currency;
+              const fromCur = formData.currency;
+              if (toCur === fromCur) return null;
+
+              const updateToAmount = (val) => {
+                const amt = parseFloat(formData.amount);
+                const ta = parseFloat(val);
+                const rate = (amt && ta) ? Number((amt / ta).toFixed(6)) : '';
+                setFormData({ ...formData, to_amount: val, manual_rate: rate === '' ? '' : String(rate) });
+              };
+              const updateRate = (val) => {
+                const amt = parseFloat(formData.amount);
+                const r = parseFloat(val);
+                const ta = (amt && r) ? Number((amt / r).toFixed(2)) : '';
+                setFormData({ ...formData, manual_rate: val, to_amount: ta === '' ? '' : String(ta) });
+              };
+
+              return (
+                <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 space-y-3" data-testid="xcurrency-block">
+                  <p className="text-xs text-amber-300/90 flex items-center gap-1.5">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    Перевод между разными валютами ({fromCur} → {toCur}). Укажите фактическую сумму получения или курс банка.
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2 min-w-0">
+                      <Label>Сумма к получению ({toCur})</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={formData.to_amount}
+                        onChange={(e) => updateToAmount(e.target.value)}
+                        placeholder="например, 230.00"
+                        data-testid="form-to-amount"
+                      />
+                    </div>
+                    <div className="space-y-2 min-w-0">
+                      <Label>Курс ({fromCur}/{toCur})</Label>
+                      <Input
+                        type="number"
+                        step="0.0001"
+                        value={formData.manual_rate}
+                        onChange={(e) => updateRate(e.target.value)}
+                        placeholder="например, 4.35"
+                        data-testid="form-manual-rate"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Если оставить поля пустыми — будет применён курс по умолчанию (NBP или ручной из настроек).
+                  </p>
+                </div>
+              );
+            })()}
 
             <div className="space-y-2 min-w-0">
               <Label>Статья</Label>

@@ -180,6 +180,7 @@ class TransactionCreate(BaseModel):
     direction_id: str
     account_id: str
     to_account_id: Optional[str] = None
+    to_amount: Optional[float] = None  # manual amount for cross-currency transfer (in target currency)
     contractor_id: Optional[str] = None
     project_id: Optional[str] = None
     description: Optional[str] = None
