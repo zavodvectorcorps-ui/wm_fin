@@ -38,30 +38,46 @@ const CashOnHand = ({ data, eurPlnRate }) => {
   const entries = Object.entries(data.by_currency).filter(([, v]) => Math.abs(v) > 0.005);
   if (entries.length === 0) return null;
 
-  // PLN equivalent total (EUR × current NBP rate)
-  let totalPln = 0;
-  for (const [cur, v] of entries) {
-    if (cur === 'EUR' && eurPlnRate > 0) totalPln += v * eurPlnRate;
-    else totalPln += v;
-  }
+  const sumPln = (byCur) => {
+    let total = 0;
+    for (const [cur, v] of Object.entries(byCur || {})) {
+      if (cur === 'EUR' && eurPlnRate > 0) total += v * eurPlnRate;
+      else total += v;
+    }
+    return total;
+  };
+  const totalPln = sumPln(data.by_currency);
 
+  const startBy = data.period_start_by_currency;
+  const endBy = data.period_end_by_currency;
+  const hasPeriod = !!(startBy && endBy);
+  const startPln = hasPeriod ? sumPln(startBy) : null;
+  const endPln = hasPeriod ? sumPln(endBy) : null;
+  const deltaPln = (hasPeriod && startPln !== null && endPln !== null) ? endPln - startPln : null;
+
+  // Per-currency entries to render (current row)
   return (
     <Card className="border-sky-500/30 bg-sky-500/5" data-testid="cash-on-hand">
       <CardContent className="py-3 px-4 space-y-2">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <p className="text-sm font-semibold text-sky-300 flex items-center gap-2">
             <Wallet className="h-4 w-4" />
-            Денег на счетах (сейчас, включая заёмные средства)
+            Денег на счетах
+            <span className="text-xs text-muted-foreground font-normal">
+              (включая заёмные средства)
+            </span>
           </p>
           <p className="text-xs text-muted-foreground">
             {(data.accounts || []).map(a => a.name).join(' • ')}
           </p>
         </div>
+
+        {/* "Now" row — current totals */}
         <div className="grid gap-2 sm:gap-3 grid-cols-2 sm:grid-cols-3">
           {entries.map(([cur, v]) => (
             <Card key={cur}>
               <CardContent className="py-2 px-2 sm:py-3 sm:px-4">
-                <p className="text-xs text-muted-foreground">Остаток {cur}</p>
+                <p className="text-xs text-muted-foreground">Сейчас {cur}</p>
                 <p className={`text-sm sm:text-lg font-bold font-mono truncate ${v >= 0 ? 'text-sky-200' : 'text-rose-400'}`}>
                   {formatCurrency(v, cur)}
                 </p>
@@ -70,13 +86,46 @@ const CashOnHand = ({ data, eurPlnRate }) => {
           ))}
           <Card className="border-sky-400/40">
             <CardContent className="py-2 px-2 sm:py-3 sm:px-4">
-              <p className="text-xs text-muted-foreground">Итого в PLN {eurPlnRate ? `(EUR × ${eurPlnRate.toFixed(4)})` : ''}</p>
+              <p className="text-xs text-muted-foreground">Сейчас итого в PLN {eurPlnRate ? `(EUR × ${eurPlnRate.toFixed(4)})` : ''}</p>
               <p className={`text-sm sm:text-lg font-bold font-mono truncate ${totalPln >= 0 ? 'text-sky-100' : 'text-rose-400'}`}>
                 {formatCurrency(totalPln, 'PLN')}
               </p>
             </CardContent>
           </Card>
         </div>
+
+        {/* Period start / end / delta — only when a date filter is applied */}
+        {hasPeriod && (
+          <div className="pt-2 border-t border-sky-500/20">
+            <p className="text-xs text-muted-foreground mb-2">Движение средств за выбранный период (PLN-эквивалент)</p>
+            <div className="grid gap-2 sm:gap-3 grid-cols-3">
+              <Card>
+                <CardContent className="py-2 px-2 sm:py-3 sm:px-4">
+                  <p className="text-xs text-muted-foreground">На начало периода</p>
+                  <p className="text-sm sm:text-lg font-bold font-mono truncate text-muted-foreground">
+                    {formatCurrency(startPln, 'PLN')}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="py-2 px-2 sm:py-3 sm:px-4">
+                  <p className="text-xs text-muted-foreground">На конец периода</p>
+                  <p className="text-sm sm:text-lg font-bold font-mono truncate text-sky-200">
+                    {formatCurrency(endPln, 'PLN')}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card className={deltaPln >= 0 ? 'border-emerald-500/30' : 'border-rose-500/30'}>
+                <CardContent className="py-2 px-2 sm:py-3 sm:px-4">
+                  <p className="text-xs text-muted-foreground">Изменение</p>
+                  <p className={`text-sm sm:text-lg font-bold font-mono truncate ${deltaPln >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {deltaPln >= 0 ? '↗ +' : '↘ '}{formatCurrency(deltaPln, 'PLN')}
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

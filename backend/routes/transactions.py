@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Query
 from typing import List, Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import csv
 import io
 import logging
@@ -277,15 +277,86 @@ async def get_transactions(
         {"user_id": current_user["user_id"],
          "is_active": {"$ne": False},
          "is_loan": {"$ne": True}},
-        {"_id": 0, "id": 1, "name": 1, "currency": 1, "current_balance": 1}
+        {"_id": 0, "id": 1, "name": 1, "currency": 1, "current_balance": 1,
+         "initial_balance": 1}
     ).to_list(None)
     cash_by_cur: dict = {}
     for a in asset_accounts:
         cur = a.get("currency") or "PLN"
         cash_by_cur[cur] = cash_by_cur.get(cur, 0) + (a.get("current_balance") or 0)
+
+    # Period-start and period-end balances (only if date filter is set).
+    # Computed by replaying transactions onto initial_balance up to the chosen
+    # cut-off date for each account.
+    period_start_by_cur: dict = {}
+    period_end_by_cur: dict = {}
+    period_start_date = None
+    period_end_date = None
+    if date_from or date_to:
+        from datetime import date as _date
+        period_start_date = date_from
+        period_end_date = date_to or _date.today().isoformat()
+
+        # Compute "balance at end of date X" for each asset account
+        async def _balances_at(cutoff_date: str) -> dict:
+            balances = {a["id"]: float(a.get("initial_balance") or 0) for a in asset_accounts}
+            asset_ids = list(balances.keys())
+            txs = await db.transactions.find(
+                {"user_id": current_user["user_id"],
+                 "status": "fact",
+                 "date": {"$lte": cutoff_date},
+                 "$or": [
+                     {"account_id": {"$in": asset_ids}},
+                     {"to_account_id": {"$in": asset_ids}},
+                 ]},
+                {"_id": 0, "type": 1, "account_id": 1, "to_account_id": 1,
+                 "amount_base": 1, "to_amount_base": 1, "amount": 1}
+            ).to_list(50000)
+            for t in txs:
+                acc = t.get("account_id")
+                to_acc = t.get("to_account_id")
+                amt = t.get("amount_base") if t.get("amount_base") is not None else t.get("amount", 0)
+                ttype = t.get("type")
+                if ttype == "income" and acc in balances:
+                    balances[acc] += amt
+                elif ttype == "expense" and acc in balances:
+                    balances[acc] -= amt
+                elif ttype == "transfer":
+                    if acc in balances:
+                        balances[acc] -= amt
+                    if to_acc in balances:
+                        to_amt = t.get("to_amount_base") if t.get("to_amount_base") is not None else amt
+                        balances[to_acc] += to_amt
+            return balances
+
+        if period_start_date:
+            # Balance at the END of (start_date - 1 day) = balance ENTERING the period
+            from datetime import datetime as _dt
+            try:
+                _sd = _dt.fromisoformat(period_start_date).date()
+                prev_day = (_sd - timedelta(days=1)).isoformat()
+            except Exception:
+                prev_day = period_start_date
+            start_bal = await _balances_at(prev_day)
+            for a in asset_accounts:
+                cur = a.get("currency") or "PLN"
+                period_start_by_cur[cur] = period_start_by_cur.get(cur, 0) + start_bal.get(a["id"], 0)
+
+        end_bal = await _balances_at(period_end_date)
+        for a in asset_accounts:
+            cur = a.get("currency") or "PLN"
+            period_end_by_cur[cur] = period_end_by_cur.get(cur, 0) + end_bal.get(a["id"], 0)
+
     cash_summary = {
         "by_currency": cash_by_cur,
-        "accounts": asset_accounts,
+        "period_start_by_currency": period_start_by_cur or None,
+        "period_end_by_currency": period_end_by_cur or None,
+        "period_start_date": period_start_date,
+        "period_end_date": period_end_date,
+        "accounts": [
+            {k: v for k, v in a.items() if k != "initial_balance"}
+            for a in asset_accounts
+        ],
     }
 
     return {
