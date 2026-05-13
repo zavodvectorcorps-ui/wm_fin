@@ -496,12 +496,13 @@ const MonthPickerPopover = ({ value, onChange }) => {
 
 const AccountMultiSelect = ({ accounts, selectedIds, onChange }) => {
   const [open, setOpen] = useState(false);
-  // null = all selected; otherwise array
-  const allSelected = !selectedIds || selectedIds.length === 0 || selectedIds.length === accounts.length;
-  const selectedSet = new Set(selectedIds || accounts.map(a => a.id));
+  // null = all selected (initial state). Empty array [] = explicitly none. Otherwise = subset.
+  const allSelected = selectedIds == null || selectedIds.length === accounts.length;
+  const noneSelected = Array.isArray(selectedIds) && selectedIds.length === 0;
+  const selectedSet = new Set(allSelected ? accounts.map(a => a.id) : (selectedIds || []));
 
   const toggleOne = (id) => {
-    const current = allSelected ? new Set(accounts.map(a => a.id)) : new Set(selectedIds);
+    const current = new Set(selectedSet);
     if (current.has(id)) current.delete(id);
     else current.add(id);
     if (current.size === accounts.length) onChange(null);
@@ -515,7 +516,7 @@ const AccountMultiSelect = ({ accounts, selectedIds, onChange }) => {
 
   const label = allSelected
     ? 'Все счета'
-    : selectedSet.size === 0
+    : noneSelected
     ? 'Счета: ни одного'
     : selectedSet.size === 1
     ? accounts.find(a => selectedSet.has(a.id))?.name
@@ -678,11 +679,19 @@ export const TransactionsPage = () => {
         dates = getPeriodDates(filters.period);
       }
 
-      // Multi-account filter: if user selected a subset, send comma-separated list.
-      // If null or empty (= all), don't send anything.
-      const accountIdsParam = (filters.selectedAccountIds && filters.selectedAccountIds.length > 0 && filters.selectedAccountIds.length < accounts.length)
-        ? filters.selectedAccountIds.join(',')
-        : null;
+      // Multi-account filter:
+      //   null  → all accounts (no filter sent)
+      //   []    → explicitly "none" — send a sentinel that matches nothing
+      //   [..] of length < total → send comma-separated list
+      //   [..] of length === total → all accounts (no filter sent)
+      let accountIdsParam = null;
+      if (Array.isArray(filters.selectedAccountIds)) {
+        if (filters.selectedAccountIds.length === 0) {
+          accountIdsParam = '__none__';
+        } else if (filters.selectedAccountIds.length < accounts.length) {
+          accountIdsParam = filters.selectedAccountIds.join(',');
+        }
+      }
 
       const params = {
         ...(dates.from && { date_from: dates.from }),
