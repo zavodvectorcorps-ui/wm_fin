@@ -1733,9 +1733,9 @@ export const TransactionsPage = () => {
               const toLoan = toAcc?.is_loan;
               const isXCur = toAcc && fromAcc && toAcc.currency !== fromAcc.currency;
               let msg = null;
-              if (fromLoan && !toLoan) {
+              if (fromAcc && toAcc && fromLoan && !toLoan) {
                 msg = `Получение займа: со счёта «${fromAcc.name}» уйдёт в минус (долг растёт), на «${toAcc.name}» прилетят деньги. Это НЕ доход.`;
-              } else if (!fromLoan && toLoan) {
+              } else if (fromAcc && toAcc && !fromLoan && toLoan) {
                 msg = `Погашение займа: «${fromAcc.name}» уменьшится, на «${toAcc.name}» долг сократится. Это НЕ расход.`;
               } else if (isXCur && fromAcc && toAcc) {
                 msg = `Обмен валюты: со «${fromAcc.name}» спишется ${fromAcc.currency}, на «${toAcc.name}» прилетит ${toAcc.currency}. Это НЕ доход и НЕ расход.`;

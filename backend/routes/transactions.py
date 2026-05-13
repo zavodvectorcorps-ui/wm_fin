@@ -209,40 +209,50 @@ async def get_transactions(
             summary[acc_currency]["count"] += in_result[0]["count"]
 
     # ---- Loans summary (separate block) ----
-    # Semantics:
-    #   Received (Получено)   = money taken OUT of a loan account (transfer
-    #     loan→asset means you received the loan in cash/bank). We use
-    #     `amount_base` (source = loan currency).
-    #   Repaid (Погашено)     = money sent INTO a loan account (transfer
-    #     asset→loan means you paid back). We use `to_amount_base` so the
-    #     amount is expressed in loan currency.
-    # Direct income/expense recorded on a loan account is treated as a
-    # neutral movement (kept on the side) to avoid double-counting.
+    # Semantics — ANY operation that changes a loan account balance counts:
+    #   Received (Получено) = debt GROWS. Includes:
+    #     • transfer where loan acc is SOURCE (took loan → cash/bank)
+    #     • direct expense on loan acc (spent borrowed money directly)
+    #   Repaid (Погашено)   = debt SHRINKS. Includes:
+    #     • transfer where loan acc is TARGET (repaid debt)
+    #     • direct income on loan acc (debt partially forgiven / cash returned)
     loans_summary = None
     if loan_account_ids:
-        loan_match_base = {k: v for k, v in match_query.items() if k not in ("$or", "account_id", "to_account_id")}
+        loan_match_base = {k: v for k, v in match_query.items() if k not in ("$or", "account_id", "to_account_id", "type")}
 
-        # Received = transfer where loan account is SOURCE (money leaves loan → enters bank)
+        # Received = debt grew (loan acc source for transfer/expense)
         received_pipeline = [
             {"$match": {**loan_match_base,
                         "account_id": {"$in": loan_account_ids},
-                        "type": "transfer"}},
+                        "type": {"$in": ["transfer", "expense"]}}},
             {"$group": {
                 "_id": {"acc": "$account_id", "cur": {"$ifNull": ["$currency", "PLN"]}},
                 "total_base": {"$sum": {"$ifNull": ["$amount_base", "$amount"]}},
                 "count": {"$sum": 1},
             }},
         ]
-        # Repaid = transfer where loan account is TARGET (money enters loan = pay back)
+        # Repaid = debt shrunk. Two sub-cases combined via $facet-style $unionWith:
+        # 1) transfer where loan acc = TARGET → group by to_account_id
+        # 2) direct income on loan acc → group by account_id
         repaid_pipeline = [
             {"$match": {**loan_match_base,
-                        "to_account_id": {"$in": loan_account_ids},
-                        "type": "transfer"}},
+                        "$or": [
+                            {"to_account_id": {"$in": loan_account_ids}, "type": "transfer"},
+                            {"account_id": {"$in": loan_account_ids}, "type": "income"},
+                        ]}},
+            {"$addFields": {
+                "loan_acc": {"$cond": [
+                    {"$eq": ["$type", "income"]}, "$account_id", "$to_account_id"
+                ]},
+                "effective_base": {"$cond": [
+                    {"$eq": ["$type", "income"]},
+                    {"$ifNull": ["$amount_base", "$amount"]},
+                    {"$ifNull": ["$to_amount_base", {"$ifNull": ["$amount_base", "$amount"]}]},
+                ]}
+            }},
             {"$group": {
-                "_id": {"acc": "$to_account_id", "cur": {"$ifNull": ["$currency", "PLN"]}},
-                "total_base": {"$sum": {
-                    "$ifNull": ["$to_amount_base", {"$ifNull": ["$amount_base", "$amount"]}]
-                }},
+                "_id": {"acc": "$loan_acc", "cur": {"$ifNull": ["$currency", "PLN"]}},
+                "total_base": {"$sum": "$effective_base"},
                 "count": {"$sum": 1},
             }},
         ]
