@@ -14,12 +14,13 @@ import { Textarea } from '../components/ui/textarea';
 import DescriptionAutocomplete from '../components/DescriptionAutocomplete';
 import { Checkbox } from '../components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
 import { Calendar as CalendarUI } from '../components/ui/calendar';
 import { 
   Plus, Minus, ArrowLeftRight, Search, Filter, Pencil, ArrowDownToLine, Bot, 
   Trash2, Calendar, MoreHorizontal, Paperclip, FileText, Link2, Unlink, AlertTriangle,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, CalendarIcon, X, Loader2,
-  Wallet, Info
+  Wallet, Info, HelpCircle
 } from 'lucide-react';
 import { formatCurrency, formatDate, getDirectionClass, getStatusLabel, getPeriodDates, getTypeLabel, todayLocal, cn } from '../lib/utils';
 import { toast } from 'sonner';
@@ -66,6 +67,25 @@ const CashOnHand = ({ data, eurPlnRate }) => {
             <span className="text-xs text-muted-foreground font-normal">
               (включая заёмные средства)
             </span>
+            <TooltipProvider delayDuration={150}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="text-muted-foreground hover:text-sky-300 transition-colors"
+                    data-testid="cash-on-hand-help"
+                    aria-label="Что это"
+                  >
+                    <HelpCircle className="h-3.5 w-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-xs text-xs leading-relaxed bg-slate-900 text-slate-100 border border-sky-500/30">
+                  <p className="font-semibold mb-1">Это реальная касса прямо сейчас</p>
+                  <p className="mb-1.5">Сумма <span className="font-mono">current_balance</span> по всем активным НЕ-займовым счетам, включая начальные остатки при создании счёта.</p>
+                  <p className="text-muted-foreground">Не путать с «Балансом PLN/EUR» сверху — там <b>движение за период</b> (Доходы − Расходы по операциям), а тут <b>остаток сейчас</b>.</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </p>
           <p className="text-xs text-muted-foreground">
             {(data.accounts || []).map(a => a.name).join(' • ')}
