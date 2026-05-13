@@ -113,3 +113,91 @@ async def delete_auto_rule(rule_id: str, current_user: dict = Depends(get_curren
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Rule not found")
     return {"status": "deleted"}
+
+
+@router.get("/auto-rules/suggestions")
+async def auto_rule_suggestions(
+    limit: int = 10,
+    current_user: dict = Depends(get_current_user)
+):
+    """Suggest auto-rule patterns by mining uncategorized transactions.
+
+    Algorithm:
+    - Take all transactions without category_id (income/expense only — transfers skipped).
+    - Extract significant tokens from descriptions (length ≥ 4, alphabetic).
+    - Group transactions by each token, count occurrences.
+    - Exclude tokens already covered by an active rule.
+    - Sort by (count desc, total_amount desc), return top `limit`.
+    """
+    user_id = current_user["user_id"]
+    limit = max(1, min(limit, 30))
+
+    # Existing rule patterns to avoid duplicates
+    existing_rules = await db.auto_rules.find(
+        {"user_id": user_id, "is_active": True},
+        {"_id": 0, "pattern": 1}
+    ).to_list(None)
+    existing_patterns = {(r.get("pattern") or "").lower().strip() for r in existing_rules}
+
+    # Uncategorized transactions (no category_id) and type in income/expense
+    txs = await db.transactions.find(
+        {"user_id": user_id,
+         "type": {"$in": ["income", "expense"]},
+         "$or": [{"category_id": None}, {"category_id": {"$exists": False}}, {"category_id": ""}],
+         "description": {"$exists": True, "$ne": ""}},
+        {"_id": 0, "id": 1, "description": 1, "amount": 1, "amount_base": 1, "type": 1}
+    ).to_list(5000)
+
+    import re
+    STOP = {
+        "tytuł", "tytul", "przelew", "platnosc", "platność", "platność",
+        "operacja", "transakcja", "polecenie", "spolka", "spółka",
+        "from", "the", "for", "with", "ltd", "sro",
+        "оплата", "перевод", "платеж", "оплата", "счет", "счёт",
+        "общее", "теплицы", "сауны", "купели",
+    }
+
+    token_groups: dict = {}  # token_lower -> {count, total, samples:set, ids}
+    for t in txs:
+        desc = (t.get("description") or "").strip()
+        if not desc:
+            continue
+        # Split by non-alphanumeric, keep words ≥ 4 chars, drop pure digits
+        words = re.split(r"[^\w]+", desc, flags=re.UNICODE)
+        seen_in_tx: set = set()
+        for w in words:
+            wl = w.lower().strip()
+            if len(wl) < 4:
+                continue
+            if wl.isdigit():
+                continue
+            if wl in STOP:
+                continue
+            if wl in existing_patterns or any(wl in p or p in wl for p in existing_patterns):
+                continue
+            if wl in seen_in_tx:
+                continue
+            seen_in_tx.add(wl)
+            g = token_groups.setdefault(
+                wl, {"count": 0, "total": 0.0, "samples": [], "ids": []}
+            )
+            g["count"] += 1
+            amt = t.get("amount_base") if t.get("amount_base") is not None else t.get("amount", 0)
+            g["total"] += abs(amt or 0)
+            if len(g["samples"]) < 3 and desc not in g["samples"]:
+                g["samples"].append(desc)
+            g["ids"].append(t["id"])
+
+    # Need at least 2 transactions to be worth suggesting
+    candidates = [
+        {"pattern": tok.upper() if tok.isascii() else tok,
+         "pattern_raw": tok,
+         "count": g["count"],
+         "total_amount": round(g["total"], 2),
+         "samples": g["samples"]}
+        for tok, g in token_groups.items()
+        if g["count"] >= 2
+    ]
+    candidates.sort(key=lambda x: (-x["count"], -x["total_amount"]))
+    return {"suggestions": candidates[:limit], "total_uncategorized": len(txs)}
+

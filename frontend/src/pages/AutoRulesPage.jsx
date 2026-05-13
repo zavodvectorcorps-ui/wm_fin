@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Switch } from '../components/ui/switch';
 import { 
-  Plus, Wand2, Trash2, Pencil, Zap, Search
+  Plus, Wand2, Trash2, Pencil, Zap, Search, Sparkles, Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -25,6 +25,11 @@ export const AutoRulesPage = () => {
   
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingRule, setEditingRule] = useState(null);
+  const [suggestions, setSuggestions] = useState([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(true);
+  const [totalUncategorized, setTotalUncategorized] = useState(0);
+  const [creatingFor, setCreatingFor] = useState(null);  // pattern currently being saved
+  const [suggDraft, setSuggDraft] = useState({});  // {pattern: {category_id, direction_id}}
   
   const [formData, setFormData] = useState({
     pattern: '',
@@ -55,9 +60,56 @@ export const AutoRulesPage = () => {
     }
   }, [api]);
 
+  const fetchSuggestions = useCallback(async () => {
+    setSuggestionsLoading(true);
+    try {
+      const res = await api().get('/auto-rules/suggestions?limit=8');
+      setSuggestions(res.data?.suggestions || []);
+      setTotalUncategorized(res.data?.total_uncategorized || 0);
+    } catch {
+      // silently ignore
+    } finally {
+      setSuggestionsLoading(false);
+    }
+  }, [api]);
+
+  const createRuleFromSuggestion = async (sugg) => {
+    const draft = suggDraft[sugg.pattern_raw] || {};
+    if (!draft.category_id && !draft.direction_id) {
+      toast.error('Выберите Статью и/или Направление');
+      return;
+    }
+    setCreatingFor(sugg.pattern_raw);
+    try {
+      const payload = { pattern: sugg.pattern, is_active: true };
+      if (draft.category_id) payload.category_id = draft.category_id;
+      if (draft.direction_id) payload.direction_id = draft.direction_id;
+      await api().post('/auto-rules', payload);
+
+      // Apply to existing matching operations
+      const resp = await api().get('/transactions', { params: { search: sugg.pattern, per_page: 500 } });
+      const items = (resp.data?.items || resp.data || []);
+      const ids = items.map(x => x.id);
+      let applied = 0;
+      if (ids.length > 0) {
+        const r = await api().post('/transactions/bulk-apply-rules', { ids, overwrite: false });
+        applied = r.data?.updated || 0;
+      }
+      toast.success(applied > 0
+        ? `Правило «${sugg.pattern}» создано · обновлено ${applied} операций`
+        : `Правило «${sugg.pattern}» создано`);
+      await Promise.all([fetchData(), fetchSuggestions()]);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || 'Ошибка создания правила');
+    } finally {
+      setCreatingFor(null);
+    }
+  };
+
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+    fetchSuggestions();
+  }, [fetchData, fetchSuggestions]);
 
   const openNewRule = () => {
     setEditingRule(null);
@@ -159,6 +211,101 @@ export const AutoRulesPage = () => {
               </p>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Smart Suggestions */}
+      <Card className="border-violet-500/30 bg-violet-500/5" data-testid="suggestions-card">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-violet-400" />
+            Умные предложения
+            {!suggestionsLoading && suggestions.length > 0 && (
+              <Badge variant="secondary" className="ml-1">{suggestions.length}</Badge>
+            )}
+          </CardTitle>
+          <CardDescription>
+            {totalUncategorized > 0
+              ? `Найдено ${totalUncategorized} операций без статьи. Часто встречающиеся паттерны — кандидаты на правило:`
+              : 'Все операции уже размечены. Новые предложения появятся после импорта или создания новых операций без категории.'}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {suggestionsLoading ? (
+            <div className="space-y-2">
+              {[1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full" />)}
+            </div>
+          ) : suggestions.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">Нет подходящих кандидатов</p>
+          ) : (
+            <div className="space-y-2">
+              {suggestions.map(s => {
+                const draft = suggDraft[s.pattern_raw] || {};
+                const isLoading = creatingFor === s.pattern_raw;
+                return (
+                  <div key={s.pattern_raw} className="rounded-md border border-violet-500/20 bg-background p-3 space-y-2"
+                       data-testid={`suggestion-${s.pattern_raw}`}>
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Badge variant="outline" className="font-mono">{s.pattern}</Badge>
+                        <span className="text-sm text-muted-foreground">
+                          {s.count} операций · {s.total_amount.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
+                        </span>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground truncate">
+                      Примеры: {s.samples.slice(0, 2).join(' • ')}
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <Select
+                        value={draft.category_id || 'none'}
+                        onValueChange={(v) => setSuggDraft(prev => ({
+                          ...prev, [s.pattern_raw]: { ...draft, category_id: v === 'none' ? '' : v }
+                        }))}
+                      >
+                        <SelectTrigger className="h-9" data-testid={`sugg-cat-${s.pattern_raw}`}>
+                          <SelectValue placeholder="Статья..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Не назначать</SelectItem>
+                          {categories.filter(c => c.is_active !== false).map(c => (
+                            <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select
+                        value={draft.direction_id || 'none'}
+                        onValueChange={(v) => setSuggDraft(prev => ({
+                          ...prev, [s.pattern_raw]: { ...draft, direction_id: v === 'none' ? '' : v }
+                        }))}
+                      >
+                        <SelectTrigger className="h-9" data-testid={`sugg-dir-${s.pattern_raw}`}>
+                          <SelectValue placeholder="Направление..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Не назначать</SelectItem>
+                          {directions.filter(d => d.is_active !== false).map(d => (
+                            <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        size="sm"
+                        disabled={isLoading}
+                        onClick={() => createRuleFromSuggestion(s)}
+                        data-testid={`sugg-create-${s.pattern_raw}`}
+                      >
+                        {isLoading
+                          ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          : <Sparkles className="h-4 w-4 mr-2" />}
+                        Создать правило
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </CardContent>
       </Card>
 
