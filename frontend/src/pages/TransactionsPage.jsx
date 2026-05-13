@@ -151,6 +151,85 @@ const CashOnHand = ({ data, eurPlnRate }) => {
   );
 };
 
+const NetWorth = ({ cashData, loansData, eurPlnRate }) => {
+  if (!cashData || !cashData.by_currency) return null;
+  const sumPln = (byCur) => {
+    let total = 0;
+    for (const [cur, v] of Object.entries(byCur || {})) {
+      if (cur === 'EUR' && eurPlnRate > 0) total += v * eurPlnRate;
+      else total += v;
+    }
+    return total;
+  };
+  const cashPln = sumPln(cashData.by_currency);
+
+  // Loans: sum of current_balance of all loan accounts (already negative).
+  const loanAccs = (loansData && loansData.accounts) || [];
+  const debtByCur = {};
+  for (const a of loanAccs) {
+    const cur = a.currency || 'PLN';
+    debtByCur[cur] = (debtByCur[cur] || 0) + (a.current_balance || 0);
+  }
+  const debtPln = sumPln(debtByCur); // negative number when there's debt
+  const netWorth = cashPln + debtPln;
+  const hasDebt = loanAccs.length > 0;
+
+  return (
+    <Card className={`border-2 ${netWorth >= 0 ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-rose-500/40 bg-rose-500/5'}`} data-testid="net-worth-card">
+      <CardContent className="py-3 px-4">
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+          <p className="text-sm font-semibold flex items-center gap-2 text-foreground">
+            <Wallet className="h-4 w-4" />
+            Net Worth — Чистый капитал
+            <TooltipProvider delayDuration={150}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="text-muted-foreground hover:text-foreground transition-colors"
+                    data-testid="net-worth-help"
+                    aria-label="Что это"
+                  >
+                    <HelpCircle className="h-3.5 w-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-xs text-xs leading-relaxed bg-slate-900 text-slate-100 border border-emerald-500/30">
+                  <p className="font-semibold mb-1">Касса − Долги</p>
+                  <p className="mb-1.5">Это настоящее «своё» состояние бизнеса: сколько денег осталось бы, если бы прямо сейчас вернуть все займы.</p>
+                  <p className="text-muted-foreground">Минус = живёшь на заёмные. Плюс = всё своё.</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </p>
+          <p className={`text-base sm:text-xl font-bold font-mono ${netWorth >= 0 ? 'text-emerald-400' : 'text-rose-400'}`} data-testid="net-worth-total">
+            {netWorth >= 0 ? '+' : ''}{formatCurrency(netWorth, 'PLN')}
+          </p>
+        </div>
+        <div className="grid gap-2 grid-cols-2 sm:grid-cols-3">
+          <div className="rounded-md bg-background/40 px-3 py-2">
+            <p className="text-xs text-muted-foreground">Касса (PLN-экв.)</p>
+            <p className={`text-sm font-mono font-medium ${cashPln >= 0 ? 'text-sky-300' : 'text-rose-400'}`}>
+              {cashPln >= 0 ? '+' : ''}{formatCurrency(cashPln, 'PLN')}
+            </p>
+          </div>
+          <div className="rounded-md bg-background/40 px-3 py-2">
+            <p className="text-xs text-muted-foreground">Долги (PLN-экв.)</p>
+            <p className={`text-sm font-mono font-medium ${hasDebt ? 'text-amber-300' : 'text-muted-foreground'}`}>
+              {hasDebt ? formatCurrency(debtPln, 'PLN') : '—'}
+            </p>
+          </div>
+          <div className="rounded-md bg-background/40 px-3 py-2 hidden sm:block">
+            <p className="text-xs text-muted-foreground">Покрытие долга кассой</p>
+            <p className={`text-sm font-mono font-medium ${(!hasDebt || cashPln + debtPln >= 0) ? 'text-emerald-400' : 'text-rose-400'}`}>
+              {!hasDebt ? '∞' : `${Math.round((cashPln / Math.max(Math.abs(debtPln), 0.01)) * 100)}%`}
+            </p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
 const LoansSummary = ({ data, eurPlnRate, onAccountClick }) => {
   if (!data || !data.accounts || data.accounts.length === 0) return null;
 
@@ -1231,6 +1310,11 @@ export const TransactionsPage = () => {
       {/* Cash on hand (current balance of asset accounts, includes loan funds already received) */}
       {!loading && cashSummary && (
         <CashOnHand data={cashSummary} eurPlnRate={eurPlnRate} />
+      )}
+
+      {/* Net Worth — Cash − Debt (real financial state) */}
+      {!loading && cashSummary && (
+        <NetWorth cashData={cashSummary} loansData={loansSummary} eurPlnRate={eurPlnRate} />
       )}
 
       {/* Loans summary block (separate from main income/expense) */}
