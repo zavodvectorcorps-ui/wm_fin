@@ -830,17 +830,30 @@ export const TransactionsPage = () => {
   const openEditTransaction = (transaction) => {
     setTransactionType(transaction.type);
     setEditingTransaction(transaction);
+    const fromAcc = accounts.find(a => a.id === transaction.account_id);
     const toAcc = accounts.find(a => a.id === transaction.to_account_id);
-    const isXCur = transaction.type === 'transfer' && toAcc && toAcc.currency !== transaction.currency;
+    const fromCur = fromAcc?.currency || transaction.currency;
+    const toCur = toAcc?.currency;
+    const isXCur = transaction.type === 'transfer' && toAcc && toCur !== fromCur;
     const initialToAmount = isXCur && transaction.to_amount_base != null
       ? String(transaction.to_amount_base) : '';
-    const initialRate = isXCur && transaction.amount && transaction.to_amount_base
-      ? String(Number((transaction.to_amount_base / transaction.amount).toFixed(6))) : '';
+    // Rate convention: "1 [foreign] = X PLN" when PLN involved; otherwise "1 fromCur = X toCur"
+    let initialRate = '';
+    if (isXCur && transaction.amount && transaction.to_amount_base) {
+      const plnAnchored = fromCur === 'PLN' || toCur === 'PLN';
+      if (plnAnchored) {
+        initialRate = fromCur === 'PLN'
+          ? String(Number((transaction.amount / transaction.to_amount_base).toFixed(6)))
+          : String(Number((transaction.to_amount_base / transaction.amount).toFixed(6)));
+      } else {
+        initialRate = String(Number((transaction.to_amount_base / transaction.amount).toFixed(6)));
+      }
+    }
     setFormData({
       date: transaction.date,
       type: transaction.type,
       amount: transaction.amount.toString(),
-      currency: transaction.currency,
+      currency: transaction.type === 'transfer' ? fromCur : transaction.currency,
       category_id: transaction.category_id || '',
       direction_id: transaction.direction_id,
       account_id: transaction.account_id,
@@ -862,10 +875,14 @@ export const TransactionsPage = () => {
     }
 
     try {
+      const fromAcc = accounts.find(a => a.id === formData.account_id);
       const toAcc = accounts.find(a => a.id === formData.to_account_id);
-      const isXCur = transactionType === 'transfer' && toAcc && toAcc.currency !== formData.currency;
+      // For transfers, source currency = from-account currency (always)
+      const txCurrency = transactionType === 'transfer' && fromAcc ? fromAcc.currency : formData.currency;
+      const isXCur = transactionType === 'transfer' && toAcc && fromAcc && toAcc.currency !== fromAcc.currency;
       const payload = {
         ...formData,
+        currency: txCurrency,
         type: transactionType,  // ← взять из кнопок, а не из устаревшего formData.type
         amount: parseFloat(formData.amount),
         category_id: formData.category_id === 'none' ? null : formData.category_id,
@@ -1605,11 +1622,18 @@ export const TransactionsPage = () => {
                     onClick={() => {
                       setTransactionType(opt.value);
                       // Reset category — old category was filtered by previous type
-                      setFormData((fd) => ({
-                        ...fd,
-                        category_id: opt.value === 'transfer' ? '' : fd.category_id,
-                        to_account_id: opt.value === 'transfer' ? fd.to_account_id : '',
-                      }));
+                      setFormData((fd) => {
+                        const acc = accounts.find(a => a.id === fd.account_id);
+                        return {
+                          ...fd,
+                          category_id: opt.value === 'transfer' ? '' : fd.category_id,
+                          to_account_id: opt.value === 'transfer' ? fd.to_account_id : '',
+                          // Sync currency to from-account when switching to transfer
+                          currency: opt.value === 'transfer' && acc ? acc.currency : fd.currency,
+                          // Reset cross-currency helpers
+                          ...(opt.value === 'transfer' ? {} : { to_amount: '', manual_rate: '' }),
+                        };
+                      });
                     }}
                     className={transactionType === opt.value ? '' : opt.color}
                     data-testid={`form-type-${opt.value}`}
@@ -1645,8 +1669,12 @@ export const TransactionsPage = () => {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2 min-w-0">
-                <Label>Валюта</Label>
-                <Select value={formData.currency} onValueChange={(v) => setFormData({ ...formData, currency: v })}>
+                <Label>Валюта{transactionType === 'transfer' ? ' (со счёта)' : ''}</Label>
+                <Select
+                  value={formData.currency}
+                  onValueChange={(v) => setFormData({ ...formData, currency: v })}
+                  disabled={transactionType === 'transfer'}
+                >
                   <SelectTrigger data-testid="form-currency">
                     <SelectValue />
                   </SelectTrigger>
@@ -1659,7 +1687,17 @@ export const TransactionsPage = () => {
               </div>
               <div className="space-y-2 min-w-0">
                 <Label>Счёт *</Label>
-                <Select value={formData.account_id} onValueChange={(v) => setFormData({ ...formData, account_id: v })}>
+                <Select value={formData.account_id} onValueChange={(v) => {
+                  const acc = accounts.find(a => a.id === v);
+                  setFormData(prev => ({
+                    ...prev,
+                    account_id: v,
+                    // For transfers source currency must match from-account
+                    currency: transactionType === 'transfer' && acc ? acc.currency : prev.currency,
+                    // Reset cross-currency helper fields when source changes
+                    ...(transactionType === 'transfer' ? { to_amount: '', manual_rate: '' } : {}),
+                  }));
+                }}>
                   <SelectTrigger data-testid="form-account">
                     <SelectValue placeholder="Выберите счёт" />
                   </SelectTrigger>
@@ -1715,26 +1753,57 @@ export const TransactionsPage = () => {
 
             {/* Cross-currency transfer: manual to_amount + exchange rate */}
             {transactionType === 'transfer' && (() => {
+              const fromAcc = accounts.find(a => a.id === formData.account_id);
               const toAcc = accounts.find(a => a.id === formData.to_account_id);
-              if (!toAcc) return null;
+              if (!fromAcc || !toAcc) return null;
+              const fromCur = fromAcc.currency;
               const toCur = toAcc.currency;
-              const fromCur = formData.currency;
               if (toCur === fromCur) return null;
+
+              // Convention: rate is always expressed as "1 [foreign] = X PLN" when PLN is involved.
+              // Otherwise (e.g. EUR↔USD) fall back to "1 fromCur = X toCur".
+              const plnAnchored = fromCur === 'PLN' || toCur === 'PLN';
+              const rateNum = plnAnchored ? (fromCur === 'PLN' ? toCur : fromCur) : fromCur;
+              const rateDen = plnAnchored ? 'PLN' : toCur;
+
+              // to_amount given rate r (rate = 1 rateNum = r rateDen)
+              const computeToAmount = (amt, r) => {
+                if (!amt || !r) return '';
+                if (plnAnchored) {
+                  // fromCur PLN, toCur foreign: to = amt / r  (PLN ÷ rate = foreign)
+                  // fromCur foreign, toCur PLN: to = amt * r  (foreign × rate = PLN)
+                  return fromCur === 'PLN'
+                    ? Number((amt / r).toFixed(2))
+                    : Number((amt * r).toFixed(2));
+                }
+                // direct conversion: rate = toCur per fromCur
+                return Number((amt * r).toFixed(2));
+              };
+              // rate given to_amount
+              const computeRate = (amt, ta) => {
+                if (!amt || !ta) return '';
+                if (plnAnchored) {
+                  return fromCur === 'PLN'
+                    ? Number((amt / ta).toFixed(6))   // PLN/foreign
+                    : Number((ta / amt).toFixed(6)); // PLN/foreign
+                }
+                return Number((ta / amt).toFixed(6));
+              };
 
               const updateToAmount = (val) => {
                 const amt = parseFloat(formData.amount);
                 const ta = parseFloat(val);
-                // Convention: rate = to_amount / amount (units of target per 1 unit of source)
-                const rate = (amt && ta) ? Number((ta / amt).toFixed(6)) : '';
-                setFormData({ ...formData, to_amount: val, manual_rate: rate === '' ? '' : String(rate) });
+                const r = computeRate(amt, ta);
+                setFormData({ ...formData, to_amount: val, manual_rate: r === '' ? '' : String(r) });
               };
               const updateRate = (val) => {
                 const amt = parseFloat(formData.amount);
                 const r = parseFloat(val);
-                // to_amount = amount × rate
-                const ta = (amt && r) ? Number((amt * r).toFixed(2)) : '';
+                const ta = computeToAmount(amt, r);
                 setFormData({ ...formData, manual_rate: val, to_amount: ta === '' ? '' : String(ta) });
               };
+
+              const ratePlaceholder = plnAnchored ? 'например, 4.25' : 'например, 1.08';
 
               return (
                 <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 space-y-3" data-testid="xcurrency-block">
@@ -1755,13 +1824,13 @@ export const TransactionsPage = () => {
                       />
                     </div>
                     <div className="space-y-2 min-w-0">
-                      <Label>Курс (1 {fromCur} = X {toCur})</Label>
+                      <Label>Курс (1 {rateNum} = X {rateDen})</Label>
                       <Input
                         type="number"
                         step="0.0001"
                         value={formData.manual_rate}
                         onChange={(e) => updateRate(e.target.value)}
-                        placeholder={fromCur === 'EUR' ? 'например, 4.35' : 'например, 0.23'}
+                        placeholder={ratePlaceholder}
                         data-testid="form-manual-rate"
                       />
                     </div>
