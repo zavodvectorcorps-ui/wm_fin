@@ -111,6 +111,14 @@ export const SettingsPage = () => {
       if (dialogType === 'account') {
         endpoint = '/accounts';
         payload = { ...accountForm, initial_balance: parseFloat(accountForm.initial_balance) || 0 };
+        if (editingItem && editingItem.currency !== accountForm.currency) {
+          const ok = window.confirm(
+            `Сменить валюту счёта «${editingItem.name}» с ${editingItem.currency} на ${accountForm.currency}?\n\n` +
+            `Все транзакции по этому счёту будут пересчитаны по текущему курсу NBP. ` +
+            `Это изменит amount_base и current_balance. Продолжить?`
+          );
+          if (!ok) return;
+        }
       } else if (dialogType === 'category') {
         endpoint = '/categories';
         payload = categoryForm;
@@ -819,13 +827,18 @@ export const SettingsPage = () => {
               <div className="space-y-2">
                 <Label>Валюта</Label>
                 <Select value={accountForm.currency} onValueChange={(v) => setAccountForm({ ...accountForm, currency: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger data-testid="account-currency-select"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="PLN">PLN</SelectItem>
                     <SelectItem value="EUR">EUR</SelectItem>
                     <SelectItem value="USD">USD</SelectItem>
                   </SelectContent>
                 </Select>
+                {editingItem && editingItem.currency !== accountForm.currency && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400" data-testid="currency-change-warning">
+                    ⚠ Транзакции будут пересчитаны по курсу NBP ({editingItem.currency} → {accountForm.currency})
+                  </p>
+                )}
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
