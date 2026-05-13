@@ -32,9 +32,78 @@ const sourceIcons = {
   telegram_bot: Bot
 };
 
+const LoansSummary = ({ data }) => {
+  if (!data || !data.accounts || data.accounts.length === 0) return null;
+  const received = data.received_base || 0;
+  const repaid = data.repaid_base || 0;
+  const netChange = received - repaid;  // positive = долг вырос, negative = долг уменьшился
+
+  // Sum of current balances by currency
+  const byCur = {};
+  for (const a of data.accounts) {
+    const cur = a.currency || 'PLN';
+    byCur[cur] = (byCur[cur] || 0) + (a.current_balance || 0);
+  }
+
+  return (
+    <Card className="border-amber-500/30 bg-amber-500/5" data-testid="loans-summary">
+      <CardContent className="py-3 px-4 space-y-2">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <p className="text-sm font-semibold text-amber-300 flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4" />
+            Займы / заёмные средства
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {data.accounts.map(a => a.name).join(' • ')}
+          </p>
+        </div>
+        <div className="grid gap-2 sm:gap-3 grid-cols-2 sm:grid-cols-4">
+          <Card className="border-emerald-500/20">
+            <CardContent className="py-2 px-2 sm:py-3 sm:px-4">
+              <p className="text-xs text-muted-foreground">Получено за период</p>
+              <p className="text-sm sm:text-lg font-bold font-mono text-emerald-500 truncate">
+                +{formatCurrency(received)}
+              </p>
+              <p className="text-xs text-muted-foreground">{data.received_count} опер.</p>
+            </CardContent>
+          </Card>
+          <Card className="border-rose-500/20">
+            <CardContent className="py-2 px-2 sm:py-3 sm:px-4">
+              <p className="text-xs text-muted-foreground">Погашено / израсходовано</p>
+              <p className="text-sm sm:text-lg font-bold font-mono text-rose-500 truncate">
+                -{formatCurrency(repaid)}
+              </p>
+              <p className="text-xs text-muted-foreground">{data.repaid_count} опер.</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="py-2 px-2 sm:py-3 sm:px-4">
+              <p className="text-xs text-muted-foreground">Чистое изменение долга</p>
+              <p className={`text-sm sm:text-lg font-bold font-mono truncate ${netChange >= 0 ? 'text-amber-400' : 'text-emerald-500'}`}>
+                {netChange >= 0 ? '+' : ''}{formatCurrency(netChange)}
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="py-2 px-2 sm:py-3 sm:px-4">
+              <p className="text-xs text-muted-foreground">Остаток долга</p>
+              <div className="space-y-0.5">
+                {Object.entries(byCur).map(([cur, v]) => (
+                  <p key={cur} className="text-sm sm:text-lg font-bold font-mono text-amber-300 truncate">
+                    {formatCurrency(v, cur)}
+                  </p>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
 const PeriodSummary = ({ summary, totalCount, eurPlnRate }) => {
   if (!summary || Object.keys(summary).length === 0) return null;
-
   const currencies = Object.keys(summary);
   const hasMultiCurrency = currencies.length > 1;
 
@@ -262,6 +331,7 @@ export const TransactionsPage = () => {
   const [totalItems, setTotalItems] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [summary, setSummary] = useState({});
+  const [loansSummary, setLoansSummary] = useState(null);
 
   const [formData, setFormData] = useState({
     date: todayLocal(),
@@ -333,6 +403,7 @@ export const TransactionsPage = () => {
       setTotalItems(paginated.total || 0);
       setTotalPages(paginated.pages || 1);
       setSummary(paginated.summary || {});
+      setLoansSummary(paginated.loans_summary || null);
       setAccounts(accountsRes.data);
       setCategories(categoriesRes.data);
       setDirections(directionsRes.data);
@@ -449,7 +520,7 @@ export const TransactionsPage = () => {
     const initialToAmount = isXCur && transaction.to_amount_base != null
       ? String(transaction.to_amount_base) : '';
     const initialRate = isXCur && transaction.amount && transaction.to_amount_base
-      ? String(Number((transaction.amount / transaction.to_amount_base).toFixed(6))) : '';
+      ? String(Number((transaction.to_amount_base / transaction.amount).toFixed(6))) : '';
     setFormData({
       date: transaction.date,
       type: transaction.type,
@@ -748,6 +819,11 @@ export const TransactionsPage = () => {
       {/* Period Summary */}
       {!loading && totalItems > 0 && (
         <PeriodSummary summary={summary} totalCount={totalItems} eurPlnRate={eurPlnRate} />
+      )}
+
+      {/* Loans summary block (separate from main income/expense) */}
+      {!loading && loansSummary && (loansSummary.accounts || []).length > 0 && (
+        <LoansSummary data={loansSummary} />
       )}
 
       {/* Transactions Table */}
@@ -1250,13 +1326,15 @@ export const TransactionsPage = () => {
               const updateToAmount = (val) => {
                 const amt = parseFloat(formData.amount);
                 const ta = parseFloat(val);
-                const rate = (amt && ta) ? Number((amt / ta).toFixed(6)) : '';
+                // Convention: rate = to_amount / amount (units of target per 1 unit of source)
+                const rate = (amt && ta) ? Number((ta / amt).toFixed(6)) : '';
                 setFormData({ ...formData, to_amount: val, manual_rate: rate === '' ? '' : String(rate) });
               };
               const updateRate = (val) => {
                 const amt = parseFloat(formData.amount);
                 const r = parseFloat(val);
-                const ta = (amt && r) ? Number((amt / r).toFixed(2)) : '';
+                // to_amount = amount × rate
+                const ta = (amt && r) ? Number((amt * r).toFixed(2)) : '';
                 setFormData({ ...formData, manual_rate: val, to_amount: ta === '' ? '' : String(ta) });
               };
 
@@ -1279,13 +1357,13 @@ export const TransactionsPage = () => {
                       />
                     </div>
                     <div className="space-y-2 min-w-0">
-                      <Label>Курс ({fromCur}/{toCur})</Label>
+                      <Label>Курс (1 {fromCur} = X {toCur})</Label>
                       <Input
                         type="number"
                         step="0.0001"
                         value={formData.manual_rate}
                         onChange={(e) => updateRate(e.target.value)}
-                        placeholder="например, 4.35"
+                        placeholder={fromCur === 'EUR' ? 'например, 4.35' : 'например, 0.23'}
                         data-testid="form-manual-rate"
                       />
                     </div>

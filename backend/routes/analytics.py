@@ -8,6 +8,26 @@ from auth import get_current_user
 router = APIRouter(prefix="/api")
 
 
+async def _get_loan_account_ids(user_id: str) -> list:
+    """Return list of account ids marked as loan/liability for the given user."""
+    loans = await db.accounts.find(
+        {"user_id": user_id, "is_loan": True},
+        {"_id": 0, "id": 1}
+    ).to_list(None)
+    return [a["id"] for a in loans]
+
+
+def _not_loan_op(t: dict, loan_ids: list) -> bool:
+    """True if a transaction doesn't involve any loan account."""
+    if not loan_ids:
+        return True
+    if t.get("account_id") in loan_ids:
+        return False
+    if t.get("to_account_id") in loan_ids:
+        return False
+    return True
+
+
 @router.get("/analytics/summary")
 async def get_analytics_summary(
     date_from: Optional[str] = None,
@@ -28,6 +48,9 @@ async def get_analytics_summary(
         query["direction_id"] = direction_id
 
     transactions = await db.transactions.find(query, {"_id": 0}).to_list(10000)
+    loan_ids = await _get_loan_account_ids(current_user["user_id"])
+    # Exclude operations on loan accounts from PnL/income/expense aggregations
+    transactions = [t for t in transactions if _not_loan_op(t, loan_ids)]
 
     # Helper: get amount in account's currency
     def base_amount(t):
@@ -391,6 +414,8 @@ async def get_pnl_report(
         query["direction_id"] = direction_id
 
     transactions = await db.transactions.find(query, {"_id": 0}).to_list(10000)
+    loan_ids = await _get_loan_account_ids(current_user["user_id"])
+    transactions = [t for t in transactions if _not_loan_op(t, loan_ids)]
     categories = await db.categories.find({"user_id": current_user["user_id"]}, {"_id": 0}).to_list(100)
 
     income_groups = {}
@@ -455,6 +480,8 @@ async def get_cashflow_report(
         query["direction_id"] = direction_id
 
     transactions = await db.transactions.find(query, {"_id": 0}).to_list(10000)
+    loan_ids = await _get_loan_account_ids(current_user["user_id"])
+    transactions = [t for t in transactions if _not_loan_op(t, loan_ids)]
 
     months = []
     for i in range(1, 13):

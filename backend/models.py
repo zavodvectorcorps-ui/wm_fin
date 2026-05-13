@@ -70,6 +70,7 @@ class Account(BaseModel):
     bank: Optional[str] = None
     initial_balance: float = 0
     current_balance: float = 0
+    is_loan: bool = False  # true = loan/liability account (e.g. Cash Minsk, Займ Аликор)
     is_active: bool = True
     user_id: str = ""
 
@@ -80,6 +81,7 @@ class AccountCreate(BaseModel):
     currency: Literal["PLN", "EUR", "USD"] = "PLN"
     bank: Optional[str] = None
     initial_balance: float = 0
+    is_loan: bool = False
 
 
 class Category(BaseModel):

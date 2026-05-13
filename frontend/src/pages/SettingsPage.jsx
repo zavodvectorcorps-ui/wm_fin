@@ -37,7 +37,7 @@ export const SettingsPage = () => {
   const [dialogType, setDialogType] = useState(null);
   const [editingItem, setEditingItem] = useState(null);
   
-  const [accountForm, setAccountForm] = useState({ name: '', type: 'checking', currency: 'PLN', bank: '', initial_balance: '' });
+  const [accountForm, setAccountForm] = useState({ name: '', type: 'checking', currency: 'PLN', bank: '', initial_balance: '', is_loan: false });
   const [categoryForm, setCategoryForm] = useState({ name: '', type: 'expense', group: '', default_direction: '', is_fixed_cost: false });
   const [directionForm, setDirectionForm] = useState({ name: '', color: 'blue', description: '' });
   const [ruleForm, setRuleForm] = useState({ pattern: '', category_id: '', direction_id: '', contractor_id: '' });
@@ -77,8 +77,9 @@ export const SettingsPage = () => {
         type: item.type,
         currency: item.currency,
         bank: item.bank || '',
-        initial_balance: item.initial_balance?.toString() || ''
-      } : { name: '', type: 'checking', currency: 'PLN', bank: '', initial_balance: '' });
+        initial_balance: item.initial_balance?.toString() || '',
+        is_loan: !!item.is_loan
+      } : { name: '', type: 'checking', currency: 'PLN', bank: '', initial_balance: '', is_loan: false });
     } else if (type === 'category') {
       setCategoryForm(item ? {
         name: item.name,
@@ -845,6 +846,22 @@ export const SettingsPage = () => {
                   placeholder="0.00"
                 />
               </div>
+            </div>
+            <div className="flex items-start gap-3 rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
+              <input
+                type="checkbox"
+                id="account-is-loan"
+                checked={!!accountForm.is_loan}
+                onChange={(e) => setAccountForm({ ...accountForm, is_loan: e.target.checked })}
+                className="mt-1 h-4 w-4 accent-amber-500"
+                data-testid="account-is-loan-checkbox"
+              />
+              <label htmlFor="account-is-loan" className="cursor-pointer text-sm">
+                <span className="font-medium">Заёмные средства (займ / кредит)</span>
+                <span className="block text-xs text-muted-foreground mt-0.5">
+                  Операции на этом счёте не учитываются в обычных «Доходах / Расходах» и показываются отдельным блоком «Займы».
+                </span>
+              </label>
             </div>
           </div>
           <DialogFooter>

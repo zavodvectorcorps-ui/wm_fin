@@ -106,10 +106,22 @@ async def get_transactions(
     skip = (page - 1) * per_page
     items = await db.transactions.find(query, {"_id": 0}).sort("date", -1).skip(skip).limit(per_page).to_list(per_page)
 
+    # Identify loan accounts so we can split summaries between assets and loans
+    loan_accs = await db.accounts.find(
+        {"user_id": current_user["user_id"], "is_loan": True},
+        {"_id": 0, "id": 1}
+    ).to_list(None)
+    loan_account_ids = [a["id"] for a in loan_accs]
+
     # Aggregate summary for ENTIRE filtered period using a COPY of the query
     match_query = {k: v for k, v in query.items()}
+    # Exclude operations that involve loan accounts from the main income/expense summary
+    main_match = {k: v for k, v in match_query.items()}
+    if loan_account_ids:
+        main_match["account_id"] = {"$nin": loan_account_ids}
+        main_match["to_account_id"] = {"$nin": loan_account_ids}
     summary_pipeline = [
-        {"$match": match_query},
+        {"$match": main_match},
         {"$group": {
             "_id": {
                 "currency": {"$ifNull": ["$currency", "PLN"]},
@@ -190,6 +202,56 @@ async def get_transactions(
             summary[acc_currency]["income_base"] += in_result[0]["total"]
             summary[acc_currency]["count"] += in_result[0]["count"]
 
+    # ---- Loans summary (separate block) ----
+    # For each loan account, compute money received (inflow) and money repaid (outflow)
+    # within the current filter window, plus current balance.
+    loans_summary = None
+    if loan_account_ids:
+        loan_match_base = {k: v for k, v in match_query.items() if k not in ("$or", "account_id", "to_account_id")}
+
+        # Inflow to loan account = transfer-in (to_account_id=loan) + income on loan account
+        inflow_pipeline = [
+            {"$match": {**loan_match_base, "$or": [
+                {"account_id": {"$in": loan_account_ids}, "type": "income"},
+                {"to_account_id": {"$in": loan_account_ids}, "type": "transfer"},
+            ]}},
+            {"$group": {
+                "_id": None,
+                "total_base": {"$sum": {
+                    "$ifNull": ["$to_amount_base", {"$ifNull": ["$amount_base", "$amount"]}]
+                }},
+                "count": {"$sum": 1},
+            }},
+        ]
+        # Outflow from loan account = transfer-out (account_id=loan, type=transfer) + expense
+        outflow_pipeline = [
+            {"$match": {**loan_match_base, "account_id": {"$in": loan_account_ids},
+                        "type": {"$in": ["expense", "transfer"]}}},
+            {"$group": {
+                "_id": None,
+                "total_base": {"$sum": {"$ifNull": ["$amount_base", "$amount"]}},
+                "count": {"$sum": 1},
+            }},
+        ]
+        inflow = await db.transactions.aggregate(inflow_pipeline).to_list(1)
+        outflow = await db.transactions.aggregate(outflow_pipeline).to_list(1)
+
+        # Current loan balance (sum of current_balance for all loan accounts, in PLN-ish)
+        loan_accounts_full = await db.accounts.find(
+            {"user_id": current_user["user_id"], "is_loan": True, "is_active": {"$ne": False}},
+            {"_id": 0, "id": 1, "name": 1, "currency": 1, "current_balance": 1}
+        ).to_list(None)
+
+        loans_summary = {
+            "received_base": (inflow[0]["total_base"] if inflow else 0) or 0,
+            "received_count": (inflow[0]["count"] if inflow else 0) or 0,
+            "repaid_base": (outflow[0]["total_base"] if outflow else 0) or 0,
+            "repaid_count": (outflow[0]["count"] if outflow else 0) or 0,
+            "accounts": loan_accounts_full,
+        }
+        # operations on loan accounts are excluded from the main count → add to total count
+        summary_total_count += loans_summary["received_count"] + loans_summary["repaid_count"]
+
     return {
         "items": items,
         "total": total,
@@ -198,6 +260,7 @@ async def get_transactions(
         "pages": (total + per_page - 1) // per_page if per_page else 1,
         "summary": summary,
         "summary_total_count": summary_total_count,
+        "loans_summary": loans_summary,
     }
 
 
@@ -230,8 +293,8 @@ async def create_transaction(data: TransactionCreate, current_user: dict = Depen
         if data.to_amount is not None and data.to_amount > 0 and to_acc_currency != data.currency:
             to_amount_base = float(data.to_amount)
             if data.amount and data.amount != 0:
-                # Save manual rate (source currency per 1 unit of target currency)
-                exchange_rate = round(data.amount / data.to_amount, 6)
+                # Convention: rate = to_amount / amount (target units per 1 source unit)
+                exchange_rate = round(data.to_amount / data.amount, 6)
         else:
             to_amount_base_val, _ = await calc_amount_base(
                 data.amount, data.currency, data.to_account_id, current_user["user_id"]
@@ -305,7 +368,7 @@ async def update_transaction(transaction_id: str, data: TransactionCreate, curre
         if data.to_amount is not None and data.to_amount > 0 and to_acc_currency != data.currency:
             to_amount_base = float(data.to_amount)
             if data.amount and data.amount != 0:
-                exchange_rate = round(data.amount / data.to_amount, 6)
+                exchange_rate = round(data.to_amount / data.amount, 6)
         else:
             to_amount_base_val, _ = await calc_amount_base(
                 data.amount, data.currency, data.to_account_id, current_user["user_id"]
