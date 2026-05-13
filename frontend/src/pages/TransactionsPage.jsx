@@ -230,6 +230,10 @@ const LoansSummary = ({ data, eurPlnRate, onAccountClick }) => {
               const recEntries = Object.entries(pa.received_by_cur || {}).filter(([, v]) => Math.abs(v) > 0.005);
               const repEntries = Object.entries(pa.repaid_by_cur || {}).filter(([, v]) => Math.abs(v) > 0.005);
               const hasOps = pa.received_count > 0 || pa.repaid_count > 0;
+              // Net delta = received − repaid, expressed in loan account's own currency.
+              const recInOwnCur = (pa.received_by_cur || {})[pa.currency] || 0;
+              const repInOwnCur = (pa.repaid_by_cur || {})[pa.currency] || 0;
+              const netOwn = recInOwnCur - repInOwnCur;
               return (
                 <div
                   key={pa.id}
@@ -250,6 +254,13 @@ const LoansSummary = ({ data, eurPlnRate, onAccountClick }) => {
                       ? repEntries.map(([c, v]) => `-${formatCurrency(v, c)}`).join(' / ')
                       : '—'}
                     {pa.repaid_count > 0 && <span className="text-muted-foreground"> ({pa.repaid_count})</span>}
+                  </span>
+                  <span
+                    className={`font-mono font-medium ${Math.abs(netOwn) < 0.005 ? 'text-muted-foreground' : netOwn > 0 ? 'text-rose-300' : 'text-emerald-300'}`}
+                    title="Чистая дельта за период в валюте займа (Получено − Погашено)"
+                    data-testid={`loan-acc-net-${pa.id}`}
+                  >
+                    Δ {netOwn > 0 ? '+' : ''}{formatCurrency(netOwn, pa.currency)}
                   </span>
                   <span className="text-amber-300 font-mono">
                     остаток {formatCurrency(pa.current_balance, pa.currency)}
