@@ -831,6 +831,31 @@ export const TransactionsPage = () => {
     }
   };
 
+  const handleBulkApplyRules = async (overwrite = false) => {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    const msg = overwrite
+      ? `Применить авто-правила и ПЕРЕЗАПИСАТЬ существующие Статью/Направление у ${ids.length} операций?`
+      : `Применить авто-правила к ${ids.length} ${ids.length === 1 ? 'операции' : 'операциям'} (заполнятся только пустые Статья/Направление)?`;
+    if (!window.confirm(msg)) return;
+    setBulkUpdating(true);
+    try {
+      const res = await api().post('/transactions/bulk-apply-rules', { ids, overwrite });
+      const d = res.data;
+      toast.success(`Обновлено: ${d.updated} · без совпадений: ${d.no_match}${d.skipped ? ` · пропущено: ${d.skipped}` : ''}`);
+      setSelectedIds(new Set());
+      const scrollY = window.scrollY;
+      await fetchData();
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => window.scrollTo({ top: scrollY, behavior: 'instant' }));
+      });
+    } catch (e) {
+      toast.error(e.response?.data?.detail || 'Ошибка применения правил');
+    } finally {
+      setBulkUpdating(false);
+    }
+  };
+
   const handleBulkUpdate = async ({ category_id, direction_id }) => {
     const ids = [...selectedIds];
     if (ids.length === 0) return;
@@ -1100,6 +1125,18 @@ export const TransactionsPage = () => {
             </Select>
 
             {bulkUpdating && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleBulkApplyRules(false)}
+              disabled={bulkUpdating}
+              title="Применить авто-правила (заполнить пустые Статью/Направление)"
+              data-testid="bulk-apply-rules-btn"
+            >
+              <Bot className="h-4 w-4 mr-2" />
+              Применить авто-правила
+            </Button>
 
             <div className="flex-1" />
             <Button

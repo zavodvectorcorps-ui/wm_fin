@@ -623,6 +623,86 @@ async def bulk_update_transactions(
     return {"status": "ok", "matched": res.matched_count, "modified": res.modified_count}
 
 
+@router.post("/transactions/bulk-apply-rules")
+async def bulk_apply_auto_rules(
+    payload: dict,
+    current_user: dict = Depends(get_current_user),
+):
+    """Apply auto-categorization rules to selected transactions.
+    Body: {"ids": [...], "overwrite": false}
+    - When overwrite=False (default), only fills missing category_id/direction_id.
+    - When overwrite=True, overrides existing values where a matching rule fires.
+    """
+    ids = payload.get("ids") or []
+    overwrite = bool(payload.get("overwrite", False))
+    if not isinstance(ids, list) or not ids:
+        raise HTTPException(status_code=400, detail="Передайте массив ids")
+    if len(ids) > 500:
+        raise HTTPException(status_code=400, detail="За один раз можно обработать до 500 операций")
+
+    rules = await db.auto_rules.find(
+        {"user_id": current_user["user_id"], "is_active": True},
+        {"_id": 0}
+    ).to_list(500)
+    if not rules:
+        return {"status": "ok", "matched": 0, "updated": 0, "skipped": len(ids), "no_match": len(ids)}
+
+    # Preload categories/directions for fast lookup
+    cat_ids = {r.get("category_id") for r in rules if r.get("category_id")}
+    dir_ids = {r.get("direction_id") for r in rules if r.get("direction_id")}
+    cats = {c["id"]: c["name"] for c in await db.categories.find(
+        {"id": {"$in": list(cat_ids)}}, {"_id": 0, "id": 1, "name": 1}
+    ).to_list(None)} if cat_ids else {}
+    dirs = {d["id"]: d["name"] for d in await db.directions.find(
+        {"id": {"$in": list(dir_ids)}}, {"_id": 0, "id": 1, "name": 1}
+    ).to_list(None)} if dir_ids else {}
+
+    txs = await db.transactions.find(
+        {"id": {"$in": ids}, "user_id": current_user["user_id"]},
+        {"_id": 0, "id": 1, "description": 1, "category_id": 1, "direction_id": 1}
+    ).to_list(len(ids))
+
+    updated = 0
+    no_match = 0
+    skipped = 0
+    for t in txs:
+        desc = (t.get("description") or "").lower()
+        match = None
+        for rule in rules:
+            pat = (rule.get("pattern") or "").lower().strip()
+            if pat and pat in desc:
+                match = rule
+                break
+        if not match:
+            no_match += 1
+            continue
+
+        updates = {}
+        new_cat = match.get("category_id")
+        new_dir = match.get("direction_id")
+
+        if new_cat and (overwrite or not t.get("category_id")):
+            updates["category_id"] = new_cat
+            updates["category_name"] = cats.get(new_cat)
+        if new_dir and (overwrite or not t.get("direction_id")):
+            updates["direction_id"] = new_dir
+            updates["direction_name"] = dirs.get(new_dir)
+
+        if updates:
+            await db.transactions.update_one({"id": t["id"]}, {"$set": updates})
+            updated += 1
+        else:
+            skipped += 1
+
+    return {
+        "status": "ok",
+        "matched": updated + skipped,
+        "updated": updated,
+        "skipped": skipped,
+        "no_match": no_match,
+    }
+
+
 @router.post("/import/preview")
 async def preview_import(
     file: UploadFile = File(...),
