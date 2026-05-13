@@ -228,7 +228,7 @@ async def get_transactions(
                         "account_id": {"$in": loan_account_ids},
                         "type": "transfer"}},
             {"$group": {
-                "_id": {"$ifNull": ["$currency", "PLN"]},
+                "_id": {"acc": "$account_id", "cur": {"$ifNull": ["$currency", "PLN"]}},
                 "total_base": {"$sum": {"$ifNull": ["$amount_base", "$amount"]}},
                 "count": {"$sum": 1},
             }},
@@ -239,16 +239,15 @@ async def get_transactions(
                         "to_account_id": {"$in": loan_account_ids},
                         "type": "transfer"}},
             {"$group": {
-                # Use to_account currency: it's the loan account currency
-                "_id": {"$ifNull": ["$currency", "PLN"]},
+                "_id": {"acc": "$to_account_id", "cur": {"$ifNull": ["$currency", "PLN"]}},
                 "total_base": {"$sum": {
                     "$ifNull": ["$to_amount_base", {"$ifNull": ["$amount_base", "$amount"]}]
                 }},
                 "count": {"$sum": 1},
             }},
         ]
-        inflow = await db.transactions.aggregate(received_pipeline).to_list(10)
-        outflow = await db.transactions.aggregate(repaid_pipeline).to_list(10)
+        inflow = await db.transactions.aggregate(received_pipeline).to_list(50)
+        outflow = await db.transactions.aggregate(repaid_pipeline).to_list(50)
 
         # Current loan balance (sum of current_balance for all loan accounts, in PLN-ish)
         loan_accounts_full = await db.accounts.find(
@@ -256,9 +255,34 @@ async def get_transactions(
             {"_id": 0, "id": 1, "name": 1, "currency": 1, "current_balance": 1}
         ).to_list(None)
 
-        # Break inflow/outflow down per-currency so frontend can convert EUR→PLN correctly
-        received_by_cur = {row["_id"]: row["total_base"] for row in inflow}
-        repaid_by_cur = {row["_id"]: row["total_base"] for row in outflow}
+        # Break inflow/outflow down per-currency AND per-account
+        received_by_cur: dict = {}
+        repaid_by_cur: dict = {}
+        per_account: dict = {a["id"]: {
+            "id": a["id"], "name": a.get("name"), "currency": a.get("currency"),
+            "current_balance": a.get("current_balance", 0),
+            "received_by_cur": {}, "received_count": 0,
+            "repaid_by_cur": {}, "repaid_count": 0,
+        } for a in loan_accounts_full}
+
+        for row in inflow:
+            acc = row["_id"]["acc"]
+            cur = row["_id"]["cur"]
+            received_by_cur[cur] = received_by_cur.get(cur, 0) + row["total_base"]
+            if acc in per_account:
+                pa = per_account[acc]
+                pa["received_by_cur"][cur] = pa["received_by_cur"].get(cur, 0) + row["total_base"]
+                pa["received_count"] += row["count"]
+
+        for row in outflow:
+            acc = row["_id"]["acc"]
+            cur = row["_id"]["cur"]
+            repaid_by_cur[cur] = repaid_by_cur.get(cur, 0) + row["total_base"]
+            if acc in per_account:
+                pa = per_account[acc]
+                pa["repaid_by_cur"][cur] = pa["repaid_by_cur"].get(cur, 0) + row["total_base"]
+                pa["repaid_count"] += row["count"]
+
         received_total = sum(r["total_base"] for r in inflow)
         repaid_total = sum(r["total_base"] for r in outflow)
         received_count = sum(r["count"] for r in inflow)
@@ -272,8 +296,8 @@ async def get_transactions(
             "repaid_by_cur": repaid_by_cur,
             "repaid_count": repaid_count,
             "accounts": loan_accounts_full,
+            "per_account": list(per_account.values()),
         }
-        # operations on loan accounts are excluded from the main count → add to total count
         summary_total_count += loans_summary["received_count"] + loans_summary["repaid_count"]
 
     # ---- Cash summary (current asset balance, per currency) ----

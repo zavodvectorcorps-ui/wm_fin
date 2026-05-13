@@ -221,6 +221,37 @@ const LoansSummary = ({ data, eurPlnRate }) => {
             </CardContent>
           </Card>
         </div>
+
+        {/* Per-account breakdown */}
+        {data.per_account && data.per_account.length > 0 && (
+          <div className="pt-2 border-t border-amber-500/20 space-y-1.5">
+            <p className="text-xs text-muted-foreground">Разбивка по счетам</p>
+            {data.per_account.map(pa => {
+              const recEntries = Object.entries(pa.received_by_cur || {}).filter(([, v]) => Math.abs(v) > 0.005);
+              const repEntries = Object.entries(pa.repaid_by_cur || {}).filter(([, v]) => Math.abs(v) > 0.005);
+              return (
+                <div key={pa.id} className="flex items-center justify-between gap-3 flex-wrap text-xs rounded-md bg-background/40 px-2 py-1.5">
+                  <span className="font-medium min-w-[140px]">{pa.name}</span>
+                  <span className="text-emerald-400 font-mono">
+                    {recEntries.length > 0
+                      ? recEntries.map(([c, v]) => `+${formatCurrency(v, c)}`).join(' / ')
+                      : '—'}
+                    {pa.received_count > 0 && <span className="text-muted-foreground"> ({pa.received_count})</span>}
+                  </span>
+                  <span className="text-rose-400 font-mono">
+                    {repEntries.length > 0
+                      ? repEntries.map(([c, v]) => `-${formatCurrency(v, c)}`).join(' / ')
+                      : '—'}
+                    {pa.repaid_count > 0 && <span className="text-muted-foreground"> ({pa.repaid_count})</span>}
+                  </span>
+                  <span className="text-amber-300 font-mono">
+                    остаток {formatCurrency(pa.current_balance, pa.currency)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
