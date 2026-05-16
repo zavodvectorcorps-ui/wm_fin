@@ -4,9 +4,10 @@ import { toast } from 'sonner';
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from './ui/dialog';
 import {
-  Loader2, ChevronLeft, ChevronRight, Link2, X, ImageIcon, FileText, CheckCircle2, AlertCircle,
+  Loader2, ChevronLeft, ChevronRight, Link2, X, ImageIcon, FileText, CheckCircle2, AlertCircle, Maximize2,
 } from 'lucide-react';
 import { formatCurrency } from '../lib/utils';
+import { Lightbox } from './Lightbox';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const apiClient = () => {
@@ -27,6 +28,7 @@ export const AnalyzePendingDialog = ({ open, onOpenChange, onDone }) => {
   const [idx, setIdx] = useState(0);
   const [busy, setBusy] = useState(false);
   const [stats, setStats] = useState({ linked: 0, skipped: 0 });
+  const [lightbox, setLightbox] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -104,35 +106,57 @@ export const AnalyzePendingDialog = ({ open, onOpenChange, onDone }) => {
     if (!doc) return null;
     const url = `${process.env.REACT_APP_BACKEND_URL}${doc.file_url}`;
     const isPdf = (doc.mime_type || '').includes('pdf');
+    const openLightbox = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setLightbox({ url, mimeType: doc.mime_type, fileName: doc.file_name });
+    };
     if (isPdf) {
       return (
-        <div className="relative h-48 rounded-md border border-muted bg-muted/30 overflow-hidden group">
+        <div
+          className="relative h-48 rounded-md border border-muted bg-muted/30 overflow-hidden group cursor-zoom-in"
+          onDoubleClick={openLightbox}
+          title="Двойной клик — на весь экран"
+        >
           <embed
             src={`${url}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
             type="application/pdf"
             className="w-full h-full pointer-events-none"
           />
-          <a
-            href={url}
-            target="_blank"
-            rel="noreferrer"
-            className="absolute inset-0 flex items-end justify-end p-2 bg-gradient-to-t from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition cursor-zoom-in"
-            title="Открыть PDF в новой вкладке"
+          <button
+            type="button"
+            onClick={openLightbox}
+            className="absolute inset-0 flex items-end justify-end p-2 bg-gradient-to-t from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition"
+            title="Открыть на весь экран"
           >
-            <span className="text-xs bg-slate-900/80 text-white px-2 py-1 rounded">PDF · открыть</span>
-          </a>
+            <span className="text-xs bg-slate-900/80 text-white px-2 py-1 rounded flex items-center gap-1">
+              <Maximize2 className="h-3 w-3" /> На весь экран
+            </span>
+          </button>
         </div>
       );
     }
     return (
-      <a href={url} target="_blank" rel="noreferrer">
+      <div
+        className="relative cursor-zoom-in group"
+        onDoubleClick={openLightbox}
+        title="Двойной клик — на весь экран"
+      >
         <img
           src={url}
           alt="Чек"
-          className="w-full h-48 object-contain rounded-md border border-muted bg-black/20"
+          className="w-full h-48 object-contain rounded-md border border-muted bg-black/20 group-hover:opacity-90 transition"
           data-testid="receipt-preview-img"
         />
-      </a>
+        <button
+          type="button"
+          onClick={openLightbox}
+          className="absolute top-2 right-2 p-1 rounded bg-slate-900/70 text-white opacity-0 group-hover:opacity-100 transition"
+          title="Открыть на весь экран"
+        >
+          <Maximize2 className="h-4 w-4" />
+        </button>
+      </div>
     );
   };
 
@@ -275,6 +299,13 @@ export const AnalyzePendingDialog = ({ open, onOpenChange, onDone }) => {
           </DialogFooter>
         )}
       </DialogContent>
+      <Lightbox
+        open={!!lightbox}
+        onOpenChange={(v) => { if (!v) setLightbox(null); }}
+        url={lightbox?.url}
+        mimeType={lightbox?.mimeType}
+        fileName={lightbox?.fileName}
+      />
     </Dialog>
   );
 };

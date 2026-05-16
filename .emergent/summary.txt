@@ -1,52 +1,49 @@
-<analysis>**original_problem_statement**: The user is building WM Finance, a specialized financial ERP application for a Polish business (Greenhouses, Saunas, etc.). PRODUCT REQUIREMENTS: Multi-currency support (EUR/PLN), Telegram Webhook Bot tracking, Google Sheets/Drive integrations, Salaries (FOT) management, Recurring expenses auto-generation, Multi-tenant Nginx deployment setup alongside another project, Read-Only Demo account, and multi-user Workspaces.
+<analysis>**original_problem_statement**: The user is building WM Finance, a specialized financial ERP application for a Polish business (Greenhouses, Saunas, etc.). PRODUCT REQUIREMENTS: Multi-currency support (EUR/PLN), Telegram Webhook Bot tracking, Google Sheets/Drive integrations, Salaries (FOT) management, Recurring expenses auto-generation, Multi-tenant Nginx deployment setup alongside another project, Read-Only Demo account, multi-user Workspaces.
 
 **User's preferred language**: Русский (Russian)
 INSTRUCT NEXT AGENT: You MUST automatically detect the user's primary language from their messages inside the <trajectory> tag and INSTRUCT next agent to respond in the user's preferred language only.
 
 **what currently exists?** 
-A mature, full-stack React + FastAPI financial ERP. It features a complex multi-currency Dashboard, Salaries/Recurring Expenses modules, automated backups, Telegram webhook notifications, an AI Assistant, and Workspaces. It now also includes advanced transaction filtering with persistence, bulk operations (delete, update, apply rules), a dedicated Net Worth tracker, separated Loan Account logic, and Smart Suggestions for categorization.
+A mature, full-stack React + FastAPI financial ERP. It features a complex multi-currency Dashboard, Salaries/Recurring Expenses modules, automated backups, Telegram webhook notifications, an AI Assistant, Workspaces, advanced transaction filtering, bulk operations, and a Net Worth tracker. Recently, a complete AI-driven receipt parsing workflow (via Gemini Nano Banana) was integrated into the UI and the Telegram bot, allowing users to upload receipts, automatically match them to transactions, and view them via inline previews or full-screen Lightbox.
 
 **Last working item**:
-    - **Last item agent was working**: Implementing the ability to change an account's currency after creation. The user realized their Cash Minsk account was created as PLN but mostly contained EUR transactions, skewing NBP rate conversions. The agent created/updated the backend endpoint in  to allow currency swapping with automatic balance recalculation, but has not yet added the frontend UI or tested it.
-    - **Status**: IN PROGRESS
-    - **Agent Testing Done**: N
-    - **Which testing method agent to use?**: both. Use curl to verify the backend  endpoint for currency change, and use the screenshot tool for the frontend  modifications.
+    - **Last item agent was working**: Implementing a  component (fullscreen modal) to view receipt attachments (Images and PDFs) upon double-clicking the attachment thumbnail in the Transactions list and the Receipt Analyzing Wizard. 
+    - **Status**: USER VERIFICATION PENDING
+    - **Agent Testing Done**: Y
+    - **Which testing method agent to use?**: screenshot tool (Agent successfully tested the double-click Lightbox functionality on the frontend).
     - **User Testing Done**: N
 
 **All Pending/In progress Issue list**:
-  None.
+  None. The previous agent successfully resolved a suite of critical bugs including cross-currency calculation UI errors, a blank screen crash involving loan accounts, auto-rule dialog crashing due to an unhandled 422 array error, and fixed the missing Docker volume for file uploads which caused receipts to disappear upon container rebuilds.
 
 **In progress Task List**:
-  Task 1: Change Account Currency Functionality
-     - Where to resume: Backend endpoint  (or similar) was just added in . You need to review this backend endpoint, test it, and then implement the frontend UI in  (adding a Сменить валюту button/dialog for existing accounts) and wire it up.
-     - What will be achieved with this?: Users can fix incorrectly set currencies on accounts, automatically converting their transactions and fixing analytics skew.
-     - Status: IN PROGRESS
-     - Should Test frontend/backend/both after fix?: both
-     - Blocked on something: None
+  None. 
 
 **Upcoming and Future Tasks**
     Upcoming Tasks:
+    - **Initial Balance Setup Configuration (P0)**: The user needs to set up the starting balances for their accounts because current withdrawals from historical cash reserves are dropping accounts into negative numbers. The agent presented 3 options (Option A: Simple edit in settings, Option B: Seed transactions, Option C: Opening balance entity). *Action Item: Get user's decision and implement it.*
     - Add a second Google Sheet integration specifically for the Сауны (Saunas) direction (P1).
     
     Future Tasks:
     - AI Weekly Digests (P2).
 
 **Completed work in this session**
-- Bulk Delete Transactions (DONE)
-- Bulk Update (Category/Direction) Transactions (DONE)
-- Manual exchange rate/amount for cross-currency transfers (Added  logic) (DONE)
-- Architecture Fix: Separated Loan Accounts from regular PnL/Cashflow (Added  flag to accounts) (DONE)
-- Net Worth chart on Balance Page (DONE)
-- Filter and Scroll persistence on Transactions Page (DONE)
-- Bugfix: Total in PLN on frontend EUR+PLN summation fixed with proper conversion (DONE)
-- Bugfix: Loan Semantics (Inverted Received/Repaid transfers fixed) (DONE)
-- Cash on Hand Card with Period Delta (Begin/End/Δ) on Transactions Page (DONE)
-- Bulk Apply Auto-Rules button in Transactions UI (DONE)
-- Create Rule from Transaction context menu item (DONE)
-- Smart Suggestions for Auto-Rules on Rules Page (DONE)
-- Net Worth Widget on Dashboard (DONE)
-- Loan Breakdown by Account with Clickable Drill-down (DONE)
-- Corrected direct income/expenses on loan accounts to be included in PnL (DONE)
+- Change Account Currency functionality & UI (, ) (DONE)
+- Fix cross-currency UI conversion logic () (DONE)
+- Added new Exchange (Обмен валюты) transaction type (DONE)
+- Fixed loan accounts blank screen crash on transfers (DONE)
+- Fixed currency alignment in Loans / Repaid block (now uses Loan account currency) (DONE)
+- Net Worth (Чистый капитал) card in  (DONE)
+- Tooltip/Info icon for Денег на счетах (DONE)
+- Fixed Account Multi-Select filter toggle bug (DONE)
+- Fixed white screen crash when creating Auto-Rules (422 validation array map) (DONE)
+- Fixed  persistence by adding Docker volume  to  (DONE)
+- AI Receipt Upload & Parsing (Gemini Nano Banana via Emergent LLM Key) in  (DONE)
+- Telegram webhook support for photo/document receipts (DONE)
+-  for matching uploaded receipts to pending transactions (DONE)
+-  for popover preview of attachments in the transactions table (DONE)
+- Inline PDF preview rendering (DONE)
+-  for fullscreen preview of receipts (DONE)
 
 **Earlier issues found/mentioned but not fixed**
 None.
@@ -63,63 +60,70 @@ None.
 - Frontend: React, Tailwind, Shadcn UI, Recharts
 - Backend: FastAPI, Python, Motor async
 - Database: MongoDB. Workspaces use  as the workspace identifier.
+- Infrastructure: Docker-compose with persistent volumes.
+- Integrations: Gemini Nano Banana (via Emergent Integrations) for OCR and Receipt parsing.
 
 **key DB schema**
 - : 
 - :  
+- : 
 
 **changes in tech stack**
-- No major tech stack changes, but heavy architectural updates to Analytics APIs and MongoDB Aggregation Pipelines to cleanly separate Loan/Liability transfers from Operational Income/Expense.
+- Added  SDK to process receipts using Gemini Nano Banana.
+- Updated  to define and map  for persistent receipt storage.
 
 **All files of reference**
--  (Currently modifying to support currency swap)
--  (Needs UI for currency swap)
--  (Heavily modified with bulk actions, cash cards, and drill-downs)
--  (Modified to support net_worth and proper loan handling)
--  (Added  and )
+-  (New: Handles AI extraction and transaction matching logic)
+-  (Modified: Receives photos/documents and processes them as receipts)
+-  (New: Wizard for linking uploaded receipts to transactions)
+-  (New: Renders popover previews for receipts)
+-  (New: Fullscreen viewer)
+-  (Modified: Displaying clips, Net Worth card, Exchange button)
+-  (Modified manually via bash to include volumes)
 
 **Areas that need refactoring**:
--  is getting massively large (>1800 lines). Sub-components like , , and the  should ideally be extracted into separate component files if any more work is done there.
+-  is getting massively large (>2200 lines). The toolbar, filters, and the transaction table should be extracted into separate component files.
 
 **key api endpoints**
-- : (IN PROGRESS) Changes account currency.
-- : Bulk assigns category/direction.
-- : Runs auto-categorization on selected items.
-- : Returns smart categorization patterns based on unmapped transactions.
-- : Returns Net Worth history.
+- : Uploads a file, extracts data using Gemini Nano Banana, and matches to existing DB records.
+- : Fetches pending (unlinked) receipts.
+- : Retrieves persistent files from .
+- : Receives generic messages and attachments directly from Telegram bot.
 
 **Critical Info for New Agent**
-- **Terminology**: The user's business explicitly calls categories Статья (Article). 
-- **Loans Accounting Logic**: Direct income/expenses on loan accounts are considered operational PnL, but *transfers* between a loan account and a regular asset account are treated strictly as loan issuance/repayment and are explicitly excluded from PnL revenue/expense totals to prevent inflation of turnover metrics.
-- **Cross-Currency**: When an exchange rate is provided manually, the logic uses  (i.e. units of destination currency per 1 unit of source currency). NBP rates are pulled dynamically if omitted.
+- **Docker Volume**: File uploads are now persisted in  via the  volume mapped in .
+- **Receipt Workflow**: The intended user workflow is: Manager uploads receipts via Telegram Bot -> System persists files & parses OCR -> Owner goes to Web UI, clicks Проанализировать чеки -> Links receipts to actual financial transactions -> Icon appears on Transactions list.
+- **Emergent LLM Key**: The key is utilized strictly via the  library in .
 
 **documents and test reports created in this job**
--  (Updated heavily)
-- 
+-  (Updated)
+-  (Notes on image processing via Emergent integrations)
 
 **Last 10 User Messages and any pending HUMAN messages** 
-1. (User) Объясни как и что означают цифры в статистике (Asked for explanation of stats; Agent explained).
-2. (User) да, добавь чистый капитал. И еще, вот есть счет заемный, но его операции я сделал как будто просто расход. А как правильно это оформить... (Agent fixed direct expense logic on loan accounts and added Net Worth widget).
-3. (User) [Uploaded screenshots] вот скрин платежей с заемного счета (Agent confirmed they are direct expenses and handled them).
-4. (User) но если я вручную считаю платежи со счета cash minsk у меня выходит 60995,9 евро и 42148,66 злотых а в блоке займов цифра другая (Agent explained that the Loans block groups ALL loan accounts).
-5. (User) в этом месяце не было займов от аликор (Agent added per-account breakdown to the Loans summary).
-6. (User) сделай улучшения. И можно ли загрузить тебе бэкап или таблицу со всеми операциями, что бы ты мог все проверить? Я не уверен, что мы правильно все считаем... (Agent analyzed the user's Excel backup, confirmed the math is correct, but identified that Cash Minsk is a PLN account with EUR transactions, causing NBP conversions).
-7. (User) [Uploaded Backup File]. (Agent analyzed it).
-8. (User) давай я просто переделаю валюту счета кэш минск и конвертирую две операции в евро
-*Pending*: Finish implementing the backend and frontend for changing an account's currency, and verify it works.
+1. (User) добавь идею (Proceeded to add Lightbox feature for receipts).
+2. (User) теперь открывается. а пдф нельзя показывать без открытия? при наведении например (Agent implemented inline PDF previewing in AttachmentThumb and AnalyzePendingDialog).
+3. (User) [Shared output of docker-compose error] (Agent corrected missing volume setup for persistent receipt storage).
+4. (User) [Shared  path search] (Agent identified the correct internal path as ).
+5. (User) [Shared  proving missing volumes] (Agent analyzed it).
+6. (User) при попытке открыть чек выдает ошибку (Agent diagnosed a missing Docker volume that wiped uploads on container rebuild).
+7. (User) при нажатии на скрепку можно ли открыть миниатюру чека? (Agent built ).
+8. (User) смотри, нужно сделать так, что бы в телеграм бот просто загружались чеки... И в списке операций нужна иконка, что к данной операции прикреплен чек (Agent updated Telegram hook to save without prompting, built wizard UI).
+9. (User) можно использовать уже существующий бот? (Agent wired Telegram Webhook).
+10. (User) давай настроим загрузку через телеграм, и где будут храниться чеки? (Agent wired endpoints and exports).
 
 **Project Health Check:**
-- Broken: None.
-- Mocked: None.
+Broken: None.
+Mocked: None.
 
 **3rd Party Integrations**
-- Claude Sonnet 4.5 — uses Emergent LLM Key
-- Google Drive API — requires User OAuth 2.0 Credentials
-- Google Sheets API — requires User Service Account JSON
-- Telegram Webhook — requires User Bot Token
+- Gemini Nano Banana (Image Extraction) — uses Emergent LLM Key via .
+- OpenAI GPT-4o / Claude Sonnet 4.5 — uses Emergent LLM Key.
+- Google Drive API — requires User OAuth 2.0 Credentials.
+- Google Sheets API — requires User Service Account JSON.
+- Telegram Webhook — requires User Bot Token.
 
 **Testing status**
-- Testing agent used after significant changes: NO (Tested via bash scripts, curl, DB queries, and UI screenshot tool extensively).
+- Testing agent used after significant changes: NO (Tested extensively using the screenshot tool, backend API curls, and Bash scripts).
 - Troubleshoot agent used after agent stuck in loop: NO
 - Test files created: None
 - Known regressions: None
@@ -128,11 +132,7 @@ None.
 Check . (admin / 220066mm)
 
 **What agent forgot to execute**
-The agent modified  to add the currency swap endpoint, but did not finish saving the file completely, did not test the backend, and did not add the corresponding UI in .
+The agent finished the implementation of  but did not actively wait for the user to confirm if it meets their needs before the session terminated.
 
 **Debugging checklist for current issue**
-    Issue: Complete Change Account Currency implementation.
-    Backend files to check: 
-    - : Ensure  exists, accepts the new currency, updates the DB, and properly forces balance recalculation for that account.
-    Frontend files to check: 
-    - : Find the account editing dialog/form. Add a way to change the currency (currently it might be disabled/read-only for existing accounts). Wire it to hit the new endpoint and refresh data.</analysis>
+    Issue: No active bugs. Wait for user validation of the  receipt viewer, and ask the user how they would like to proceed with the pending Initial Balance Configuration task. Ensure to converse in Russian.</analysis>

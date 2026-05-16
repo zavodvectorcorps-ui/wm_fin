@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
-import { Paperclip, FileText, Loader2, ExternalLink, Unlink } from 'lucide-react';
+import { Paperclip, FileText, Loader2, ExternalLink, Unlink, Maximize2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { Lightbox } from './Lightbox';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const apiClient = () => {
@@ -21,6 +22,7 @@ export const AttachmentThumb = ({ transactionId, onUnlinked }) => {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [docs, setDocs] = useState([]);
+  const [lightbox, setLightbox] = useState(null); // { url, mimeType, fileName }
 
   const load = async () => {
     setLoading(true);
@@ -92,33 +94,55 @@ export const AttachmentThumb = ({ transactionId, onUnlinked }) => {
             {docs.map((doc) => {
               const url = `${process.env.REACT_APP_BACKEND_URL}${doc.file_url}`;
               const isPdf = (doc.mime_type || '').includes('pdf');
+              const openLightbox = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setLightbox({ url, mimeType: doc.mime_type, fileName: doc.file_name });
+              };
               return (
                 <div key={doc.id} className="space-y-1.5">
                   {isPdf ? (
-                    <div className="relative h-48 rounded-md border border-muted bg-muted/30 overflow-hidden group">
+                    <div
+                      className="relative h-48 rounded-md border border-muted bg-muted/30 overflow-hidden group cursor-zoom-in"
+                      onDoubleClick={openLightbox}
+                      title="Двойной клик — на весь экран"
+                    >
                       <embed
                         src={`${url}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
                         type="application/pdf"
                         className="w-full h-full pointer-events-none"
                       />
-                      <a
-                        href={url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="absolute inset-0 flex items-end justify-end p-2 bg-gradient-to-t from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition cursor-zoom-in"
-                        title="Открыть в полном размере"
+                      <button
+                        type="button"
+                        onClick={openLightbox}
+                        className="absolute inset-0 flex items-end justify-end p-2 bg-gradient-to-t from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition"
+                        title="Открыть на весь экран"
                       >
-                        <span className="text-xs bg-slate-900/80 text-white px-2 py-1 rounded">PDF · открыть</span>
-                      </a>
+                        <span className="text-xs bg-slate-900/80 text-white px-2 py-1 rounded flex items-center gap-1">
+                          <Maximize2 className="h-3 w-3" /> На весь экран
+                        </span>
+                      </button>
                     </div>
                   ) : (
-                    <a href={url} target="_blank" rel="noreferrer">
+                    <div
+                      className="relative cursor-zoom-in group"
+                      onDoubleClick={openLightbox}
+                      title="Двойной клик — на весь экран"
+                    >
                       <img
                         src={url}
                         alt={doc.file_name}
-                        className="w-full h-40 object-contain rounded-md border border-muted bg-black/20 hover:opacity-90 transition cursor-zoom-in"
+                        className="w-full h-40 object-contain rounded-md border border-muted bg-black/20 group-hover:opacity-90 transition"
                       />
-                    </a>
+                      <button
+                        type="button"
+                        onClick={openLightbox}
+                        className="absolute top-1.5 right-1.5 p-1 rounded bg-slate-900/70 text-white opacity-0 group-hover:opacity-100 transition"
+                        title="Открыть на весь экран"
+                      >
+                        <Maximize2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   )}
                   <div className="flex items-center justify-between gap-2 text-xs">
                     <span className="truncate text-muted-foreground" title={doc.file_name}>{doc.file_name}</span>
@@ -149,6 +173,13 @@ export const AttachmentThumb = ({ transactionId, onUnlinked }) => {
           </div>
         )}
       </PopoverContent>
+      <Lightbox
+        open={!!lightbox}
+        onOpenChange={(v) => { if (!v) setLightbox(null); }}
+        url={lightbox?.url}
+        mimeType={lightbox?.mimeType}
+        fileName={lightbox?.fileName}
+      />
     </Popover>
   );
 };
