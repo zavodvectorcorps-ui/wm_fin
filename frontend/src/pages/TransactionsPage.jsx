@@ -18,6 +18,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../com
 import { Calendar as CalendarUI } from '../components/ui/calendar';
 import { ReceiptUploadDialog } from '../components/ReceiptUploadDialog';
 import { AnalyzePendingDialog } from '../components/AnalyzePendingDialog';
+import { AttachmentThumb } from '../components/AttachmentThumb';
 import { 
   Plus, Minus, ArrowLeftRight, Search, Filter, Pencil, ArrowDownToLine, Bot, 
   Trash2, Calendar, MoreHorizontal, Paperclip, FileText, Link2, Unlink, AlertTriangle,
@@ -1619,10 +1620,9 @@ export const TransactionsPage = () => {
                           <AlertTriangle className="h-4 w-4 text-amber-500 flex-shrink-0" title="Под вопросом" />
                         )}
                         {t.has_attachment && (
-                          <Paperclip
-                            className="h-4 w-4 text-amber-400 flex-shrink-0"
-                            title="К операции прикреплён чек"
-                            data-testid={`paperclip-${t.id}`}
+                          <AttachmentThumb
+                            transactionId={t.id}
+                            onUnlinked={fetchData}
                           />
                         )}
                       </div>
