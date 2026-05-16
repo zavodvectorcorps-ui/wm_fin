@@ -106,11 +106,22 @@ export const AnalyzePendingDialog = ({ open, onOpenChange, onDone }) => {
     const isPdf = (doc.mime_type || '').includes('pdf');
     if (isPdf) {
       return (
-        <a href={url} target="_blank" rel="noreferrer"
-           className="flex items-center justify-center h-48 rounded-md border border-muted bg-muted/30 hover:bg-muted/50 transition">
-          <FileText className="h-10 w-10 text-amber-400 mr-2" />
-          <span className="text-sm">Открыть PDF</span>
-        </a>
+        <div className="relative h-48 rounded-md border border-muted bg-muted/30 overflow-hidden group">
+          <embed
+            src={`${url}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+            type="application/pdf"
+            className="w-full h-full pointer-events-none"
+          />
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            className="absolute inset-0 flex items-end justify-end p-2 bg-gradient-to-t from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition cursor-zoom-in"
+            title="Открыть PDF в новой вкладке"
+          >
+            <span className="text-xs bg-slate-900/80 text-white px-2 py-1 rounded">PDF · открыть</span>
+          </a>
+        </div>
       );
     }
     return (
