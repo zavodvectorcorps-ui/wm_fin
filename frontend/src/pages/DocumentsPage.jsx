@@ -211,6 +211,7 @@ export const DocumentsPage = () => {
   });
   
   const [exportPeriod, setExportPeriod] = useState(new Date().toISOString().slice(0, 7));
+  const [exportType, setExportType] = useState('all'); // 'all' | 'receipt' | ...
   
   const fileInputRef = useRef(null);
 
@@ -363,13 +364,18 @@ export const DocumentsPage = () => {
 
   const handleExport = async () => {
     try {
-      const response = await api().get(`/documents/export?period=${exportPeriod}`, {
+      let url = `/documents/export?period=${exportPeriod}`;
+      if (exportType && exportType !== 'all') {
+        url += `&types=${encodeURIComponent(exportType)}`;
+      }
+      const response = await api().get(url, {
         responseType: 'blob'
       });
-      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const blobUrl = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `documents_${exportPeriod}.zip`);
+      link.href = blobUrl;
+      const suffix = exportType !== 'all' ? `_${exportType}` : '';
+      link.setAttribute('download', `documents_${exportPeriod}${suffix}.zip`);
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -924,7 +930,25 @@ export const DocumentsPage = () => {
               <Label>Период</Label>
               <MonthPicker value={exportPeriod} onChange={setExportPeriod} />
             </div>
-            
+
+            <div className="space-y-2">
+              <Label>Тип документов</Label>
+              <Select value={exportType} onValueChange={setExportType}>
+                <SelectTrigger data-testid="export-type-select">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Все типы</SelectItem>
+                  <SelectItem value="receipt">Только чеки</SelectItem>
+                  <SelectItem value="invoice">Только счета-фактуры</SelectItem>
+                  <SelectItem value="bank_statement">Банковские выписки</SelectItem>
+                  <SelectItem value="contract">Договоры</SelectItem>
+                  <SelectItem value="act">Акты</SelectItem>
+                  <SelectItem value="other">Прочие</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             <p className="text-sm text-muted-foreground">
               Будет создан ZIP-архив со структурой папок: /расходы/, /доходы/, /выписки/, /договоры/
             </p>

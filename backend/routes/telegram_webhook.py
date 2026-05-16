@@ -6,21 +6,28 @@ Flow:
 2. Pick type → Direction buttons
 3. Pick direction → Enter amount + description
 4. "1000 Антон Ск" → Creates transaction on Cash PL
+5. Photo/PDF → Gemini OCR → finds matching transactions → user taps to link
 """
 from fastapi import APIRouter, Request, HTTPException, Depends
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
 import uuid
+import os
 import re
 import logging
 import httpx
 
 from database import db
 from auth import get_current_user
-from models import Transaction
+from models import Transaction, Document
 from services.balance import update_account_balance
+from routes.receipts import _extract_with_gemini, _safe_date, _safe_amount, MIME_BY_EXT
 
 router = APIRouter(prefix="/api")
 logger = logging.getLogger(__name__)
+
+UPLOADS_DIR = Path(__file__).parent.parent / "uploads"
+UPLOADS_DIR.mkdir(exist_ok=True)
 
 
 async def get_bot_config():
@@ -59,6 +66,110 @@ async def answer_callback(bot_token: str, callback_id: str, text: str = ""):
             )
     except Exception:
         pass
+
+
+async def telegram_download_file(bot_token: str, file_id: str, suggested_ext: str) -> tuple[Path, str] | tuple[None, None]:
+    """Download a Telegram file by file_id. Returns (local_path, mime) or (None, None)."""
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            r = await client.get(
+                f"https://api.telegram.org/bot{bot_token}/getFile",
+                params={"file_id": file_id},
+            )
+            if r.status_code != 200:
+                return None, None
+            file_path_remote = r.json().get("result", {}).get("file_path")
+            if not file_path_remote:
+                return None, None
+            r2 = await client.get(
+                f"https://api.telegram.org/file/bot{bot_token}/{file_path_remote}",
+            )
+            if r2.status_code != 200:
+                return None, None
+            content = r2.content
+        ext = suggested_ext.lower() if suggested_ext else os.path.splitext(file_path_remote)[1].lower()
+        if not ext or ext not in {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".pdf"}:
+            ext = ".jpg"
+        local_name = f"{uuid.uuid4()}{ext}"
+        local_path = UPLOADS_DIR / local_name
+        with open(local_path, "wb") as f:
+            f.write(content)
+        mime = MIME_BY_EXT.get(ext, "application/octet-stream")
+        return local_path, mime
+    except Exception as e:
+        logger.error(f"Telegram download error: {e}")
+        return None, None
+
+
+async def process_receipt_for_bot(bot_token: str, chat_id, owner_user_id: str, local_path: Path, mime: str, original_filename: str):
+    """OCR + match. Returns dict with extracted+candidates+document_id."""
+    extracted = await _extract_with_gemini(local_path, mime)
+    ext_date = _safe_date(extracted.get("date"))
+    ext_amount = _safe_amount(extracted.get("amount"))
+    ext_currency = extracted.get("currency")
+    if isinstance(ext_currency, str):
+        ext_currency = ext_currency.upper().strip() or None
+    if ext_currency and ext_currency not in {"PLN", "EUR", "USD"}:
+        ext_currency = None
+    ext_merchant = (extracted.get("merchant") or "")[:60] or None
+
+    candidates = []
+    if ext_date and ext_amount and ext_amount > 0:
+        target = datetime.strptime(ext_date, "%Y-%m-%d")
+        date_from = (target - timedelta(days=3)).strftime("%Y-%m-%d")
+        date_to = (target + timedelta(days=3)).strftime("%Y-%m-%d")
+        amt_min = ext_amount * 0.9
+        amt_max = ext_amount * 1.1
+        q = {
+            "user_id": owner_user_id,
+            "date": {"$gte": date_from, "$lte": date_to},
+            "amount": {"$gte": amt_min, "$lte": amt_max},
+            "type": {"$in": ["expense", "income"]},
+        }
+        if ext_currency:
+            q["currency"] = ext_currency
+        cursor = db.transactions.find(q, {"_id": 0}).sort("date", 1).limit(20)
+        async for tx in cursor:
+            try:
+                tx_date = datetime.strptime(tx.get("date", "")[:10], "%Y-%m-%d")
+                day_dist = abs((tx_date - target).days)
+            except Exception:
+                day_dist = 99
+            amt_delta = abs((tx.get("amount") or 0) - ext_amount) / max(ext_amount, 0.01)
+            score = day_dist + amt_delta * 10
+            tx["_match_score"] = round(score, 3)
+            tx["_day_distance"] = day_dist
+            candidates.append(tx)
+        candidates.sort(key=lambda x: x["_match_score"])
+        candidates = candidates[:5]
+
+    safe_filename = local_path.name
+    description_val = ext_merchant or "Чек из Telegram (AI)"
+    doc = Document(
+        document_date=ext_date,
+        type="receipt",
+        file_name=original_filename or safe_filename,
+        file_url=f"/api/documents/file/{safe_filename}",
+        file_size=local_path.stat().st_size,
+        mime_type=mime,
+        transaction_id=None,
+        direction_id=None,
+        period=ext_date[:7] if ext_date else None,
+        status="pending",
+        source="ai-receipt",
+        description=description_val,
+        user_id=owner_user_id,
+    ).model_dump()
+    doc["ai_extracted"] = {
+        "date": ext_date, "amount": ext_amount,
+        "currency": ext_currency, "merchant": ext_merchant,
+    }
+    await db.documents.insert_one(doc)
+    return {
+        "document_id": doc["id"],
+        "extracted": doc["ai_extracted"],
+        "candidates": candidates,
+    }
 
 
 def type_keyboard():
@@ -151,6 +262,42 @@ async def telegram_webhook(request: Request):
 
         bot_user = await get_or_create_bot_user(chat_id, tg_user, owner_user_id)
 
+        # Receipt: link to candidate N
+        if data.startswith("rl:"):
+            try:
+                idx = int(data.split(":", 1)[1])
+            except Exception:
+                await answer_callback(bot_token, cb["id"], "Ошибка")
+                return {"ok": True}
+            pending = bot_user.get("pending_receipt") or {}
+            cand_ids = pending.get("candidate_ids") or []
+            doc_id = pending.get("document_id")
+            if idx < 0 or idx >= len(cand_ids) or not doc_id:
+                await answer_callback(bot_token, cb["id"], "Кандидат не найден")
+                return {"ok": True}
+            tx_id = cand_ids[idx]
+            await db.documents.update_one(
+                {"id": doc_id, "user_id": owner_user_id},
+                {"$set": {"transaction_id": tx_id, "status": "linked"}},
+            )
+            await update_bot_user(chat_id, {"pending_receipt": None})
+            await answer_callback(bot_token, cb["id"], "✓ Привязано")
+            await send_telegram(
+                bot_token, chat_id,
+                "✅ <b>Чек привязан к операции</b>",
+            )
+            return {"ok": True}
+
+        # Receipt: skip (leave unmatched)
+        if data == "rs":
+            await update_bot_user(chat_id, {"pending_receipt": None})
+            await answer_callback(bot_token, cb["id"], "Оставлен в pending")
+            await send_telegram(
+                bot_token, chat_id,
+                "📥 Чек сохранён в раздел «Чеки без операций» — привяжите вручную в веб-интерфейсе.",
+            )
+            return {"ok": True}
+
         # Step 1 result: Type selected
         if data.startswith("type:"):
             tx_type = data.split(":")[1]
@@ -199,6 +346,96 @@ async def telegram_webhook(request: Request):
     chat_id = message["chat"]["id"]
     text = (message.get("text") or "").strip()
     tg_user = message.get("from", {})
+
+    # === PHOTO / DOCUMENT (RECEIPT) ===
+    photo_list = message.get("photo")
+    doc_msg = message.get("document")
+    if photo_list or doc_msg:
+        bot_user = await get_or_create_bot_user(chat_id, tg_user, owner_user_id)
+        if photo_list:
+            largest = sorted(photo_list, key=lambda p: p.get("file_size", 0))[-1]
+            file_id = largest["file_id"]
+            ext = ".jpg"
+            original_name = "telegram_photo.jpg"
+        else:
+            file_id = doc_msg["file_id"]
+            mime_in = (doc_msg.get("mime_type") or "").lower()
+            original_name = doc_msg.get("file_name") or "telegram_document"
+            if "pdf" in mime_in:
+                ext = ".pdf"
+            elif "png" in mime_in:
+                ext = ".png"
+            elif "webp" in mime_in:
+                ext = ".webp"
+            elif "heic" in mime_in or "heif" in mime_in:
+                ext = ".heic"
+            elif "jpeg" in mime_in or "jpg" in mime_in:
+                ext = ".jpg"
+            else:
+                await send_telegram(
+                    bot_token, chat_id,
+                    "❌ Поддерживаются только JPG/PNG/WEBP/HEIC/PDF",
+                )
+                return {"ok": True}
+
+        await send_telegram(bot_token, chat_id, "📷 Получил чек, распознаю…")
+        local_path, mime = await telegram_download_file(bot_token, file_id, ext)
+        if not local_path:
+            await send_telegram(bot_token, chat_id, "❌ Не удалось скачать файл из Telegram")
+            return {"ok": True}
+
+        try:
+            result = await process_receipt_for_bot(bot_token, chat_id, owner_user_id, local_path, mime, original_name)
+        except Exception as e:
+            logger.exception("Receipt processing failed")
+            await send_telegram(bot_token, chat_id, f"❌ Ошибка распознавания: {str(e)[:200]}")
+            return {"ok": True}
+
+        ext_d = result["extracted"]
+        candidates = result["candidates"]
+
+        # Build summary text
+        amount_str = f"{ext_d['amount']:,.2f} {ext_d.get('currency') or '?'}" if ext_d.get("amount") else "?"
+        date_str = ext_d.get("date") or "?"
+        merch_str = ext_d.get("merchant") or "—"
+        summary = (
+            f"🧾 <b>Распознано:</b>\n"
+            f"• Сумма: <b>{amount_str}</b>\n"
+            f"• Дата: <b>{date_str}</b>\n"
+            f"• Магазин: {merch_str}\n"
+        )
+
+        if not candidates:
+            summary += "\n⚠️ Похожих операций не найдено. Чек сохранён в pending."
+            await update_bot_user(chat_id, {"pending_receipt": None})
+            await send_telegram(bot_token, chat_id, summary)
+            return {"ok": True}
+
+        summary += f"\n<b>Найдено похожих операций: {len(candidates)}</b>\nВыберите, к какой привязать:"
+        inline_buttons = []
+        cand_ids = []
+        for i, tx in enumerate(candidates):
+            tx_id = tx["id"]
+            cand_ids.append(tx_id)
+            sign = "−" if tx.get("type") == "expense" else "+"
+            tx_amount = f"{sign}{tx.get('amount', 0):,.2f} {tx.get('currency', 'PLN')}"
+            desc = (tx.get("description") or "").strip()[:25] or "(без описания)"
+            tx_date = (tx.get("date") or "")[:10]
+            label = f"{tx_date} · {tx_amount} · {desc}"
+            inline_buttons.append([{"text": label, "callback_data": f"rl:{i}"}])
+        inline_buttons.append([{"text": "⨯ Оставить без привязки", "callback_data": "rs"}])
+
+        # Save pending state
+        await update_bot_user(chat_id, {"pending_receipt": {
+            "document_id": result["document_id"],
+            "candidate_ids": cand_ids,
+        }})
+
+        await send_telegram(
+            bot_token, chat_id, summary,
+            reply_markup={"inline_keyboard": inline_buttons},
+        )
+        return {"ok": True}
 
     if not text:
         return {"ok": True}
