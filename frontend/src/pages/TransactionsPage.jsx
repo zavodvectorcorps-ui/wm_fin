@@ -16,11 +16,12 @@ import { Checkbox } from '../components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
 import { Calendar as CalendarUI } from '../components/ui/calendar';
+import { ReceiptUploadDialog } from '../components/ReceiptUploadDialog';
 import { 
   Plus, Minus, ArrowLeftRight, Search, Filter, Pencil, ArrowDownToLine, Bot, 
   Trash2, Calendar, MoreHorizontal, Paperclip, FileText, Link2, Unlink, AlertTriangle,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, CalendarIcon, X, Loader2,
-  Wallet, Info, HelpCircle
+  Wallet, Info, HelpCircle, Receipt
 } from 'lucide-react';
 import { formatCurrency, formatDate, getDirectionClass, getStatusLabel, getPeriodDates, getTypeLabel, todayLocal, cn } from '../lib/utils';
 import { toast } from 'sonner';
@@ -588,6 +589,7 @@ export const TransactionsPage = () => {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [createRuleOpen, setCreateRuleOpen] = useState(false);
+  const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
   const [createRuleData, setCreateRuleData] = useState({
     pattern: '',
     category_id: '',
@@ -1186,6 +1188,15 @@ export const TransactionsPage = () => {
           >
             <ArrowLeftRight className="h-4 w-4 mr-2" />
             Обмен валюты
+          </Button>
+          <Button
+            onClick={() => setReceiptDialogOpen(true)}
+            variant="outline"
+            className="border-amber-500/40 text-amber-400 hover:bg-amber-500/10"
+            data-testid="upload-receipt-btn"
+          >
+            <Receipt className="h-4 w-4 mr-2" />
+            Загрузить чек
           </Button>
         </div>
       </div>
@@ -2169,6 +2180,12 @@ export const TransactionsPage = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ReceiptUploadDialog
+        open={receiptDialogOpen}
+        onOpenChange={setReceiptDialogOpen}
+        onDone={() => { fetchData(); }}
+      />
     </div>
   );
 };

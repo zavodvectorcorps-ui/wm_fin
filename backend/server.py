@@ -28,6 +28,7 @@ from routes.transactions import router as transactions_router
 from routes.planned_payments import router as planned_payments_router
 from routes.projects import router as projects_router
 from routes.documents import router as documents_router
+from routes.receipts import router as receipts_router
 from routes.notifications import router as notifications_router
 from routes.analytics import router as analytics_router
 from routes.adesk import router as adesk_router
@@ -174,6 +175,7 @@ all_routers = [
     planned_payments_router,
     projects_router,
     documents_router,
+    receipts_router,
     notifications_router,
     analytics_router,
     adesk_router,

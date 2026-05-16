@@ -296,7 +296,7 @@ class Document(BaseModel):
     folder_id: Optional[str] = None
     period: Optional[str] = None
     status: Literal["linked", "pending", "processed"] = "pending"
-    source: Literal["manual", "email", "telegram_bot"] = "manual"
+    source: Literal["manual", "email", "telegram_bot", "ai-receipt"] = "manual"
     description: Optional[str] = None
     user_id: str = ""
 

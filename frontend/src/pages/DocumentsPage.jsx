@@ -13,10 +13,12 @@ import { Textarea } from '../components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { Calendar } from '../components/ui/calendar';
+import { ReceiptUploadDialog } from '../components/ReceiptUploadDialog';
 import { 
   Upload, FileText, Image, FileSpreadsheet, File, Download, 
   Eye, Trash2, AlertCircle, CheckCircle2, FolderPlus, Folder, FolderOpen,
-  CalendarIcon, ChevronRight, ArrowRight, CheckCheck, X, GripVertical
+  CalendarIcon, ChevronRight, ArrowRight, CheckCheck, X, GripVertical,
+  Receipt as ReceiptIcon
 } from 'lucide-react';
 import { formatDate, getDirectionClass, todayLocal } from '../lib/utils';
 import { toast } from 'sonner';
@@ -183,6 +185,7 @@ export const DocumentsPage = () => {
   const [activeTab, setActiveTab] = useState('all');
   const [activeFolder, setActiveFolder] = useState(null); // null = show all
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
   const [previewDocument, setPreviewDocument] = useState(null);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [newFolderDialogOpen, setNewFolderDialogOpen] = useState(false);
@@ -401,6 +404,15 @@ export const DocumentsPage = () => {
           <Button variant="outline" onClick={() => setExportDialogOpen(true)} data-testid="export-docs-btn">
             <Download className="h-4 w-4 mr-2" />
             Экспорт
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setReceiptDialogOpen(true)}
+            className="border-amber-500/40 text-amber-400 hover:bg-amber-500/10"
+            data-testid="upload-receipt-btn"
+          >
+            <ReceiptIcon className="h-4 w-4 mr-2" />
+            Чек с AI
           </Button>
           <Button onClick={() => fileInputRef.current?.click()} data-testid="upload-doc-btn">
             <Upload className="h-4 w-4 mr-2" />
@@ -927,6 +939,12 @@ export const DocumentsPage = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ReceiptUploadDialog
+        open={receiptDialogOpen}
+        onOpenChange={setReceiptDialogOpen}
+        onDone={() => { fetchData(); }}
+      />
     </div>
   );
 };
