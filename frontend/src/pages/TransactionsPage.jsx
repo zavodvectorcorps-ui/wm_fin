@@ -17,6 +17,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popove
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
 import { Calendar as CalendarUI } from '../components/ui/calendar';
 import { ReceiptUploadDialog } from '../components/ReceiptUploadDialog';
+import { AnalyzePendingDialog } from '../components/AnalyzePendingDialog';
 import { 
   Plus, Minus, ArrowLeftRight, Search, Filter, Pencil, ArrowDownToLine, Bot, 
   Trash2, Calendar, MoreHorizontal, Paperclip, FileText, Link2, Unlink, AlertTriangle,
@@ -590,6 +591,8 @@ export const TransactionsPage = () => {
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [createRuleOpen, setCreateRuleOpen] = useState(false);
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
+  const [analyzePendingOpen, setAnalyzePendingOpen] = useState(false);
+  const [pendingReceiptsCount, setPendingReceiptsCount] = useState(0);
   const [createRuleData, setCreateRuleData] = useState({
     pattern: '',
     category_id: '',
@@ -754,6 +757,20 @@ export const TransactionsPage = () => {
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ ...prev, filters, page }));
     } catch (e) { /* ignore */ }
   }, [filters, page]);
+
+  // Poll pending receipts count (badge on "Анализ чеков" button)
+  const refreshPendingCount = useCallback(async () => {
+    try {
+      const r = await api().get('/receipts/unmatched');
+      setPendingReceiptsCount(r.data?.total || 0);
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => {
+    refreshPendingCount();
+    const t = setInterval(refreshPendingCount, 30000);
+    return () => clearInterval(t);
+  }, [refreshPendingCount]);
 
   // Restore scroll position after the first data load, then save it on unmount.
   useEffect(() => {
@@ -1198,6 +1215,21 @@ export const TransactionsPage = () => {
             <Receipt className="h-4 w-4 mr-2" />
             Загрузить чек
           </Button>
+          <Button
+            onClick={() => setAnalyzePendingOpen(true)}
+            variant="outline"
+            className="relative border-amber-500/40 text-amber-400 hover:bg-amber-500/10"
+            disabled={pendingReceiptsCount === 0}
+            data-testid="analyze-receipts-btn"
+          >
+            <Receipt className="h-4 w-4 mr-2" />
+            Проанализировать чеки
+            {pendingReceiptsCount > 0 && (
+              <span className="ml-2 inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-amber-500 text-white text-xs font-bold">
+                {pendingReceiptsCount}
+              </span>
+            )}
+          </Button>
         </div>
       </div>
 
@@ -1585,6 +1617,13 @@ export const TransactionsPage = () => {
                         </div>
                         {t.needs_review && (
                           <AlertTriangle className="h-4 w-4 text-amber-500 flex-shrink-0" title="Под вопросом" />
+                        )}
+                        {t.has_attachment && (
+                          <Paperclip
+                            className="h-4 w-4 text-amber-400 flex-shrink-0"
+                            title="К операции прикреплён чек"
+                            data-testid={`paperclip-${t.id}`}
+                          />
                         )}
                       </div>
                     </TableCell>
@@ -2184,7 +2223,13 @@ export const TransactionsPage = () => {
       <ReceiptUploadDialog
         open={receiptDialogOpen}
         onOpenChange={setReceiptDialogOpen}
-        onDone={() => { fetchData(); }}
+        onDone={() => { fetchData(); refreshPendingCount(); }}
+      />
+
+      <AnalyzePendingDialog
+        open={analyzePendingOpen}
+        onOpenChange={setAnalyzePendingOpen}
+        onDone={() => { fetchData(); refreshPendingCount(); }}
       />
     </div>
   );

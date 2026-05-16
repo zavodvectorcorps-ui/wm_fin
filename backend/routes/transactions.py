@@ -115,6 +115,20 @@ async def get_transactions(
     skip = (page - 1) * per_page
     items = await db.transactions.find(query, {"_id": 0}).sort("date", -1).skip(skip).limit(per_page).to_list(per_page)
 
+    # Annotate each item with has_attachment flag (used by UI to show 📎 icon)
+    item_ids = [t["id"] for t in items]
+    if item_ids:
+        attached = await db.documents.distinct("transaction_id", {
+            "user_id": current_user["user_id"],
+            "transaction_id": {"$in": item_ids},
+        })
+        attached_set = set(attached)
+        for t in items:
+            t["has_attachment"] = t["id"] in attached_set
+    else:
+        for t in items:
+            t["has_attachment"] = False
+
     # Identify loan accounts so we can split summaries between assets and loans
     loan_accs = await db.accounts.find(
         {"user_id": current_user["user_id"], "is_loan": True},

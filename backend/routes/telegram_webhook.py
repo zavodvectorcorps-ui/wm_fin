@@ -262,42 +262,6 @@ async def telegram_webhook(request: Request):
 
         bot_user = await get_or_create_bot_user(chat_id, tg_user, owner_user_id)
 
-        # Receipt: link to candidate N
-        if data.startswith("rl:"):
-            try:
-                idx = int(data.split(":", 1)[1])
-            except Exception:
-                await answer_callback(bot_token, cb["id"], "Ошибка")
-                return {"ok": True}
-            pending = bot_user.get("pending_receipt") or {}
-            cand_ids = pending.get("candidate_ids") or []
-            doc_id = pending.get("document_id")
-            if idx < 0 or idx >= len(cand_ids) or not doc_id:
-                await answer_callback(bot_token, cb["id"], "Кандидат не найден")
-                return {"ok": True}
-            tx_id = cand_ids[idx]
-            await db.documents.update_one(
-                {"id": doc_id, "user_id": owner_user_id},
-                {"$set": {"transaction_id": tx_id, "status": "linked"}},
-            )
-            await update_bot_user(chat_id, {"pending_receipt": None})
-            await answer_callback(bot_token, cb["id"], "✓ Привязано")
-            await send_telegram(
-                bot_token, chat_id,
-                "✅ <b>Чек привязан к операции</b>",
-            )
-            return {"ok": True}
-
-        # Receipt: skip (leave unmatched)
-        if data == "rs":
-            await update_bot_user(chat_id, {"pending_receipt": None})
-            await answer_callback(bot_token, cb["id"], "Оставлен в pending")
-            await send_telegram(
-                bot_token, chat_id,
-                "📥 Чек сохранён в раздел «Чеки без операций» — привяжите вручную в веб-интерфейсе.",
-            )
-            return {"ok": True}
-
         # Step 1 result: Type selected
         if data.startswith("type:"):
             tx_type = data.split(":")[1]
@@ -347,7 +311,9 @@ async def telegram_webhook(request: Request):
     text = (message.get("text") or "").strip()
     tg_user = message.get("from", {})
 
-    # === PHOTO / DOCUMENT (RECEIPT) ===
+    # === PHOTO / DOCUMENT (RECEIPT) — SIMPLE UPLOAD MODE ===
+    # The manager just dumps receipts here. We OCR them, save with status=pending
+    # and the OWNER will match them later in the web UI via "Проанализировать чеки".
     photo_list = message.get("photo")
     doc_msg = message.get("document")
     if photo_list or doc_msg:
@@ -378,63 +344,46 @@ async def telegram_webhook(request: Request):
                 )
                 return {"ok": True}
 
-        await send_telegram(bot_token, chat_id, "📷 Получил чек, распознаю…")
         local_path, mime = await telegram_download_file(bot_token, file_id, ext)
         if not local_path:
             await send_telegram(bot_token, chat_id, "❌ Не удалось скачать файл из Telegram")
             return {"ok": True}
 
         try:
-            result = await process_receipt_for_bot(bot_token, chat_id, owner_user_id, local_path, mime, original_name)
+            result = await process_receipt_for_bot(
+                bot_token, chat_id, owner_user_id, local_path, mime, original_name
+            )
         except Exception as e:
             logger.exception("Receipt processing failed")
             await send_telegram(bot_token, chat_id, f"❌ Ошибка распознавания: {str(e)[:200]}")
             return {"ok": True}
 
         ext_d = result["extracted"]
-        candidates = result["candidates"]
+        amount_str = f"{ext_d['amount']:,.2f} {ext_d.get('currency') or '?'}" if ext_d.get("amount") else "—"
+        date_str = ext_d.get("date") or "—"
+        merch_str = ext_d.get("merchant") or ""
 
-        # Build summary text
-        amount_str = f"{ext_d['amount']:,.2f} {ext_d.get('currency') or '?'}" if ext_d.get("amount") else "?"
-        date_str = ext_d.get("date") or "?"
-        merch_str = ext_d.get("merchant") or "—"
-        summary = (
-            f"🧾 <b>Распознано:</b>\n"
-            f"• Сумма: <b>{amount_str}</b>\n"
-            f"• Дата: <b>{date_str}</b>\n"
-            f"• Магазин: {merch_str}\n"
-        )
+        # Count receipts pending for this period (so manager sees progress)
+        period = (ext_d.get("date") or "")[:7]
+        pending_count = await db.documents.count_documents({
+            "user_id": owner_user_id,
+            "type": "receipt",
+            "status": "pending",
+            "transaction_id": None,
+        })
 
-        if not candidates:
-            summary += "\n⚠️ Похожих операций не найдено. Чек сохранён в pending."
-            await update_bot_user(chat_id, {"pending_receipt": None})
-            await send_telegram(bot_token, chat_id, summary)
-            return {"ok": True}
-
-        summary += f"\n<b>Найдено похожих операций: {len(candidates)}</b>\nВыберите, к какой привязать:"
-        inline_buttons = []
-        cand_ids = []
-        for i, tx in enumerate(candidates):
-            tx_id = tx["id"]
-            cand_ids.append(tx_id)
-            sign = "−" if tx.get("type") == "expense" else "+"
-            tx_amount = f"{sign}{tx.get('amount', 0):,.2f} {tx.get('currency', 'PLN')}"
-            desc = (tx.get("description") or "").strip()[:25] or "(без описания)"
-            tx_date = (tx.get("date") or "")[:10]
-            label = f"{tx_date} · {tx_amount} · {desc}"
-            inline_buttons.append([{"text": label, "callback_data": f"rl:{i}"}])
-        inline_buttons.append([{"text": "⨯ Оставить без привязки", "callback_data": "rs"}])
-
-        # Save pending state
-        await update_bot_user(chat_id, {"pending_receipt": {
-            "document_id": result["document_id"],
-            "candidate_ids": cand_ids,
-        }})
-
-        await send_telegram(
-            bot_token, chat_id, summary,
-            reply_markup={"inline_keyboard": inline_buttons},
-        )
+        lines = [
+            "✅ <b>Чек сохранён</b>",
+            f"📅 Дата: <b>{date_str}</b>",
+            f"💰 Сумма: <b>{amount_str}</b>",
+        ]
+        if merch_str:
+            lines.append(f"🏪 {merch_str}")
+        if period:
+            lines.append(f"\n📂 Период: <b>{period}</b>")
+        lines.append(f"\n📥 Всего непривязанных чеков: <b>{pending_count}</b>")
+        lines.append("\nЧек будет привязан к операции после анализа в веб-сервисе.")
+        await send_telegram(bot_token, chat_id, "\n".join(lines))
         return {"ok": True}
 
     if not text:

@@ -265,3 +265,66 @@ async def list_unmatched(current_user: dict = Depends(get_current_user)):
     async for d in cursor:
         items.append(d)
     return {"items": items, "total": len(items)}
+
+
+@router.get("/analyze-pending")
+async def analyze_pending(current_user: dict = Depends(get_current_user)):
+    """
+    For every pending (unmatched) receipt — search for matching transactions
+    in DB and attach a list of candidates to each. Returns a flat list ready
+    for the frontend "Проанализировать чеки" wizard.
+    """
+    user_id = current_user["user_id"]
+    docs_cursor = db.documents.find(
+        {
+            "user_id": user_id,
+            "type": "receipt",
+            "status": "pending",
+            "transaction_id": None,
+        },
+        {"_id": 0},
+    ).sort("created_at", 1).limit(500)
+
+    out = []
+    async for d in docs_cursor:
+        ext = d.get("ai_extracted") or {}
+        ext_date = ext.get("date")
+        ext_amount = ext.get("amount")
+        ext_currency = ext.get("currency")
+
+        candidates = []
+        if ext_date and ext_amount and ext_amount > 0:
+            try:
+                target = datetime.strptime(ext_date, "%Y-%m-%d")
+            except Exception:
+                target = None
+            if target:
+                date_from = (target - timedelta(days=3)).strftime("%Y-%m-%d")
+                date_to = (target + timedelta(days=3)).strftime("%Y-%m-%d")
+                amt_min = ext_amount * 0.9
+                amt_max = ext_amount * 1.1
+                q = {
+                    "user_id": user_id,
+                    "date": {"$gte": date_from, "$lte": date_to},
+                    "amount": {"$gte": amt_min, "$lte": amt_max},
+                    "type": {"$in": ["expense", "income"]},
+                }
+                if ext_currency:
+                    q["currency"] = ext_currency
+                tx_cursor = db.transactions.find(q, {"_id": 0}).sort("date", 1).limit(20)
+                async for tx in tx_cursor:
+                    try:
+                        tx_date = datetime.strptime(tx.get("date", "")[:10], "%Y-%m-%d")
+                        day_dist = abs((tx_date - target).days)
+                    except Exception:
+                        day_dist = 99
+                    amt_delta = abs((tx.get("amount") or 0) - ext_amount) / max(ext_amount, 0.01)
+                    score = day_dist + amt_delta * 10
+                    tx["_match_score"] = round(score, 3)
+                    tx["_day_distance"] = day_dist
+                    tx["_amount_delta_pct"] = round(amt_delta * 100, 1)
+                    candidates.append(tx)
+                candidates.sort(key=lambda x: x["_match_score"])
+                candidates = candidates[:5]
+        out.append({"document": d, "candidates": candidates})
+    return {"items": out, "total": len(out)}
