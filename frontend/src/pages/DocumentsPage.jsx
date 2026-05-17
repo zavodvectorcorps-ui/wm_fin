@@ -51,7 +51,7 @@ const formatFileSize = (bytes) => {
 };
 
 /* ──── Month picker via Calendar popover ──── */
-const MonthPicker = ({ value, onChange }) => {
+const MonthPicker = ({ value, onChange, disabled = false }) => {
   const [open, setOpen] = useState(false);
   const selectedDate = value ? new Date(value + '-01') : null;
 
@@ -63,9 +63,9 @@ const MonthPicker = ({ value, onChange }) => {
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={(o) => !disabled && setOpen(o)}>
       <PopoverTrigger asChild>
-        <Button variant="outline" className="w-full justify-start text-left font-normal" data-testid="filter-period-btn">
+        <Button variant="outline" disabled={disabled} className="w-full justify-start text-left font-normal" data-testid="filter-period-btn">
           <CalendarIcon className="mr-2 h-4 w-4" />
           {value ? format(new Date(value + '-01'), 'LLLL yyyy', { locale: ru }) : 'Выберите период'}
         </Button>
@@ -212,6 +212,7 @@ export const DocumentsPage = () => {
   
   const [exportPeriod, setExportPeriod] = useState(new Date().toISOString().slice(0, 7));
   const [exportType, setExportType] = useState('all'); // 'all' | 'receipt' | ...
+  const [exportAllPeriods, setExportAllPeriods] = useState(false);
   
   const fileInputRef = useRef(null);
 
@@ -364,10 +365,10 @@ export const DocumentsPage = () => {
 
   const handleExport = async () => {
     try {
-      let url = `/documents/export?period=${exportPeriod}`;
-      if (exportType && exportType !== 'all') {
-        url += `&types=${encodeURIComponent(exportType)}`;
-      }
+      const params = new URLSearchParams();
+      if (!exportAllPeriods) params.set('period', exportPeriod);
+      if (exportType && exportType !== 'all') params.set('types', exportType);
+      const url = `/documents/export${params.toString() ? '?' + params.toString() : ''}`;
       const response = await api().get(url, {
         responseType: 'blob'
       });
@@ -375,14 +376,19 @@ export const DocumentsPage = () => {
       const link = document.createElement('a');
       link.href = blobUrl;
       const suffix = exportType !== 'all' ? `_${exportType}` : '';
-      link.setAttribute('download', `documents_${exportPeriod}${suffix}.zip`);
+      const periodPart = exportAllPeriods ? 'all' : exportPeriod;
+      link.setAttribute('download', `documents_${periodPart}${suffix}.zip`);
       document.body.appendChild(link);
       link.click();
       link.remove();
       toast.success('Архив скачан');
       setExportDialogOpen(false);
     } catch (error) {
-      toast.error('Ошибка экспорта');
+      if (error?.response?.status === 404) {
+        toast.error('Нет документов за выбранный период');
+      } else {
+        toast.error('Ошибка экспорта');
+      }
     }
   };
 
@@ -928,7 +934,16 @@ export const DocumentsPage = () => {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Период</Label>
-              <MonthPicker value={exportPeriod} onChange={setExportPeriod} />
+              <MonthPicker value={exportPeriod} onChange={setExportPeriod} disabled={exportAllPeriods} />
+              <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer pt-1">
+                <input
+                  type="checkbox"
+                  checked={exportAllPeriods}
+                  onChange={(e) => setExportAllPeriods(e.target.checked)}
+                  data-testid="export-all-periods-checkbox"
+                />
+                За всё время (без фильтра периода)
+              </label>
             </div>
 
             <div className="space-y-2">

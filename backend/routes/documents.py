@@ -355,17 +355,31 @@ async def get_transaction_documents(
 
 @router.get("/documents/export")
 async def export_documents(
-    period: str = Query(..., description="Period in YYYY-MM format"),
+    period: Optional[str] = Query(None, description="Period in YYYY-MM format. Omit for all."),
     types: Optional[str] = Query(None, description="Comma-separated document types"),
     current_user: dict = Depends(get_current_user),
 ):
-    query = {"user_id": current_user["user_id"], "period": period}
+    query: dict = {"user_id": current_user["user_id"]}
+
+    if period:
+        # Match by `period` OR by `document_date` prefix OR — if both are missing —
+        # by `created_at` prefix. This makes exports robust even for AI-uploaded
+        # receipts whose date couldn't be recognised.
+        query["$or"] = [
+            {"period": period},
+            {"document_date": {"$regex": f"^{period}"}},
+            {
+                "period": {"$in": [None, ""]},
+                "document_date": {"$in": [None, ""]},
+                "created_at": {"$regex": f"^{period}"},
+            },
+        ]
 
     if types:
         type_list = types.split(",")
         query["type"] = {"$in": type_list}
 
-    documents = await db.documents.find(query, {"_id": 0}).to_list(1000)
+    documents = await db.documents.find(query, {"_id": 0}).to_list(2000)
 
     if not documents:
         raise HTTPException(status_code=404, detail="No documents found for export")
@@ -387,15 +401,16 @@ async def export_documents(
                     elif doc["type"] in ["contract", "act"]:
                         folder = "договоры"
 
-                    archive_name = f"{folder}/{doc['file_name']}"
+                    archive_name = f"{folder}/{doc.get('file_name') or filename}"
                     zip_file.write(file_path, archive_name)
 
     zip_buffer.seek(0)
 
+    fname_part = period or "all"
     return StreamingResponse(
         zip_buffer,
         media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="documents_{period}.zip"'},
+        headers={"Content-Disposition": f'attachment; filename="documents_{fname_part}.zip"'},
     )
 
 
