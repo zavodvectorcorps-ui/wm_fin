@@ -208,7 +208,14 @@ scheduler = AsyncIOScheduler()
 async def startup_event():
     from services.telegram import send_scheduled_telegram_summary
     from services.google_sheets import backup_to_google_sheets
+    from services.indexes import ensure_indexes
     from database import db
+
+    # Ensure MongoDB indexes for hot queries (idempotent)
+    try:
+        await ensure_indexes(db)
+    except Exception as e:
+        logger.error(f"Index init error: {e}")
 
     # Migrate legacy users to workspace model (idempotent)
     try:
