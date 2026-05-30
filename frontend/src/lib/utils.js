@@ -159,6 +159,17 @@ export const getPeriodDates = (period) => {
     return `${y}-${m}-${day}`;
   };
   
+  // Custom month in YYYY-MM format
+  const monthMatch = typeof period === 'string' && period.match(/^(\d{4})-(\d{2})$/);
+  if (monthMatch) {
+    const y = parseInt(monthMatch[1], 10);
+    const m = parseInt(monthMatch[2], 10) - 1;
+    return {
+      from: fmt(new Date(y, m, 1)),
+      to: fmt(new Date(y, m + 1, 0)),
+    };
+  }
+
   switch (period) {
     case 'current_month':
       return {

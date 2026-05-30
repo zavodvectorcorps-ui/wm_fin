@@ -2,9 +2,14 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
+import { Button } from '../components/ui/button';
+import { Calendar as CalendarUI } from '../components/ui/calendar';
 import { Badge } from '../components/ui/badge';
 import { Skeleton } from '../components/ui/skeleton';
 import { Checkbox } from '../components/ui/checkbox';
+import { ru } from 'date-fns/locale';
+import { format } from 'date-fns';
 import { 
   TrendingUp, TrendingDown, Wallet, PiggyBank, 
   ArrowUpRight, ArrowDownRight, Calendar, Users, Flame, Info, Banknote, Repeat
@@ -192,22 +197,49 @@ export const DashboardPage = () => {
           <p className="text-muted-foreground">Обзор финансов вашего бизнеса</p>
         </div>
         
-        <Select value={period} onValueChange={setPeriod} data-testid="period-select">
-          <SelectTrigger className="w-48 text-foreground border-border bg-card">
-            <Calendar className="h-4 w-4 mr-2" />
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="current_month">Текущий месяц</SelectItem>
-            <SelectItem value="prev_month">Прошлый месяц</SelectItem>
-            <SelectItem value="quarter">Квартал</SelectItem>
-            <SelectItem value="year">Текущий год</SelectItem>
-            <SelectItem value="year_2025">2025 год</SelectItem>
-            <SelectItem value="year_2024">2024 год</SelectItem>
-            <SelectItem value="year_2023">2023 год</SelectItem>
-            <SelectItem value="all_time">Всё время</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Select value={/^\d{4}-\d{2}$/.test(period) ? '__custom__' : period} onValueChange={(v) => { if (v !== '__custom__') setPeriod(v); }} data-testid="period-select">
+            <SelectTrigger className="w-48 text-foreground border-border bg-card">
+              <Calendar className="h-4 w-4 mr-2" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="current_month">Текущий месяц</SelectItem>
+              <SelectItem value="prev_month">Прошлый месяц</SelectItem>
+              <SelectItem value="quarter">Квартал</SelectItem>
+              <SelectItem value="year">Текущий год</SelectItem>
+              <SelectItem value="year_2025">2025 год</SelectItem>
+              <SelectItem value="year_2024">2024 год</SelectItem>
+              <SelectItem value="year_2023">2023 год</SelectItem>
+              <SelectItem value="all_time">Всё время</SelectItem>
+              {/^\d{4}-\d{2}$/.test(period) && (
+                <SelectItem value="__custom__" disabled>
+                  {format(new Date(period + '-01'), 'LLLL yyyy', { locale: ru })}
+                </SelectItem>
+              )}
+            </SelectContent>
+          </Select>
+
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="bg-card border-border" data-testid="pick-month-btn">
+                <Calendar className="h-4 w-4 mr-2" />
+                {/^\d{4}-\d{2}$/.test(period)
+                  ? format(new Date(period + '-01'), 'LLLL yyyy', { locale: ru })
+                  : 'Выбрать месяц'}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="end">
+              <CalendarUI
+                mode="single"
+                selected={/^\d{4}-\d{2}$/.test(period) ? new Date(period + '-01') : undefined}
+                onSelect={(d) => { if (d) setPeriod(format(d, 'yyyy-MM')); }}
+                locale={ru}
+                data-testid="pick-month-calendar"
+              />
+            </PopoverContent>
+          </Popover>
+        </div>
       </div>
 
       {/* Metric Cards */}
