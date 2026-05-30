@@ -63,6 +63,7 @@ async def get_analytics_summary(
     # We use the same currency-base amounts as the PnL aggregation.
     loans_received_base = 0.0
     loans_repaid_base = 0.0
+    loans_per_account: dict = {}  # loan_acc_id -> {received, repaid}
     if loan_ids:
         for t in transactions:
             if t.get("type") != "transfer":
@@ -70,13 +71,40 @@ async def get_analytics_summary(
             src_is_loan = t.get("account_id") in loan_ids
             dst_is_loan = t.get("to_account_id") in loan_ids
             if src_is_loan and not dst_is_loan:
-                loans_received_base += t.get("amount_base") if t.get("amount_base") is not None else t.get("amount", 0)
+                amt = t.get("amount_base") if t.get("amount_base") is not None else t.get("amount", 0)
+                loans_received_base += amt
+                acc = t.get("account_id")
+                loans_per_account.setdefault(acc, {"received": 0.0, "repaid": 0.0})["received"] += amt
             elif dst_is_loan and not src_is_loan:
                 # Repayment lands on the loan account at to_amount (their currency)
                 amt = t.get("to_amount_base")
                 if amt is None:
                     amt = t.get("amount_base") if t.get("amount_base") is not None else t.get("amount", 0)
                 loans_repaid_base += amt
+                acc = t.get("to_account_id")
+                loans_per_account.setdefault(acc, {"received": 0.0, "repaid": 0.0})["repaid"] += amt
+
+    # Build labelled breakdown using loan account names
+    loans_breakdown: list = []
+    if loans_per_account:
+        loan_accs_meta = await db.accounts.find(
+            {"user_id": current_user["user_id"], "id": {"$in": list(loans_per_account.keys())}},
+            {"_id": 0, "id": 1, "name": 1, "currency": 1, "current_balance": 1},
+        ).to_list(None)
+        meta_by_id = {a["id"]: a for a in loan_accs_meta}
+        for acc_id, vals in loans_per_account.items():
+            m = meta_by_id.get(acc_id, {})
+            loans_breakdown.append({
+                "id": acc_id,
+                "name": m.get("name", "—"),
+                "currency": m.get("currency", "PLN"),
+                "current_balance": m.get("current_balance", 0),
+                "received": vals["received"],
+                "repaid": vals["repaid"],
+                "net": vals["received"] - vals["repaid"],
+            })
+        # sort by absolute activity desc
+        loans_breakdown.sort(key=lambda x: abs(x["received"]) + abs(x["repaid"]), reverse=True)
 
     # Exclude operations on loan accounts from PnL/income/expense aggregations
     transactions = [t for t in transactions if _not_loan_op(t, loan_ids)]
@@ -184,6 +212,7 @@ async def get_analytics_summary(
         "loans_received": loans_received_base,
         "loans_repaid": loans_repaid_base,
         "cash_flow_with_loans": cash_flow_with_loans,
+        "loans_breakdown": loans_breakdown,
         "total_balance": total_balance,
         "assets_balance": assets_balance,
         "liabilities_balance": liabilities_balance,

@@ -290,6 +290,35 @@ export const DashboardPage = () => {
                     ? 'Сколько реально осталось денег по итогам периода с учётом получения и возврата займов. Если прибыль положительная, но поток отрицательный — заработанное ушло на погашение долга.'
                     : 'Несмотря на прибыль, фактически денег стало меньше: займы выплачены, операционка не покрыла отток. Следите за этой метрикой, чтобы не считать долговые движения настоящим заработком.'}
                 </p>
+
+                {/* Per-loan breakdown */}
+                {Array.isArray(data.loans_breakdown) && data.loans_breakdown.length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-border/40">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground mb-2">По кредиторам</p>
+                    <div className="space-y-2" data-testid="loans-breakdown-list">
+                      <div className="grid grid-cols-12 gap-2 text-[10px] uppercase tracking-wide text-muted-foreground pb-1 border-b border-border/30">
+                        <div className="col-span-4">Кредитор</div>
+                        <div className="col-span-3 text-right">Получено</div>
+                        <div className="col-span-3 text-right">Погашено</div>
+                        <div className="col-span-2 text-right">Чистое влияние</div>
+                      </div>
+                      {data.loans_breakdown.map((l) => (
+                        <div key={l.id} className="grid grid-cols-12 items-center gap-2 text-sm" data-testid={`loan-row-${l.id}`}>
+                          <div className="col-span-4 truncate font-medium">{l.name}</div>
+                          <div className="col-span-3 text-right font-mono text-sky-300">
+                            {l.received > 0 ? `+${formatCurrency(l.received)}` : '—'}
+                          </div>
+                          <div className="col-span-3 text-right font-mono text-amber-400">
+                            {l.repaid > 0 ? `−${formatCurrency(l.repaid)}` : '—'}
+                          </div>
+                          <div className={`col-span-2 text-right font-mono font-semibold ${l.net >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                            {l.net >= 0 ? '+' : ''}{formatCurrency(l.net)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           );
