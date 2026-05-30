@@ -113,7 +113,18 @@ async def get_transactions(
 
     total = await db.transactions.count_documents(query)
     skip = (page - 1) * per_page
-    items = await db.transactions.find(query, {"_id": 0}).sort("date", -1).skip(skip).limit(per_page).to_list(per_page)
+    # Stable pagination: secondary sort by `created_at` (and `id` as tiebreaker)
+    # is critical when many transactions share the same `date` — otherwise
+    # MongoDB may reorder ties between page requests, causing items to appear
+    # on multiple pages or disappear.
+    items = (
+        await db.transactions
+        .find(query, {"_id": 0})
+        .sort([("date", -1), ("created_at", -1), ("id", -1)])
+        .skip(skip)
+        .limit(per_page)
+        .to_list(per_page)
+    )
 
     # Annotate each item with has_attachment flag (used by UI to show 📎 icon)
     item_ids = [t["id"] for t in items]
