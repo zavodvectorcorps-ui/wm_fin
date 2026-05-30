@@ -61,6 +61,29 @@ export const formatDate = (dateString) => {
   }).format(date);
 };
 
+export const formatTime = (isoString) => {
+  if (!isoString) return '';
+  const d = new Date(isoString);
+  if (isNaN(d.getTime())) return '';
+  return new Intl.DateTimeFormat('ru-RU', {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(d);
+};
+
+export const formatDateTime = (isoString) => {
+  if (!isoString) return '';
+  const d = new Date(isoString);
+  if (isNaN(d.getTime())) return '';
+  return new Intl.DateTimeFormat('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(d);
+};
+
 export const formatDateShort = (dateString) => {
   if (!dateString) return '-';
   

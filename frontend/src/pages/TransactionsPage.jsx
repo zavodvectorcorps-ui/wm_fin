@@ -25,7 +25,7 @@ import {
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, CalendarIcon, X, Loader2,
   Wallet, Info, HelpCircle, Receipt
 } from 'lucide-react';
-import { formatCurrency, formatDate, getDirectionClass, getStatusLabel, getPeriodDates, getTypeLabel, todayLocal, cn } from '../lib/utils';
+import { formatCurrency, formatDate, formatTime, formatDateTime, getDirectionClass, getStatusLabel, getPeriodDates, getTypeLabel, todayLocal, cn } from '../lib/utils';
 import { toast } from 'sonner';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/dropdown-menu';
 import { format } from 'date-fns';
@@ -1561,7 +1561,20 @@ export const TransactionsPage = () => {
                     <TableCell>
                       <SourceIcon source={t.source} />
                     </TableCell>
-                    <TableCell className="font-mono text-sm">{formatDate(t.date)}</TableCell>
+                    <TableCell className="font-mono text-sm">
+                      <div className="leading-tight">
+                        <div>{formatDate(t.date)}</div>
+                        {t.created_at && (
+                          <div
+                            className="text-[10px] text-muted-foreground/70 mt-0.5"
+                            title={`Создано: ${formatDateTime(t.created_at)}`}
+                            data-testid={`tx-created-at-${t.id}`}
+                          >
+                            {formatTime(t.created_at)}
+                          </div>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell>
                       {(() => {
                         const isAccountFiltered = filters.account_id && filters.account_id !== 'all';
