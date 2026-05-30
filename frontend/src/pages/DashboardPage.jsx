@@ -12,7 +12,8 @@ import { ru } from 'date-fns/locale';
 import { format } from 'date-fns';
 import { 
   TrendingUp, TrendingDown, Wallet, PiggyBank, 
-  ArrowUpRight, ArrowDownRight, Calendar, Users, Flame, Info, Banknote, Repeat
+  ArrowUpRight, ArrowDownRight, Calendar, Users, Flame, Info, Banknote, Repeat,
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { formatCurrency, getPeriodDates, getDirectionClass, getChangePercent } from '../lib/utils';
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
@@ -198,6 +199,54 @@ export const DashboardPage = () => {
         </div>
         
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Resolve current period to a YYYY-MM anchor for stepping */}
+          {(() => {
+            const today = new Date();
+            const curYM = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+            let anchor;
+            if (/^\d{4}-\d{2}$/.test(period)) anchor = period;
+            else if (period === 'current_month') anchor = curYM;
+            else if (period === 'prev_month') {
+              const d = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+              anchor = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            }
+            // For other presets (year/quarter/all_time) arrows are hidden.
+            if (!anchor) return null;
+            const shift = (delta) => {
+              const [y, m] = anchor.split('-').map(Number);
+              const d = new Date(y, m - 1 + delta, 1);
+              const ny = d.getFullYear();
+              const nm = String(d.getMonth() + 1).padStart(2, '0');
+              setPeriod(`${ny}-${nm}`);
+            };
+            const isFutureBlocked = anchor >= curYM;
+            return (
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="bg-card border-border h-9 w-9"
+                  onClick={() => shift(-1)}
+                  aria-label="Предыдущий месяц"
+                  data-testid="period-prev-month"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="bg-card border-border h-9 w-9 disabled:opacity-40"
+                  onClick={() => shift(1)}
+                  disabled={isFutureBlocked}
+                  aria-label="Следующий месяц"
+                  data-testid="period-next-month"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            );
+          })()}
+
           <Select value={/^\d{4}-\d{2}$/.test(period) ? '__custom__' : period} onValueChange={(v) => { if (v !== '__custom__') setPeriod(v); }} data-testid="period-select">
             <SelectTrigger className="w-48 text-foreground border-border bg-card">
               <Calendar className="h-4 w-4 mr-2" />
