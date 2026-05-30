@@ -56,6 +56,28 @@ async def get_analytics_summary(
 
     transactions = await db.transactions.find(query, {"_id": 0}).to_list(10000)
     loan_ids = await _get_loan_account_ids(current_user["user_id"])
+
+    # Capture loan-related cash flow BEFORE filtering, then exclude from PnL.
+    # received  = transfers from loan acc to a non-loan acc  (debt grew, cash came in)
+    # repaid    = transfers from a non-loan acc to a loan acc (debt shrunk, cash out)
+    # We use the same currency-base amounts as the PnL aggregation.
+    loans_received_base = 0.0
+    loans_repaid_base = 0.0
+    if loan_ids:
+        for t in transactions:
+            if t.get("type") != "transfer":
+                continue
+            src_is_loan = t.get("account_id") in loan_ids
+            dst_is_loan = t.get("to_account_id") in loan_ids
+            if src_is_loan and not dst_is_loan:
+                loans_received_base += t.get("amount_base") if t.get("amount_base") is not None else t.get("amount", 0)
+            elif dst_is_loan and not src_is_loan:
+                # Repayment lands on the loan account at to_amount (their currency)
+                amt = t.get("to_amount_base")
+                if amt is None:
+                    amt = t.get("amount_base") if t.get("amount_base") is not None else t.get("amount", 0)
+                loans_repaid_base += amt
+
     # Exclude operations on loan accounts from PnL/income/expense aggregations
     transactions = [t for t in transactions if _not_loan_op(t, loan_ids)]
 
@@ -66,6 +88,9 @@ async def get_analytics_summary(
     total_income = sum(base_amount(t) for t in transactions if t["type"] == "income")
     total_expense = sum(base_amount(t) for t in transactions if t["type"] == "expense")
     profit = total_income - total_expense
+    # Cash flow including loan movements (what's actually left in your pocket):
+    #   profit + loans you received in the period − loans you repaid in the period.
+    cash_flow_with_loans = profit + loans_received_base - loans_repaid_base
 
     by_direction = {}
     for t in transactions:
@@ -156,6 +181,9 @@ async def get_analytics_summary(
         "total_income": total_income,
         "total_expense": total_expense,
         "profit": profit,
+        "loans_received": loans_received_base,
+        "loans_repaid": loans_repaid_base,
+        "cash_flow_with_loans": cash_flow_with_loans,
         "total_balance": total_balance,
         "assets_balance": assets_balance,
         "liabilities_balance": liabilities_balance,

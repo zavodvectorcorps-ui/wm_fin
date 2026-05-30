@@ -243,6 +243,59 @@ export const DashboardPage = () => {
         />
       </div>
 
+      {/* Cash Flow With Loans — true monthly result including loan in/out */}
+      {data && ((data.loans_received || 0) > 0.005 || (data.loans_repaid || 0) > 0.005) && (
+        (() => {
+          const received = data.loans_received || 0;
+          const repaid = data.loans_repaid || 0;
+          const profit = data.profit || 0;
+          const cashFlow = data.cash_flow_with_loans ?? (profit + received - repaid);
+          return (
+            <Card data-testid="cash-flow-loans-card" className={`border-l-4 ${cashFlow >= 0 ? 'border-l-emerald-500' : 'border-l-rose-500'}`}>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2">
+                  <Banknote className="h-5 w-5 text-primary" />
+                  Денежный поток с учётом займов
+                  <Badge variant="outline" className="text-xs font-normal">
+                    прибыль + получено − погашено
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-4 md:grid-cols-4">
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Операционная прибыль</p>
+                    <p className={`text-xl font-bold font-mono ${profit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                      {profit >= 0 ? '+' : ''}{formatCurrency(profit)}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">+ Получено по займам</p>
+                    <p className="text-xl font-bold font-mono text-sky-300">+{formatCurrency(received)}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">− Погашено по займам</p>
+                    <p className="text-xl font-bold font-mono text-amber-400">−{formatCurrency(repaid)}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Денежный поток</p>
+                    <p className={`text-2xl font-bold font-mono ${cashFlow >= 0 ? 'text-emerald-500' : 'text-rose-500'}`} data-testid="cash-flow-loans-value">
+                      {cashFlow >= 0 ? '+' : ''}{formatCurrency(cashFlow)}
+                    </p>
+                  </div>
+                </div>
+                <p className="mt-3 text-xs text-muted-foreground flex items-start gap-1.5">
+                  <Info className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+                  {cashFlow >= 0
+                    ? 'Сколько реально осталось денег по итогам периода с учётом получения и возврата займов. Если прибыль положительная, но поток отрицательный — заработанное ушло на погашение долга.'
+                    : 'Несмотря на прибыль, фактически денег стало меньше: займы выплачены, операционка не покрыла отток. Следите за этой метрикой, чтобы не считать долговые движения настоящим заработком.'}
+                </p>
+              </CardContent>
+            </Card>
+          );
+        })()
+      )}
+
       {/* Net Worth (Assets − Liabilities) */}
       {data && (data.assets_balance !== undefined || data.liabilities_balance !== undefined) && (
         (() => {
