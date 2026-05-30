@@ -1545,8 +1545,14 @@ export const TransactionsPage = () => {
                     )}
                     onClick={() => openEditTransaction(t)}
                     data-testid={`transaction-row-${t.id}`}
+                    data-source={t.source || ''}
                   >
-                    <TableCell onClick={(e) => e.stopPropagation()}>
+                    <TableCell
+                      onClick={(e) => e.stopPropagation()}
+                      className={cn(
+                        typeof t.source === 'string' && t.source.startsWith('telegram') && "border-l-[3px] border-l-sky-500"
+                      )}
+                    >
                       <Checkbox
                         checked={selectedIds.has(t.id)}
                         onCheckedChange={(checked) => {
