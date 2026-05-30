@@ -383,20 +383,38 @@ export const DashboardPage = () => {
                         <div className="col-span-3 text-right">Погашено</div>
                         <div className="col-span-2 text-right">Чистое влияние</div>
                       </div>
-                      {data.loans_breakdown.map((l) => (
-                        <div key={l.id} className="grid grid-cols-12 items-center gap-2 text-sm" data-testid={`loan-row-${l.id}`}>
-                          <div className="col-span-4 truncate font-medium">{l.name}</div>
-                          <div className="col-span-3 text-right font-mono text-sky-300">
-                            {l.received > 0 ? `+${formatCurrency(l.received)}` : '—'}
+                      {data.loans_breakdown.map((l) => {
+                        const cur = l.currency || 'PLN';
+                        const showPlnHint = cur !== 'PLN';
+                        return (
+                          <div key={l.id} className="grid grid-cols-12 items-center gap-2 text-sm" data-testid={`loan-row-${l.id}`}>
+                            <div className="col-span-4 truncate font-medium">
+                              {l.name}
+                              <span className="ml-1 text-[10px] text-muted-foreground uppercase">{cur}</span>
+                            </div>
+                            <div className="col-span-3 text-right font-mono text-sky-300">
+                              {l.received > 0 ? (
+                                <>
+                                  +{formatCurrency(l.received, cur)}
+                                  {showPlnHint && <span className="block text-[10px] text-muted-foreground/70">≈ {formatCurrency(l.received_pln || 0)}</span>}
+                                </>
+                              ) : '—'}
+                            </div>
+                            <div className="col-span-3 text-right font-mono text-amber-400">
+                              {l.repaid > 0 ? (
+                                <>
+                                  −{formatCurrency(l.repaid, cur)}
+                                  {showPlnHint && <span className="block text-[10px] text-muted-foreground/70">≈ {formatCurrency(l.repaid_pln || 0)}</span>}
+                                </>
+                              ) : '—'}
+                            </div>
+                            <div className={`col-span-2 text-right font-mono font-semibold ${l.net >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                              {l.net >= 0 ? '+' : ''}{formatCurrency(l.net, cur)}
+                              {showPlnHint && <span className="block text-[10px] text-muted-foreground/70 font-normal">≈ {l.net_pln >= 0 ? '+' : ''}{formatCurrency(l.net_pln || 0)}</span>}
+                            </div>
                           </div>
-                          <div className="col-span-3 text-right font-mono text-amber-400">
-                            {l.repaid > 0 ? `−${formatCurrency(l.repaid)}` : '—'}
-                          </div>
-                          <div className={`col-span-2 text-right font-mono font-semibold ${l.net >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                            {l.net >= 0 ? '+' : ''}{formatCurrency(l.net)}
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}

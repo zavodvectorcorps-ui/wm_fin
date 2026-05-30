@@ -57,13 +57,38 @@ async def get_analytics_summary(
     transactions = await db.transactions.find(query, {"_id": 0}).to_list(10000)
     loan_ids = await _get_loan_account_ids(current_user["user_id"])
 
+    # Get EUR-PLN rate up-front — needed both for loan PLN conversion and for net worth.
+    eur_rate = 0
+    try:
+        from routes.exchange_rate import get_nbp_rate
+        eur_rate = await get_nbp_rate()
+    except Exception:
+        pass
+
+    # Loan account currency lookup — required to know whether `amount_base`
+    # on each loan transfer is already PLN or EUR (it's stored in source acc currency).
+    loan_currency_by_id: dict = {}
+    if loan_ids:
+        loan_meta_rows = await db.accounts.find(
+            {"user_id": current_user["user_id"], "id": {"$in": loan_ids}},
+            {"_id": 0, "id": 1, "currency": 1, "name": 1, "current_balance": 1},
+        ).to_list(None)
+        loan_currency_by_id = {a["id"]: a for a in loan_meta_rows}
+
+    def to_pln(amount: float, currency: str) -> float:
+        if currency == "EUR" and eur_rate > 0:
+            return amount * eur_rate
+        return amount
+
     # Capture loan-related cash flow BEFORE filtering, then exclude from PnL.
     # received  = transfers from loan acc to a non-loan acc  (debt grew, cash came in)
     # repaid    = transfers from a non-loan acc to a loan acc (debt shrunk, cash out)
-    # We use the same currency-base amounts as the PnL aggregation.
-    loans_received_base = 0.0
-    loans_repaid_base = 0.0
-    loans_per_account: dict = {}  # loan_acc_id -> {received, repaid}
+    # Per-account amounts are kept in the LOAN's native currency (so UI can show
+    # "+70 735 €" exactly like the Operations page); a separate PLN-converted
+    # total is exposed for the headline metric card.
+    loans_received_base = 0.0   # PLN-converted total
+    loans_repaid_base = 0.0     # PLN-converted total
+    loans_per_account: dict = {}  # loan_acc_id -> {received, repaid} in loan acc currency
     if loan_ids:
         for t in transactions:
             if t.get("type") != "transfer":
@@ -71,40 +96,43 @@ async def get_analytics_summary(
             src_is_loan = t.get("account_id") in loan_ids
             dst_is_loan = t.get("to_account_id") in loan_ids
             if src_is_loan and not dst_is_loan:
-                amt = t.get("amount_base") if t.get("amount_base") is not None else t.get("amount", 0)
-                loans_received_base += amt
+                # amount_base is in source account currency = loan currency
+                amt_native = t.get("amount_base") if t.get("amount_base") is not None else t.get("amount", 0)
                 acc = t.get("account_id")
-                loans_per_account.setdefault(acc, {"received": 0.0, "repaid": 0.0})["received"] += amt
+                acc_cur = loan_currency_by_id.get(acc, {}).get("currency", "PLN")
+                loans_received_base += to_pln(amt_native, acc_cur)
+                loans_per_account.setdefault(acc, {"received": 0.0, "repaid": 0.0})["received"] += amt_native
             elif dst_is_loan and not src_is_loan:
-                # Repayment lands on the loan account at to_amount (their currency)
-                amt = t.get("to_amount_base")
-                if amt is None:
-                    amt = t.get("amount_base") if t.get("amount_base") is not None else t.get("amount", 0)
-                loans_repaid_base += amt
+                # to_amount_base is in TARGET account currency = loan currency
+                amt_native = t.get("to_amount_base")
+                if amt_native is None:
+                    amt_native = t.get("amount_base") if t.get("amount_base") is not None else t.get("amount", 0)
                 acc = t.get("to_account_id")
-                loans_per_account.setdefault(acc, {"received": 0.0, "repaid": 0.0})["repaid"] += amt
+                acc_cur = loan_currency_by_id.get(acc, {}).get("currency", "PLN")
+                loans_repaid_base += to_pln(amt_native, acc_cur)
+                loans_per_account.setdefault(acc, {"received": 0.0, "repaid": 0.0})["repaid"] += amt_native
 
-    # Build labelled breakdown using loan account names
+    # Build labelled breakdown using loan account names.
+    # `received` / `repaid` here are in the LOAN's own currency (EUR or PLN).
+    # We also expose `received_pln` / `repaid_pln` for unified PLN visualisation.
     loans_breakdown: list = []
     if loans_per_account:
-        loan_accs_meta = await db.accounts.find(
-            {"user_id": current_user["user_id"], "id": {"$in": list(loans_per_account.keys())}},
-            {"_id": 0, "id": 1, "name": 1, "currency": 1, "current_balance": 1},
-        ).to_list(None)
-        meta_by_id = {a["id"]: a for a in loan_accs_meta}
         for acc_id, vals in loans_per_account.items():
-            m = meta_by_id.get(acc_id, {})
+            m = loan_currency_by_id.get(acc_id, {})
+            acc_cur = m.get("currency", "PLN")
             loans_breakdown.append({
                 "id": acc_id,
                 "name": m.get("name", "—"),
-                "currency": m.get("currency", "PLN"),
+                "currency": acc_cur,
                 "current_balance": m.get("current_balance", 0),
                 "received": vals["received"],
                 "repaid": vals["repaid"],
                 "net": vals["received"] - vals["repaid"],
+                "received_pln": to_pln(vals["received"], acc_cur),
+                "repaid_pln": to_pln(vals["repaid"], acc_cur),
+                "net_pln": to_pln(vals["received"] - vals["repaid"], acc_cur),
             })
-        # sort by absolute activity desc
-        loans_breakdown.sort(key=lambda x: abs(x["received"]) + abs(x["repaid"]), reverse=True)
+        loans_breakdown.sort(key=lambda x: abs(x["received_pln"]) + abs(x["repaid_pln"]), reverse=True)
 
     # Exclude operations on loan accounts from PnL/income/expense aggregations
     transactions = [t for t in transactions if _not_loan_op(t, loan_ids)]
@@ -141,14 +169,6 @@ async def get_analytics_summary(
             expense_by_category[cat_name] = expense_by_category.get(cat_name, 0) + base_amount(t)
 
     accounts = await db.accounts.find({"user_id": current_user["user_id"], "is_active": True}, {"_id": 0}).to_list(100)
-
-    # Get exchange rate for total balance calculation
-    eur_rate = 0
-    try:
-        from routes.exchange_rate import get_nbp_rate
-        eur_rate = await get_nbp_rate()
-    except Exception:
-        pass
 
     # Split balance into assets vs liabilities (loans). Net Worth = assets - liabilities.
     assets_balance = 0
