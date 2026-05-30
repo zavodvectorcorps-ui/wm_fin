@@ -165,34 +165,41 @@ async def get_analytics_summary(
     total_balance = assets_balance + liabilities_balance
     net_worth = assets_balance + liabilities_balance  # liabilities is already negative
 
-    # Per-account income/expense for the period (using amount_base)
+    # Per-account income/expense for the period (using amount_base).
+    # IMPORTANT: We deliberately EXCLUDE transfers between user's own accounts.
+    # Including transfers as income/expense double-counts them when the dashboard
+    # sums across multiple selected accounts (one side is "income on dest",
+    # the other "expense on source" — both with the same amount). This kept profit
+    # correct but inflated headline "Доходы/Расходы" cards. Per-account transfer
+    # flows are exposed separately via period_transfers_in / period_transfers_out
+    # for any UI that wants total in/out per account.
     account_stats = {}
     for t in transactions:
         acc_id = t.get("account_id", "")
         if acc_id not in account_stats:
-            account_stats[acc_id] = {"income": 0, "expense": 0}
+            account_stats[acc_id] = {"income": 0, "expense": 0, "tin": 0, "tout": 0}
         amt = base_amount(t)
         if t["type"] == "income":
             account_stats[acc_id]["income"] += amt
         elif t["type"] == "expense":
             account_stats[acc_id]["expense"] += amt
         elif t["type"] == "transfer":
-            # Outgoing transfer is expense for source account
-            account_stats[acc_id]["expense"] += amt
-            # Incoming transfer is income for target account
+            # Track transfers separately (do NOT mix into income/expense)
+            account_stats[acc_id]["tout"] += amt
             to_acc = t.get("to_account_id")
             if to_acc:
                 if to_acc not in account_stats:
-                    account_stats[to_acc] = {"income": 0, "expense": 0}
-                # Use to_amount_base for target account
+                    account_stats[to_acc] = {"income": 0, "expense": 0, "tin": 0, "tout": 0}
                 to_amt = t.get("to_amount_base") if t.get("to_amount_base") is not None else amt
-                account_stats[to_acc]["income"] += to_amt
+                account_stats[to_acc]["tin"] += to_amt
 
     for a in accounts:
-        stats = account_stats.get(a["id"], {"income": 0, "expense": 0})
+        stats = account_stats.get(a["id"], {"income": 0, "expense": 0, "tin": 0, "tout": 0})
         a["period_income"] = stats["income"]
         a["period_expense"] = stats["expense"]
         a["period_net"] = stats["income"] - stats["expense"]
+        a["period_transfers_in"] = stats["tin"]
+        a["period_transfers_out"] = stats["tout"]
 
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     upcoming_payments = await db.planned_payments.find(
