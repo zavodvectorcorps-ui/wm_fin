@@ -470,6 +470,14 @@ const PeriodSummary = ({ summary, totalCount, eurPlnRate }) => {
 const MonthPickerPopover = ({ value, onChange }) => {
   const [open, setOpen] = useState(false);
   const selectedDate = value ? new Date(value + '-01') : null;
+  // Track the currently displayed month so the calendar opens on the previously
+  // selected month (not on today's month). Persists across popover re-opens.
+  const [displayMonth, setDisplayMonth] = useState(selectedDate || new Date());
+
+  // Keep displayMonth in sync if the filter value changes from outside.
+  useEffect(() => {
+    if (selectedDate) setDisplayMonth(selectedDate);
+  }, [value]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -483,6 +491,8 @@ const MonthPickerPopover = ({ value, onChange }) => {
         <CalendarUI
           mode="single"
           selected={selectedDate}
+          month={displayMonth}
+          onMonthChange={setDisplayMonth}
           onSelect={(date) => {
             if (date) {
               onChange(format(date, 'yyyy-MM'));

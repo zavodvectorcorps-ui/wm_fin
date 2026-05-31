@@ -74,6 +74,7 @@ const MonthPicker = ({ value, onChange, disabled = false }) => {
         <Calendar
           mode="single"
           selected={selectedDate}
+          defaultMonth={selectedDate || undefined}
           onSelect={handleSelect}
           locale={ru}
           data-testid="filter-period-calendar"

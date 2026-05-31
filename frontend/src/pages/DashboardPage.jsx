@@ -40,6 +40,14 @@ export const DashboardPage = () => {
   const [fixedCostsMonth, setFixedCostsMonth] = useState(null);
   const [selectedAccountIds, setSelectedAccountIds] = useState(new Set());
   const [eurPlnRate, setEurPlnRate] = useState(0);
+  const [displayMode, setDisplayMode] = useState(() => {
+    try { return localStorage.getItem('dashboard_display_mode') || 'pln'; }
+    catch { return 'pln'; }
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem('dashboard_display_mode', displayMode); } catch (e) { /* ignore */ }
+  }, [displayMode]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -134,7 +142,7 @@ export const DashboardPage = () => {
   const incomeChange = prevData ? getChangePercent(selectedIncome, prevData.total_income) : 0;
   const expenseChange = prevData ? getChangePercent(data?.total_expense || 0, prevData.total_expense) : 0;
 
-  const MetricCard = ({ title, value, icon: Icon, change, isExpense = false, subtitle }) => (
+  const MetricCard = ({ title, value, icon: Icon, change, isExpense = false, subtitle, splitPln, splitEur }) => (
     <Card className="card-hover" data-testid={`metric-${title.toLowerCase().replace(/\s/g, '-')}`}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
@@ -143,6 +151,27 @@ export const DashboardPage = () => {
       <CardContent>
         {loading ? (
           <Skeleton className="h-8 w-32" />
+        ) : displayMode === 'native' && (splitPln !== undefined || splitEur !== undefined) ? (
+          <>
+            <div className={`text-xl font-bold font-mono ${isExpense ? 'text-rose-500' : (splitPln || 0) < 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+              {formatCurrency(splitPln || 0, 'PLN')}
+            </div>
+            <div className={`text-base font-bold font-mono mt-0.5 ${isExpense ? 'text-rose-500' : (splitEur || 0) < 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+              {formatCurrency(splitEur || 0, 'EUR')}
+            </div>
+            {change !== undefined && (
+              <div className="flex items-center gap-1 mt-1">
+                {change >= 0 ? (
+                  <ArrowUpRight className={`h-4 w-4 ${isExpense ? 'text-rose-500' : 'text-emerald-500'}`} />
+                ) : (
+                  <ArrowDownRight className={`h-4 w-4 ${isExpense ? 'text-emerald-500' : 'text-rose-500'}`} />
+                )}
+                <span className="text-sm text-muted-foreground">
+                  {Math.abs(change).toFixed(1)}% к прошлому
+                </span>
+              </div>
+            )}
+          </>
         ) : (
           <>
             <div className={`text-2xl font-bold font-mono ${isExpense ? 'text-rose-500' : value < 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
@@ -282,12 +311,33 @@ export const DashboardPage = () => {
               <CalendarUI
                 mode="single"
                 selected={/^\d{4}-\d{2}$/.test(period) ? new Date(period + '-01') : undefined}
+                defaultMonth={/^\d{4}-\d{2}$/.test(period) ? new Date(period + '-01') : undefined}
                 onSelect={(d) => { if (d) setPeriod(format(d, 'yyyy-MM')); }}
                 locale={ru}
                 data-testid="pick-month-calendar"
               />
             </PopoverContent>
           </Popover>
+
+          {/* Display mode toggle: combined PLN vs split by currency */}
+          <div className="flex items-center rounded-md border border-border bg-card overflow-hidden" data-testid="display-mode-toggle">
+            <button
+              type="button"
+              className={`px-3 py-1.5 text-xs font-medium transition-colors ${displayMode === 'pln' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/50'}`}
+              onClick={() => setDisplayMode('pln')}
+              data-testid="display-mode-pln"
+            >
+              PLN
+            </button>
+            <button
+              type="button"
+              className={`px-3 py-1.5 text-xs font-medium transition-colors ${displayMode === 'native' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/50'}`}
+              onClick={() => setDisplayMode('native')}
+              data-testid="display-mode-native"
+            >
+              Валютами
+            </button>
+          </div>
         </div>
       </div>
 
@@ -299,6 +349,8 @@ export const DashboardPage = () => {
           icon={TrendingUp} 
           change={incomeChange}
           subtitle={eurSubtitle(selectedIncome, currencyBreakdown.eurIncome)}
+          splitPln={currencyBreakdown.plnIncome}
+          splitEur={currencyBreakdown.eurIncome}
         />
         <MetricCard 
           title="Расходы" 
@@ -307,11 +359,15 @@ export const DashboardPage = () => {
           change={expenseChange}
           isExpense
           subtitle={eurSubtitle(selectedExpense, currencyBreakdown.eurExpense)}
+          splitPln={currencyBreakdown.plnExpense}
+          splitEur={currencyBreakdown.eurExpense}
         />
         <MetricCard 
           title="Прибыль" 
           value={selectedProfit} 
           icon={PiggyBank}
+          splitPln={(currencyBreakdown.plnIncome || 0) - (currencyBreakdown.plnExpense || 0)}
+          splitEur={(currencyBreakdown.eurIncome || 0) - (currencyBreakdown.eurExpense || 0)}
         />
         <MetricCard 
           title="Деньги бизнеса" 
@@ -321,6 +377,8 @@ export const DashboardPage = () => {
             ? `${formatCurrency(currencyBreakdown.pln)} + ${formatCurrency(currencyBreakdown.eur, 'EUR')} (×${eurPlnRate})`
             : undefined
           }
+          splitPln={currencyBreakdown.pln}
+          splitEur={currencyBreakdown.eur}
         />
       </div>
 
