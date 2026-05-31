@@ -107,7 +107,31 @@ async def get_transactions(
     if source:
         query["source"] = source
     if search:
-        query["description"] = {"$regex": search, "$options": "i"}
+        # Search in description, AND in linked entity names (contractor / account).
+        # Otherwise queries like "alicor" would miss operations where the loan
+        # account or contractor is named "Alicor" but the description doesn't
+        # mention it explicitly.
+        pattern = {"$regex": search, "$options": "i"}
+        matched_contractor_ids = await db.contractors.distinct(
+            "id",
+            {"user_id": current_user["user_id"], "name": pattern},
+        )
+        matched_account_ids = await db.accounts.distinct(
+            "id",
+            {"user_id": current_user["user_id"], "name": pattern},
+        )
+        search_or = [{"description": pattern}]
+        if matched_contractor_ids:
+            search_or.append({"contractor_id": {"$in": matched_contractor_ids}})
+        if matched_account_ids:
+            search_or.append({"account_id": {"$in": matched_account_ids}})
+            search_or.append({"to_account_id": {"$in": matched_account_ids}})
+        # Compose with any existing $or (account_ids/account_id filter).
+        if "$or" in query:
+            query.setdefault("$and", []).append({"$or": query.pop("$or")})
+            query["$and"].append({"$or": search_or})
+        else:
+            query["$or"] = search_or
     if needs_review is not None:
         query["needs_review"] = needs_review
 
