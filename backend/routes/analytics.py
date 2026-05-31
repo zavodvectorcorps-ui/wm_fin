@@ -81,33 +81,55 @@ async def get_analytics_summary(
         return amount
 
     # Capture loan-related cash flow BEFORE filtering, then exclude from PnL.
-    # received  = transfers from loan acc to a non-loan acc  (debt grew, cash came in)
-    # repaid    = transfers from a non-loan acc to a loan acc (debt shrunk, cash out)
-    # Per-account amounts are kept in the LOAN's native currency (so UI can show
-    # "+70 735 €" exactly like the Operations page); a separate PLN-converted
-    # total is exposed for the headline metric card.
+    # Semantics (matches Operations page):
+    #   Received (debt grew) =
+    #       • transfer where loan acc is SOURCE (took loan → cash/bank)
+    #       • direct EXPENSE on loan acc (spent borrowed money directly,
+    #         e.g. Alikor paid supplier without cash passing through wallet)
+    #   Repaid (debt shrunk) =
+    #       • transfer where loan acc is TARGET (repaid debt)
+    #       • direct INCOME on loan acc (debt forgiven / cash returned to lender)
+    # Per-account amounts are kept in the loan's native currency; PLN-converted
+    # totals exposed separately for the headline metric.
     loans_received_base = 0.0   # PLN-converted total
     loans_repaid_base = 0.0     # PLN-converted total
     loans_per_account: dict = {}  # loan_acc_id -> {received, repaid} in loan acc currency
     if loan_ids:
         for t in transactions:
-            if t.get("type") != "transfer":
-                continue
+            ttype = t.get("type")
             src_is_loan = t.get("account_id") in loan_ids
             dst_is_loan = t.get("to_account_id") in loan_ids
-            if src_is_loan and not dst_is_loan:
-                # amount_base is in source account currency = loan currency
+
+            if ttype == "transfer":
+                if src_is_loan and not dst_is_loan:
+                    # amount_base is in source account currency = loan currency
+                    amt_native = t.get("amount_base") if t.get("amount_base") is not None else t.get("amount", 0)
+                    acc = t.get("account_id")
+                    acc_cur = loan_currency_by_id.get(acc, {}).get("currency", "PLN")
+                    loans_received_base += to_pln(amt_native, acc_cur)
+                    loans_per_account.setdefault(acc, {"received": 0.0, "repaid": 0.0})["received"] += amt_native
+                elif dst_is_loan and not src_is_loan:
+                    # to_amount_base is in TARGET account currency = loan currency
+                    amt_native = t.get("to_amount_base")
+                    if amt_native is None:
+                        amt_native = t.get("amount_base") if t.get("amount_base") is not None else t.get("amount", 0)
+                    acc = t.get("to_account_id")
+                    acc_cur = loan_currency_by_id.get(acc, {}).get("currency", "PLN")
+                    loans_repaid_base += to_pln(amt_native, acc_cur)
+                    loans_per_account.setdefault(acc, {"received": 0.0, "repaid": 0.0})["repaid"] += amt_native
+
+            elif ttype == "expense" and src_is_loan:
+                # Spent directly from a loan account — debt grew by this amount.
                 amt_native = t.get("amount_base") if t.get("amount_base") is not None else t.get("amount", 0)
                 acc = t.get("account_id")
                 acc_cur = loan_currency_by_id.get(acc, {}).get("currency", "PLN")
                 loans_received_base += to_pln(amt_native, acc_cur)
                 loans_per_account.setdefault(acc, {"received": 0.0, "repaid": 0.0})["received"] += amt_native
-            elif dst_is_loan and not src_is_loan:
-                # to_amount_base is in TARGET account currency = loan currency
-                amt_native = t.get("to_amount_base")
-                if amt_native is None:
-                    amt_native = t.get("amount_base") if t.get("amount_base") is not None else t.get("amount", 0)
-                acc = t.get("to_account_id")
+
+            elif ttype == "income" and src_is_loan:
+                # Income posted to loan account — debt shrunk (forgiven / returned).
+                amt_native = t.get("amount_base") if t.get("amount_base") is not None else t.get("amount", 0)
+                acc = t.get("account_id")
                 acc_cur = loan_currency_by_id.get(acc, {}).get("currency", "PLN")
                 loans_repaid_base += to_pln(amt_native, acc_cur)
                 loans_per_account.setdefault(acc, {"received": 0.0, "repaid": 0.0})["repaid"] += amt_native
