@@ -2,9 +2,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Label } from './ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from './ui/dialog';
 import {
-  Loader2, ChevronLeft, ChevronRight, Link2, X, ImageIcon, FileText, CheckCircle2, AlertCircle, Maximize2,
+  Loader2, ChevronLeft, ChevronRight, Link2, X, ImageIcon, FileText, CheckCircle2, AlertCircle, Maximize2, Plus,
 } from 'lucide-react';
 import { formatCurrency } from '../lib/utils';
 import { Lightbox } from './Lightbox';
@@ -27,8 +30,13 @@ export const AnalyzePendingDialog = ({ open, onOpenChange, onDone }) => {
   const [items, setItems] = useState([]); // [{document, candidates}]
   const [idx, setIdx] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [stats, setStats] = useState({ linked: 0, skipped: 0 });
+  const [stats, setStats] = useState({ linked: 0, skipped: 0, created: 0 });
   const [lightbox, setLightbox] = useState(null);
+  const [creating, setCreating] = useState(false);
+  const [accounts, setAccounts] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [contractors, setContractors] = useState([]);
+  const [form, setForm] = useState({ type: 'expense', account_id: '', category_id: '', contractor_id: '', description: '' });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -36,7 +44,16 @@ export const AnalyzePendingDialog = ({ open, onOpenChange, onDone }) => {
       const r = await apiClient().get('/receipts/analyze-pending');
       setItems(r.data?.items || []);
       setIdx(0);
-      setStats({ linked: 0, skipped: 0 });
+      setStats({ linked: 0, skipped: 0, created: 0 });
+      // Load reference data once for the create-form
+      const [accs, cats, conts] = await Promise.all([
+        apiClient().get('/accounts').catch(() => ({ data: [] })),
+        apiClient().get('/categories').catch(() => ({ data: [] })),
+        apiClient().get('/contractors').catch(() => ({ data: [] })),
+      ]);
+      setAccounts((accs.data || []).filter(a => a.is_active && !a.is_loan));
+      setCategories(cats.data || []);
+      setContractors(conts.data || []);
     } catch (e) {
       toast.error('Ошибка загрузки чеков');
     } finally {
@@ -51,6 +68,20 @@ export const AnalyzePendingDialog = ({ open, onOpenChange, onDone }) => {
   const current = items[idx];
   const isLastItem = idx >= items.length - 1;
 
+  // Pre-fill the create-form whenever the current receipt changes
+  useEffect(() => {
+    if (!current) return;
+    const ext = current.document?.ai_extracted || {};
+    setForm({
+      type: 'expense',
+      account_id: '',
+      category_id: '',
+      contractor_id: '',
+      description: ext.merchant || current.document?.description || '',
+    });
+    setCreating(false);
+  }, [idx, current?.document?.id]);
+
   const advance = () => {
     if (isLastItem) {
       finish();
@@ -60,8 +91,8 @@ export const AnalyzePendingDialog = ({ open, onOpenChange, onDone }) => {
   };
 
   const finish = () => {
-    const total = stats.linked + stats.skipped;
-    toast.success(`Готово: привязано ${stats.linked} из ${total}`);
+    const total = stats.linked + stats.skipped + stats.created;
+    toast.success(`Готово: привязано ${stats.linked}, создано ${stats.created} из ${total}`);
     onDone && onDone();
     onOpenChange(false);
   };
@@ -85,6 +116,31 @@ export const AnalyzePendingDialog = ({ open, onOpenChange, onDone }) => {
   const onSkip = () => {
     setStats((s) => ({ ...s, skipped: s.skipped + 1 }));
     advance();
+  };
+
+  const onCreate = async () => {
+    if (!current) return;
+    if (!form.account_id) {
+      toast.error('Выберите счёт');
+      return;
+    }
+    setBusy(true);
+    try {
+      await apiClient().post(`/receipts/${current.document.id}/create-transaction`, {
+        type: form.type,
+        account_id: form.account_id,
+        category_id: form.category_id || null,
+        contractor_id: form.contractor_id || null,
+        description: form.description || null,
+      });
+      setStats((s) => ({ ...s, created: s.created + 1 }));
+      toast.success('Операция создана и привязана');
+      advance();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Ошибка создания операции');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const onDelete = async () => {
@@ -173,7 +229,7 @@ export const AnalyzePendingDialog = ({ open, onOpenChange, onDone }) => {
               ? 'Загружаю…'
               : items.length === 0
               ? 'Все чеки уже привязаны 🎉'
-              : `Чек ${idx + 1} из ${items.length} · привязано ${stats.linked} · пропущено ${stats.skipped}`}
+              : `Чек ${idx + 1} из ${items.length} · привязано ${stats.linked} · создано ${stats.created} · пропущено ${stats.skipped}`}
           </DialogDescription>
         </DialogHeader>
 
@@ -250,15 +306,105 @@ export const AnalyzePendingDialog = ({ open, onOpenChange, onDone }) => {
                 </div>
               </div>
             ) : (
-              <div className="rounded-md border border-rose-500/30 bg-rose-500/5 p-3 text-sm flex items-start gap-2">
+              <div className="rounded-md border border-rose-500/30 bg-rose-500/5 p-3 text-sm flex items-start gap-2" data-testid="no-candidates-block">
                 <AlertCircle className="h-4 w-4 text-rose-400 mt-0.5 flex-shrink-0" />
-                <div>
+                <div className="flex-1">
                   <p className="font-medium">Подходящих операций не найдено</p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Возможно, операция ещё не загружена из выписки. Пропусти — вернёшься позже.
+                    Можно создать новую операцию прямо отсюда — данные из чека подставятся автоматически.
                   </p>
                 </div>
               </div>
+            )}
+
+            {/* Inline quick-create form: shown when no candidates, or when user clicks "Создать новую" */}
+            {(current.candidates?.length === 0 || creating) && (
+              <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 p-3 space-y-2.5" data-testid="quick-create-form">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold text-emerald-300 flex items-center gap-1.5">
+                    <Plus className="h-4 w-4" /> Создать новую операцию из чека
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="space-y-1">
+                    <Label className="text-[11px]">Тип</Label>
+                    <Select value={form.type} onValueChange={(v) => setForm(f => ({ ...f, type: v }))}>
+                      <SelectTrigger className="h-8 text-xs" data-testid="quick-create-type"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="expense">Расход</SelectItem>
+                        <SelectItem value="income">Доход</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[11px]">Счёт *</Label>
+                    <Select value={form.account_id} onValueChange={(v) => setForm(f => ({ ...f, account_id: v }))}>
+                      <SelectTrigger className="h-8 text-xs" data-testid="quick-create-account"><SelectValue placeholder="Выбери счёт" /></SelectTrigger>
+                      <SelectContent>
+                        {accounts.map(a => (
+                          <SelectItem key={a.id} value={a.id}>{a.name} <span className="text-[10px] text-muted-foreground">({a.currency})</span></SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[11px]">Категория</Label>
+                    <Select value={form.category_id} onValueChange={(v) => setForm(f => ({ ...f, category_id: v }))}>
+                      <SelectTrigger className="h-8 text-xs" data-testid="quick-create-category"><SelectValue placeholder="—" /></SelectTrigger>
+                      <SelectContent>
+                        {categories.filter(c => !c.type || c.type === form.type).map(c => (
+                          <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[11px]">Контрагент</Label>
+                    <Select value={form.contractor_id} onValueChange={(v) => setForm(f => ({ ...f, contractor_id: v }))}>
+                      <SelectTrigger className="h-8 text-xs" data-testid="quick-create-contractor"><SelectValue placeholder="—" /></SelectTrigger>
+                      <SelectContent>
+                        {contractors.map(c => (
+                          <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1 col-span-2">
+                    <Label className="text-[11px]">Описание</Label>
+                    <Input
+                      value={form.description}
+                      onChange={(e) => setForm(f => ({ ...f, description: e.target.value }))}
+                      className="h-8 text-xs"
+                      data-testid="quick-create-description"
+                    />
+                  </div>
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  Дата ({current.document.ai_extracted?.date || '—'}) и сумма ({current.document.ai_extracted?.amount != null ? formatCurrency(current.document.ai_extracted.amount, current.document.ai_extracted?.currency || 'PLN') : '—'}) возьмутся из распознанного чека.
+                </p>
+                <Button
+                  size="sm"
+                  className="w-full"
+                  onClick={onCreate}
+                  disabled={busy || !form.account_id}
+                  data-testid="quick-create-submit"
+                >
+                  {busy ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Plus className="h-4 w-4 mr-1" />}
+                  Создать и привязать
+                </Button>
+              </div>
+            )}
+
+            {/* Show "Создать новую" link when there ARE candidates but user wants to bypass them */}
+            {current.candidates?.length > 0 && !creating && (
+              <button
+                type="button"
+                className="text-xs text-emerald-400 hover:text-emerald-300 underline underline-offset-2"
+                onClick={() => setCreating(true)}
+                data-testid="show-quick-create-btn"
+              >
+                + Ни одна не подходит — создать новую операцию
+              </button>
             )}
           </div>
         )}

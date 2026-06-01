@@ -248,6 +248,21 @@ async def upload_and_match(
         "auto_match_possible": len(candidates) > 0,
     }
 
+async def _get_default_direction_id(user_id: str) -> str:
+    """Return any direction id belonging to the user (creating one if absent)."""
+    d = await db.directions.find_one({"user_id": user_id}, {"_id": 0, "id": 1})
+    if d:
+        return d["id"]
+    # Create a fallback direction so create-transaction never fails on it.
+    new_id = str(uuid.uuid4())
+    await db.directions.insert_one({
+        "id": new_id, "user_id": user_id, "name": "Основное",
+        "created_at": datetime.utcnow().isoformat(),
+    })
+    return new_id
+
+
+
 
 @router.get("/unmatched")
 async def list_unmatched(current_user: dict = Depends(get_current_user)):
@@ -265,6 +280,81 @@ async def list_unmatched(current_user: dict = Depends(get_current_user)):
     async for d in cursor:
         items.append(d)
     return {"items": items, "total": len(items)}
+
+
+@router.post("/{document_id}/create-transaction")
+async def create_transaction_from_receipt(
+    document_id: str,
+    payload: dict,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Create a brand-new transaction from a pending receipt and link the document
+    to it. Payload may include explicit fields (type, account_id, category_id,
+    contractor_id, description, date, amount, currency) — anything missing is
+    filled in from the receipt's `ai_extracted` data.
+    """
+    from models import TransactionCreate
+    from routes.transactions import create_transaction
+
+    doc = await db.documents.find_one(
+        {"id": document_id, "user_id": current_user["user_id"]},
+        {"_id": 0},
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if doc.get("transaction_id"):
+        raise HTTPException(status_code=400, detail="Receipt already linked to a transaction")
+
+    ext = doc.get("ai_extracted") or {}
+
+    tx_type = (payload.get("type") or "expense").strip()
+    if tx_type not in ("expense", "income"):
+        raise HTTPException(status_code=400, detail="type must be expense or income")
+
+    account_id = payload.get("account_id")
+    if not account_id:
+        raise HTTPException(status_code=400, detail="account_id is required")
+
+    amount = payload.get("amount") or ext.get("amount")
+    if not amount or float(amount) <= 0:
+        raise HTTPException(status_code=400, detail="amount must be > 0")
+
+    currency = payload.get("currency") or ext.get("currency") or "PLN"
+    date_str = payload.get("date") or ext.get("date") or datetime.utcnow().strftime("%Y-%m-%d")
+    description = (
+        payload.get("description")
+        or ext.get("merchant")
+        or "Чек (создано из распознанного)"
+    )
+
+    data = TransactionCreate(
+        type=tx_type,
+        amount=float(amount),
+        currency=currency,
+        date=date_str,
+        description=description,
+        account_id=account_id,
+        category_id=payload.get("category_id"),
+        contractor_id=payload.get("contractor_id"),
+        direction_id=payload.get("direction_id") or await _get_default_direction_id(current_user["user_id"]),
+        status="fact",
+    )
+    tx = await create_transaction(data, current_user)
+    tx_dict = tx.model_dump() if hasattr(tx, "model_dump") else dict(tx)
+
+    # Link the document to the freshly-created transaction
+    await db.documents.update_one(
+        {"id": document_id, "user_id": current_user["user_id"]},
+        {"$set": {"transaction_id": tx_dict["id"], "status": "linked"}},
+    )
+    # Mark transaction as having an attachment
+    await db.transactions.update_one(
+        {"id": tx_dict["id"], "user_id": current_user["user_id"]},
+        {"$set": {"has_attachment": True}},
+    )
+
+    return {"transaction": tx_dict, "document_id": document_id}
 
 
 @router.get("/analyze-pending")
