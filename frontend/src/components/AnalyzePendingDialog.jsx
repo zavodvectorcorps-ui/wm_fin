@@ -72,15 +72,25 @@ export const AnalyzePendingDialog = ({ open, onOpenChange, onDone }) => {
   useEffect(() => {
     if (!current) return;
     const ext = current.document?.ai_extracted || {};
+    // Fuzzy-match contractor by merchant name (case-insensitive, both directions).
+    let suggestedContractorId = '';
+    if (ext.merchant && contractors.length) {
+      const m = ext.merchant.toLowerCase().trim();
+      const hit = contractors.find((c) => {
+        const n = (c.name || '').toLowerCase().trim();
+        return n && (n === m || n.includes(m) || m.includes(n));
+      });
+      if (hit) suggestedContractorId = hit.id;
+    }
     setForm({
       type: 'expense',
       account_id: '',
       category_id: '',
-      contractor_id: '',
+      contractor_id: suggestedContractorId,
       description: ext.merchant || current.document?.description || '',
     });
     setCreating(false);
-  }, [idx, current?.document?.id]);
+  }, [idx, current?.document?.id, contractors]);
 
   const advance = () => {
     if (isLastItem) {
@@ -359,7 +369,12 @@ export const AnalyzePendingDialog = ({ open, onOpenChange, onDone }) => {
                     </Select>
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-[11px]">Контрагент</Label>
+                    <Label className="text-[11px] flex items-center gap-1">
+                      Контрагент
+                      {form.contractor_id && current.document?.ai_extracted?.merchant && (
+                        <span className="text-[9px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">авто</span>
+                      )}
+                    </Label>
                     <Select value={form.contractor_id} onValueChange={(v) => setForm(f => ({ ...f, contractor_id: v }))}>
                       <SelectTrigger className="h-8 text-xs" data-testid="quick-create-contractor"><SelectValue placeholder="—" /></SelectTrigger>
                       <SelectContent>

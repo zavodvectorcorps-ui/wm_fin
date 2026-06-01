@@ -485,6 +485,7 @@ class Employee(BaseModel):
     currency: Literal["PLN", "EUR", "USD"] = "PLN"
     direction_id: Optional[str] = None
     direction_name: Optional[str] = None
+    contractor_id: Optional[str] = None  # link to the contractor record used in expense ops
     is_active: bool = True
     comment: Optional[str] = None
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
@@ -499,6 +500,7 @@ class EmployeeCreate(BaseModel):
     default_tax_rate: float = 0  # percent (0..100)
     currency: Literal["PLN", "EUR", "USD"] = "PLN"
     direction_id: Optional[str] = None
+    contractor_id: Optional[str] = None
     is_active: bool = True
     comment: Optional[str] = None
 
@@ -517,8 +519,11 @@ class SalaryAccrual(BaseModel):
     deductions: float = 0
     total_due: float = 0  # computed: salary + bonus - taxes - deductions
     currency: Literal["PLN", "EUR", "USD"] = "PLN"
-    status: Literal["planned", "paid"] = "planned"
+    # Multiple part-payments supported (bank transfer + cash, etc.).
+    linked_transaction_ids: List[str] = Field(default_factory=list)
+    # Legacy single-link kept for backward compatibility; new code uses *_ids.
     linked_transaction_id: Optional[str] = None
+    status: Literal["planned", "partial", "paid"] = "planned"
     comment: Optional[str] = None
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     user_id: str = ""

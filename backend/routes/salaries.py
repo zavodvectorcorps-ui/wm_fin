@@ -68,9 +68,67 @@ async def delete_employee(emp_id: str, current_user: dict = Depends(get_current_
     return {"status": "deleted"}
 
 
+def _norm_accrual(row: dict) -> dict:
+    """Back-compat: ensure linked_transaction_ids is a list (migrating legacy
+    single linked_transaction_id field). Adds computed `total_paid` / `remaining`
+    and recomputes `status` from current paid amount."""
+    ids = row.get("linked_transaction_ids") or []
+    legacy = row.get("linked_transaction_id")
+    if legacy and legacy not in ids:
+        ids = list(ids) + [legacy]
+    row["linked_transaction_ids"] = ids
+    return row
+
+
+async def _enrich_with_payments(rows: list, user_id: str) -> list:
+    """Fetch the linked transactions and compute paid total / remaining / status."""
+    all_ids = [tid for r in rows for tid in r.get("linked_transaction_ids", [])]
+    tx_by_id: dict = {}
+    if all_ids:
+        cursor = db.transactions.find(
+            {"user_id": user_id, "id": {"$in": all_ids}},
+            {"_id": 0, "id": 1, "amount": 1, "amount_base": 1, "currency": 1, "date": 1, "description": 1, "account_id": 1, "account_name": 1},
+        )
+        async for t in cursor:
+            tx_by_id[t["id"]] = t
+
+    for r in rows:
+        paid = 0.0
+        details: list = []
+        for tid in r.get("linked_transaction_ids", []):
+            t = tx_by_id.get(tid)
+            if not t:
+                continue
+            # Match currency to accrual's: if same currency use amount, else amount_base
+            if (t.get("currency") or "PLN") == (r.get("currency") or "PLN"):
+                amt = float(t.get("amount") or 0)
+            else:
+                amt = float(t.get("amount_base") or t.get("amount") or 0)
+            paid += amt
+            details.append({
+                "id": tid,
+                "date": t.get("date"),
+                "amount": amt,
+                "description": t.get("description"),
+                "account_name": t.get("account_name"),
+            })
+
+        total_due = float(r.get("total_due") or 0)
+        r["total_paid"] = round(paid, 2)
+        r["remaining"] = round(max(total_due - paid, 0), 2)
+        r["payments"] = details
+        if paid <= 0.005:
+            r["status"] = "planned"
+        elif paid + 0.5 < total_due:  # 0.5 PLN tolerance for partial
+            r["status"] = "partial"
+        else:
+            r["status"] = "paid"
+    return rows
+
+
 # ============== Salary accruals ==============
 
-@router.get("/salary-accruals", response_model=List[SalaryAccrual])
+@router.get("/salary-accruals")
 async def list_accruals(
     month: Optional[str] = None,  # YYYY-MM
     employee_id: Optional[str] = None,
@@ -82,6 +140,8 @@ async def list_accruals(
     if employee_id:
         query["employee_id"] = employee_id
     rows = await db.salary_accruals.find(query, {"_id": 0}).sort("month", -1).to_list(1000)
+    rows = [_norm_accrual(r) for r in rows]
+    rows = await _enrich_with_payments(rows, current_user["user_id"])
     return rows
 
 
@@ -164,13 +224,21 @@ async def delete_accrual(accrual_id: str, current_user: dict = Depends(get_curre
 
 @router.get("/salary-accruals/{accrual_id}/suggest-matches")
 async def suggest_salary_matches(accrual_id: str, current_user: dict = Depends(get_current_user)):
-    """Предложить транзакции-кандидаты для привязки к начислению зарплаты."""
+    """Предложить транзакции-кандидаты для привязки к начислению зарплаты.
+    Учитывает связанного контрагента (Employee.contractor_id) для точного отбора."""
     accrual = await db.salary_accruals.find_one(
         {"id": accrual_id, "user_id": current_user["user_id"]},
         {"_id": 0}
     )
     if not accrual:
         raise HTTPException(status_code=404, detail="Начисление не найдено")
+
+    # Look up the employee's linked contractor (if any) for boosted matching.
+    employee = await db.employees.find_one(
+        {"id": accrual.get("employee_id"), "user_id": current_user["user_id"]},
+        {"_id": 0, "contractor_id": 1}
+    )
+    employee_contractor_id = (employee or {}).get("contractor_id")
 
     # Окно: текущий месяц accrual ± 10 дней следующего месяца
     try:
@@ -186,8 +254,15 @@ async def suggest_salary_matches(accrual_id: str, current_user: dict = Depends(g
     amount = float(accrual["total_due"]) or float(accrual.get("salary", 0))
     if amount <= 0:
         return {"accrual": accrual, "candidates": []}
-    amt_min = amount * 0.85
-    amt_max = amount * 1.15
+    # Wider amount band — partial payments can be much smaller than total_due.
+    amt_min = amount * 0.10
+    amt_max = amount * 1.20
+
+    # Exclude transactions already linked to ANY salary accrual.
+    accrued_tx_ids = await db.salary_accruals.distinct(
+        "linked_transaction_ids",
+        {"user_id": current_user["user_id"]}
+    )
 
     query = {
         "user_id": current_user["user_id"],
@@ -196,20 +271,24 @@ async def suggest_salary_matches(accrual_id: str, current_user: dict = Depends(g
         "date": {"$gte": start.strftime("%Y-%m-%d"), "$lte": end.strftime("%Y-%m-%d")},
         "amount": {"$gte": amt_min, "$lte": amt_max},
     }
+    if accrued_tx_ids:
+        query["id"] = {"$nin": [t for t in accrued_tx_ids if t]}
 
-    candidates = await db.transactions.find(query, {"_id": 0}).sort("date", 1).to_list(20)
+    candidates = await db.transactions.find(query, {"_id": 0}).sort("date", 1).to_list(30)
 
-    # Best matches: same direction, same amount, presence of employee name in description
+    # Best matches: contractor link (huge boost) > same direction > name in description > amount close
     name = (accrual.get("employee_name") or "").lower()
 
     def score(t):
         amt_diff = abs(t["amount"] - amount) / max(amount, 1)
         same_dir = 1 if t.get("direction_id") == accrual.get("direction_id") else 0
         name_hit = 1 if name and name in (t.get("description") or "").lower() else 0
-        return (amt_diff * 100) - (same_dir * 5) - (name_hit * 10)
+        contractor_hit = 1 if employee_contractor_id and t.get("contractor_id") == employee_contractor_id else 0
+        # Lower = better. Contractor match is the strongest signal.
+        return (amt_diff * 50) - (same_dir * 5) - (name_hit * 10) - (contractor_hit * 50)
 
     candidates.sort(key=score)
-    return {"accrual": accrual, "candidates": candidates[:5]}
+    return {"accrual": accrual, "candidates": candidates[:10]}
 
 
 @router.post("/salary-accruals/{accrual_id}/link-transaction")
@@ -218,6 +297,8 @@ async def link_salary_to_transaction(
     body: dict,
     current_user: dict = Depends(get_current_user),
 ):
+    """Привязать (добавить) фактическую транзакцию к начислению.
+    Поддерживает несколько частичных выплат — добавляет в список linked_transaction_ids."""
     transaction_id = body.get("transaction_id")
     if not transaction_id:
         raise HTTPException(status_code=400, detail="Не указан transaction_id")
@@ -229,24 +310,54 @@ async def link_salary_to_transaction(
     if not tx:
         raise HTTPException(status_code=404, detail="Транзакция не найдена")
 
-    result = await db.salary_accruals.update_one(
-        {"id": accrual_id, "user_id": current_user["user_id"]},
-        {"$set": {"status": "paid", "linked_transaction_id": transaction_id}}
+    accrual = await db.salary_accruals.find_one(
+        {"id": accrual_id, "user_id": current_user["user_id"]}, {"_id": 0}
     )
-    if result.matched_count == 0:
+    if not accrual:
         raise HTTPException(status_code=404, detail="Начисление не найдено")
-    return {"status": "linked"}
+
+    _norm_accrual(accrual)
+    ids = list(accrual.get("linked_transaction_ids") or [])
+    if transaction_id in ids:
+        return {"status": "already_linked"}
+    ids.append(transaction_id)
+
+    await db.salary_accruals.update_one(
+        {"id": accrual_id, "user_id": current_user["user_id"]},
+        {"$set": {"linked_transaction_ids": ids, "linked_transaction_id": ids[0]}}
+    )
+    return {"status": "linked", "linked_transaction_ids": ids}
 
 
 @router.post("/salary-accruals/{accrual_id}/unlink-transaction")
-async def unlink_salary(accrual_id: str, current_user: dict = Depends(get_current_user)):
-    result = await db.salary_accruals.update_one(
-        {"id": accrual_id, "user_id": current_user["user_id"]},
-        {"$set": {"status": "planned", "linked_transaction_id": None}}
+async def unlink_salary(
+    accrual_id: str,
+    body: Optional[dict] = None,
+    current_user: dict = Depends(get_current_user),
+):
+    """Отвязать транзакцию от начисления. Если в теле указан transaction_id —
+    удаляется только она. Без него — отвязываются все (полный сброс)."""
+    accrual = await db.salary_accruals.find_one(
+        {"id": accrual_id, "user_id": current_user["user_id"]}, {"_id": 0}
     )
-    if result.matched_count == 0:
+    if not accrual:
         raise HTTPException(status_code=404, detail="Не найдено")
-    return {"status": "unlinked"}
+
+    _norm_accrual(accrual)
+    tx_id = (body or {}).get("transaction_id") if isinstance(body, dict) else None
+    if tx_id:
+        ids = [t for t in (accrual.get("linked_transaction_ids") or []) if t != tx_id]
+    else:
+        ids = []
+
+    await db.salary_accruals.update_one(
+        {"id": accrual_id, "user_id": current_user["user_id"]},
+        {"$set": {
+            "linked_transaction_ids": ids,
+            "linked_transaction_id": ids[0] if ids else None,
+        }}
+    )
+    return {"status": "unlinked", "linked_transaction_ids": ids}
 
 
 # ============== Salary summary for dashboard ==============
@@ -264,10 +375,12 @@ async def salary_summary(
         {"user_id": current_user["user_id"], "month": month},
         {"_id": 0}
     ).to_list(1000)
+    rows = [_norm_accrual(r) for r in rows]
+    rows = await _enrich_with_payments(rows, current_user["user_id"])
 
     total_accrued = sum(r.get("total_due", 0) for r in rows)
-    total_paid = sum(r.get("total_due", 0) for r in rows if r.get("status") == "paid")
-    total_pending = total_accrued - total_paid
+    total_paid = sum(r.get("total_paid", 0) for r in rows)
+    total_pending = max(total_accrued - total_paid, 0)
 
     by_direction = {}
     for r in rows:
@@ -275,8 +388,7 @@ async def salary_summary(
         if key not in by_direction:
             by_direction[key] = {"accrued": 0, "paid": 0}
         by_direction[key]["accrued"] += r.get("total_due", 0)
-        if r.get("status") == "paid":
-            by_direction[key]["paid"] += r.get("total_due", 0)
+        by_direction[key]["paid"] += r.get("total_paid", 0)
 
     return {
         "month": month,

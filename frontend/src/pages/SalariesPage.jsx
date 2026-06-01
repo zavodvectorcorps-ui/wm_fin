@@ -27,6 +27,7 @@ const blankEmployee = {
   default_tax_rate: '0',
   currency: 'PLN',
   direction_id: '',
+  contractor_id: '',
   is_active: true,
   comment: '',
 };
@@ -61,6 +62,8 @@ export const SalariesPage = () => {
   const [accEditing, setAccEditing] = useState(null);
   const [accForm, setAccForm] = useState(blankAccrual);
 
+  const [contractors, setContractors] = useState([]);
+
   // Match dialog
   const [matchDialog, setMatchDialog] = useState(false);
   const [matchAccrual, setMatchAccrual] = useState(null);
@@ -70,16 +73,18 @@ export const SalariesPage = () => {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [eRes, dRes, aRes, sRes] = await Promise.all([
+      const [eRes, dRes, aRes, sRes, cRes] = await Promise.all([
         api().get('/employees'),
         api().get('/directions'),
         api().get('/salary-accruals', { params: { month: filterMonth } }),
         api().get('/salary-accruals/summary', { params: { month: filterMonth } }),
+        api().get('/contractors').catch(() => ({ data: [] })),
       ]);
       setEmployees(eRes.data);
       setDirections(dRes.data);
       setAccruals(aRes.data);
       setSummary(sRes.data);
+      setContractors(cRes.data || []);
     } catch {
       toast.error('Ошибка загрузки');
     } finally {
@@ -105,6 +110,7 @@ export const SalariesPage = () => {
       default_tax_rate: String(emp.default_tax_rate || '0'),
       currency: emp.currency || 'PLN',
       direction_id: emp.direction_id || '',
+      contractor_id: emp.contractor_id || '',
       is_active: emp.is_active,
       comment: emp.comment || '',
     });
@@ -123,6 +129,7 @@ export const SalariesPage = () => {
       default_tax_rate: parseFloat(String(empForm.default_tax_rate || '0').replace(',', '.')) || 0,
       currency: empForm.currency,
       direction_id: empForm.direction_id || null,
+      contractor_id: empForm.contractor_id || null,
       is_active: empForm.is_active,
       comment: empForm.comment || null,
     };
@@ -258,9 +265,10 @@ export const SalariesPage = () => {
       toast.error(e.response?.data?.detail || 'Ошибка');
     }
   };
-  const unlinkTransaction = async (accrualId) => {
+  const unlinkTransaction = async (accrualId, transactionId = null) => {
     try {
-      await api().post(`/salary-accruals/${accrualId}/unlink-transaction`);
+      await api().post(`/salary-accruals/${accrualId}/unlink-transaction`,
+        transactionId ? { transaction_id: transactionId } : {});
       toast.success('Отвязано');
       fetchData();
     } catch {
@@ -367,54 +375,103 @@ export const SalariesPage = () => {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {accruals.map(a => (
-                    <div key={a.id} className="flex items-center justify-between p-3 rounded-lg border border-border bg-muted/30 gap-3" data-testid={`accrual-row-${a.id}`}>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="font-medium">{a.employee_name}</p>
-                          {a.status === 'paid' ? (
-                            <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-xs">
-                              <CheckCircle2 className="h-3 w-3 mr-1" />
-                              Выплачено
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="text-xs border-amber-500/40 text-amber-600 dark:text-amber-400">
-                              К выплате
-                            </Badge>
-                          )}
-                          {a.direction_name && <Badge variant="outline" className="text-xs">{a.direction_name}</Badge>}
+                  {accruals.map(a => {
+                    const paid = a.total_paid || 0;
+                    const remaining = a.remaining || 0;
+                    const due = a.total_due || 0;
+                    const pct = due > 0 ? Math.min(100, (paid / due) * 100) : 0;
+                    const statusBadge = a.status === 'paid' ? (
+                      <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-xs">
+                        <CheckCircle2 className="h-3 w-3 mr-1" />
+                        Выплачено
+                      </Badge>
+                    ) : a.status === 'partial' ? (
+                      <Badge className="bg-sky-500/10 text-sky-500 border-sky-500/20 text-xs">
+                        Частично · {pct.toFixed(0)}%
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-xs border-amber-500/40 text-amber-600 dark:text-amber-400">
+                        К выплате
+                      </Badge>
+                    );
+                    return (
+                    <div key={a.id} className="flex flex-col p-3 rounded-lg border border-border bg-muted/30 gap-2" data-testid={`accrual-row-${a.id}`}>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-medium">{a.employee_name}</p>
+                            {statusBadge}
+                            {a.direction_name && <Badge variant="outline" className="text-xs">{a.direction_name}</Badge>}
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Оклад {formatCurrency(a.salary, a.currency)}
+                            {a.bonus ? ` + премия ${formatCurrency(a.bonus, a.currency)}` : ''}
+                            {a.taxes ? ` − налоги ${formatCurrency(a.taxes, a.currency)}` : ''}
+                            {a.deductions ? ` − удержания ${formatCurrency(a.deductions, a.currency)}` : ''}
+                            {a.comment ? ` · ${a.comment}` : ''}
+                          </p>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          Оклад {formatCurrency(a.salary, a.currency)}
-                          {a.bonus ? ` + премия ${formatCurrency(a.bonus, a.currency)}` : ''}
-                          {a.taxes ? ` − налоги ${formatCurrency(a.taxes, a.currency)}` : ''}
-                          {a.deductions ? ` − удержания ${formatCurrency(a.deductions, a.currency)}` : ''}
-                          {a.comment ? ` · ${a.comment}` : ''}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-3 shrink-0">
-                        <p className="text-lg font-bold font-mono">
-                          {formatCurrency(a.total_due, a.currency)}
-                        </p>
-                        {a.status === 'paid' ? (
-                          <Button variant="ghost" size="sm" onClick={() => unlinkTransaction(a.id)} title="Отвязать">
-                            <Unlink className="h-4 w-4" />
-                          </Button>
-                        ) : (
-                          <Button variant="outline" size="sm" onClick={() => openMatch(a)}>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <div className="text-right">
+                            <p className="text-lg font-bold font-mono">
+                              {formatCurrency(due, a.currency)}
+                            </p>
+                            {paid > 0 && (
+                              <p className="text-[10px] font-mono text-muted-foreground">
+                                выплачено <span className="text-emerald-500">{formatCurrency(paid, a.currency)}</span>
+                                {remaining > 0.5 && <> · осталось <span className="text-amber-500">{formatCurrency(remaining, a.currency)}</span></>}
+                              </p>
+                            )}
+                          </div>
+                          <Button variant="outline" size="sm" onClick={() => openMatch(a)} data-testid={`link-tx-${a.id}`}>
                             <Link2 className="h-4 w-4 mr-1" />
-                            Связать
+                            {paid > 0 ? 'Ещё выплата' : 'Связать'}
                           </Button>
-                        )}
-                        <Button variant="ghost" size="icon" onClick={() => openEditAccrual(a)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => deleteAccrual(a.id)}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
+                          <Button variant="ghost" size="icon" onClick={() => openEditAccrual(a)}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => deleteAccrual(a.id)}>
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
                       </div>
+                      {/* Progress bar + list of payments */}
+                      {paid > 0 && (
+                        <>
+                          <div className="h-1.5 rounded bg-border overflow-hidden">
+                            <div
+                              className={`h-full transition-all ${a.status === 'paid' ? 'bg-emerald-500' : 'bg-sky-500'}`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                          {Array.isArray(a.payments) && a.payments.length > 0 && (
+                            <div className="flex flex-col gap-1 pl-1" data-testid={`payments-list-${a.id}`}>
+                              {a.payments.map(p => (
+                                <div key={p.id} className="flex items-center justify-between text-[11px] text-muted-foreground gap-2">
+                                  <span className="truncate">
+                                    {p.date} · {p.account_name || '—'} · {p.description || '(без описания)'}
+                                  </span>
+                                  <span className="flex items-center gap-1.5 shrink-0">
+                                    <span className="font-mono text-emerald-400">{formatCurrency(p.amount, a.currency)}</span>
+                                    <button
+                                      type="button"
+                                      className="text-rose-400 hover:text-rose-300"
+                                      title="Отвязать"
+                                      onClick={() => unlinkTransaction(a.id, p.id)}
+                                      data-testid={`unlink-payment-${p.id}`}
+                                    >
+                                      <Unlink className="h-3 w-3" />
+                                    </button>
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
@@ -506,6 +563,19 @@ export const SalariesPage = () => {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                Связанный контрагент
+                <span className="text-[10px] text-muted-foreground">(для авто-привязки фактических выплат)</span>
+              </Label>
+              <Select value={empForm.contractor_id || 'none'} onValueChange={(v) => setEmpForm({ ...empForm, contractor_id: v === 'none' ? '' : v })}>
+                <SelectTrigger data-testid="emp-contractor-select"><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Не связан</SelectItem>
+                  {contractors.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
