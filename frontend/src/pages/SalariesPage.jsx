@@ -10,9 +10,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Switch } from '../components/ui/switch';
-import { Plus, Pencil, Trash2, Banknote, Users as UsersIcon, Link2, Unlink, CheckCircle2, Send, Check, ChevronsUpDown } from 'lucide-react';
+import { Plus, Pencil, Trash2, Banknote, Users as UsersIcon, Link2, Unlink, CheckCircle2, Send, Check, ChevronsUpDown, Calendar as CalendarIcon, BadgeCheck } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '../components/ui/command';
+import { Calendar as CalendarUI } from '../components/ui/calendar';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '../components/ui/sheet';
+import { ru } from 'date-fns/locale';
+import { format } from 'date-fns';
 import { cn } from '../lib/utils';
 import { formatCurrency } from '../lib/utils';
 import { toast } from 'sonner';
@@ -20,6 +24,43 @@ import { toast } from 'sonner';
 const currentMonth = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+};
+
+const ruMonth = (ym) => {
+  if (!/^\d{4}-\d{2}$/.test(ym)) return ym || '—';
+  return format(new Date(ym + '-01'), 'LLLL yyyy', { locale: ru });
+};
+
+const MonthPickerSimple = ({ value, onChange, className, testId }) => {
+  const [open, setOpen] = useState(false);
+  const selected = value ? new Date(value + '-01') : null;
+  const [displayMonth, setDisplayMonth] = useState(selected || new Date());
+  useEffect(() => { if (selected) setDisplayMonth(selected); }, [value]);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" className={cn("min-w-[160px] justify-start text-left font-normal", className)} data-testid={testId || 'month-picker'}>
+          <CalendarIcon className="mr-2 h-4 w-4" />
+          {value ? ruMonth(value) : 'Месяц'}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="start">
+        <CalendarUI
+          mode="single"
+          selected={selected || undefined}
+          month={displayMonth}
+          onMonthChange={setDisplayMonth}
+          onSelect={(d) => {
+            if (d) {
+              onChange(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+              setOpen(false);
+            }
+          }}
+          locale={ru}
+        />
+      </PopoverContent>
+    </Popover>
+  );
 };
 
 const blankEmployee = {
@@ -68,6 +109,26 @@ export const SalariesPage = () => {
   const [contractors, setContractors] = useState([]);
   const [contractorPickerOpen, setContractorPickerOpen] = useState(false);
   const [fromContractorOpen, setFromContractorOpen] = useState(false);
+
+  // Employee detail sheet
+  const [empSheetOpen, setEmpSheetOpen] = useState(false);
+  const [empSheetEmp, setEmpSheetEmp] = useState(null);
+  const [empAccruals, setEmpAccruals] = useState([]);
+  const [empSheetLoading, setEmpSheetLoading] = useState(false);
+
+  const openEmployeeCard = async (emp) => {
+    setEmpSheetEmp(emp);
+    setEmpSheetOpen(true);
+    setEmpSheetLoading(true);
+    try {
+      const r = await api().get('/salary-accruals', { params: { employee_id: emp.id } });
+      setEmpAccruals(r.data || []);
+    } catch {
+      setEmpAccruals([]);
+    } finally {
+      setEmpSheetLoading(false);
+    }
+  };
 
   // Match dialog
   const [matchDialog, setMatchDialog] = useState(false);
@@ -417,13 +478,7 @@ export const SalariesPage = () => {
                 <CardDescription>Месяц: {filterMonth}</CardDescription>
               </div>
               <div className="flex gap-2 flex-wrap">
-                <Input
-                  type="month"
-                  value={filterMonth}
-                  onChange={(e) => setFilterMonth(e.target.value)}
-                  className="w-40"
-                  data-testid="filter-month"
-                />
+                <MonthPickerSimple value={filterMonth} onChange={setFilterMonth} testId="filter-month" />
                 <Button variant="outline" onClick={generateForAll} disabled={employees.filter(e => e.is_active).length === 0}>
                   Создать по окладам
                 </Button>
@@ -611,22 +666,28 @@ export const SalariesPage = () => {
               ) : (
                 <div className="space-y-2">
                   {employees.map(e => (
-                    <div key={e.id} className={`flex items-center justify-between p-3 rounded-lg border ${e.is_active ? 'border-border bg-muted/30' : 'border-border/50 bg-muted/10 opacity-60'}`}>
+                    <div
+                      key={e.id}
+                      className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors hover:bg-muted/50 ${e.is_active ? 'border-border bg-muted/30' : 'border-border/50 bg-muted/10 opacity-60'}`}
+                      onClick={() => openEmployeeCard(e)}
+                      data-testid={`employee-row-${e.id}`}
+                    >
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="font-medium">{e.name}</p>
                           {e.position && <span className="text-xs text-muted-foreground">{e.position}</span>}
                           {e.direction_name && <Badge variant="outline" className="text-xs">{e.direction_name}</Badge>}
+                          {e.contractor_id && <Badge variant="outline" className="text-[10px] border-emerald-500/40 text-emerald-500 gap-1"><BadgeCheck className="h-3 w-3" />связан</Badge>}
                           {!e.is_active && <Badge variant="outline" className="text-xs">Архив</Badge>}
                         </div>
                         {e.comment && <p className="text-xs text-muted-foreground mt-0.5">{e.comment}</p>}
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
                         <p className="text-lg font-bold font-mono">{formatCurrency(e.default_salary, e.currency)}</p>
-                        <Button variant="ghost" size="icon" onClick={() => openEditEmployee(e)}>
+                        <Button variant="ghost" size="icon" onClick={(ev) => { ev.stopPropagation(); openEditEmployee(e); }}>
                           <Pencil className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => deleteEmployee(e.id)}>
+                        <Button variant="ghost" size="icon" onClick={(ev) => { ev.stopPropagation(); deleteEmployee(e.id); }}>
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
@@ -815,10 +876,10 @@ export const SalariesPage = () => {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Месяц *</Label>
-                <Input
-                  type="month"
+                <MonthPickerSimple
                   value={accForm.month}
-                  onChange={(e) => setAccForm({ ...accForm, month: e.target.value })}
+                  onChange={(v) => setAccForm({ ...accForm, month: v })}
+                  testId="accrual-month-picker"
                 />
               </div>
               <div className="space-y-2">
@@ -1034,6 +1095,120 @@ export const SalariesPage = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Employee detail Sheet — history of accruals */}
+      <Sheet open={empSheetOpen} onOpenChange={setEmpSheetOpen}>
+        <SheetContent className="sm:max-w-xl overflow-y-auto" data-testid="employee-card-sheet">
+          {empSheetEmp && (
+            <>
+              <SheetHeader>
+                <SheetTitle className="flex items-center gap-2">
+                  <UsersIcon className="h-5 w-5 text-primary" />
+                  {empSheetEmp.name}
+                </SheetTitle>
+                <SheetDescription>
+                  {empSheetEmp.position || 'Сотрудник'} · {empSheetEmp.direction_name || 'без направления'}
+                </SheetDescription>
+              </SheetHeader>
+
+              {/* Profile summary */}
+              <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p className="text-[10px] text-muted-foreground uppercase">Оклад по умолчанию</p>
+                  <p className="font-mono font-semibold">{formatCurrency(empSheetEmp.default_salary, empSheetEmp.currency)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted-foreground uppercase">Налог</p>
+                  <p className="font-mono">{empSheetEmp.default_tax_rate || 0}%</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted-foreground uppercase">Валюта</p>
+                  <p className="font-mono">{empSheetEmp.currency}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted-foreground uppercase">Статус</p>
+                  <p>{empSheetEmp.is_active ? 'Активен' : 'Архив'}</p>
+                </div>
+                {empSheetEmp.contractor_id && (
+                  <div className="col-span-2">
+                    <p className="text-[10px] text-muted-foreground uppercase">Связанный контрагент</p>
+                    <p className="text-emerald-500">{contractors.find(c => c.id === empSheetEmp.contractor_id)?.name || '—'}</p>
+                  </div>
+                )}
+                {empSheetEmp.comment && (
+                  <div className="col-span-2">
+                    <p className="text-[10px] text-muted-foreground uppercase">Комментарий</p>
+                    <p className="text-muted-foreground">{empSheetEmp.comment}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Aggregate stats */}
+              {(() => {
+                const totalDue = empAccruals.reduce((s, a) => s + (a.total_due || 0), 0);
+                const totalPaid = empAccruals.reduce((s, a) => s + (a.total_paid || 0), 0);
+                const totalRem = empAccruals.reduce((s, a) => s + (a.remaining || 0), 0);
+                return (
+                  <div className="mt-5 grid grid-cols-3 gap-2 p-3 rounded-lg bg-muted/40 border border-border">
+                    <div>
+                      <p className="text-[10px] text-muted-foreground uppercase">Всего начислено</p>
+                      <p className="font-mono font-bold text-base">{formatCurrency(totalDue, empSheetEmp.currency)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-muted-foreground uppercase">Выплачено</p>
+                      <p className="font-mono font-bold text-base text-emerald-500">{formatCurrency(totalPaid, empSheetEmp.currency)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-muted-foreground uppercase">Остаток</p>
+                      <p className={`font-mono font-bold text-base ${totalRem > 0 ? 'text-amber-500' : 'text-muted-foreground'}`}>{formatCurrency(totalRem, empSheetEmp.currency)}</p>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Accruals history list */}
+              <div className="mt-5">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground mb-2">История начислений ({empAccruals.length})</p>
+                {empSheetLoading ? (
+                  <div className="space-y-2">{[1,2,3].map(i => <Skeleton key={i} className="h-12 w-full" />)}</div>
+                ) : empAccruals.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-6">Начислений пока не было</p>
+                ) : (
+                  <div className="space-y-2" data-testid="employee-accruals-history">
+                    {empAccruals.map(a => {
+                      const pct = a.total_due > 0 ? Math.min(100, ((a.total_paid || 0) / a.total_due) * 100) : 0;
+                      return (
+                        <div key={a.id} className="p-2.5 rounded-md border border-border bg-card hover:bg-muted/30 transition-colors">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 flex-wrap min-w-0">
+                              <span className="font-medium text-sm">{ruMonth(a.month)}</span>
+                              {a.status === 'paid' && <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px]"><CheckCircle2 className="h-3 w-3 mr-0.5" />Выплачено</Badge>}
+                              {a.status === 'partial' && <Badge className="bg-sky-500/10 text-sky-500 border-sky-500/20 text-[10px]">Частично · {pct.toFixed(0)}%</Badge>}
+                              {a.status === 'planned' && <Badge variant="outline" className="text-[10px] border-amber-500/40 text-amber-500">К выплате</Badge>}
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="font-mono font-semibold text-sm">{formatCurrency(a.total_due, a.currency)}</p>
+                              {(a.total_paid > 0) && (
+                                <p className="text-[10px] font-mono text-muted-foreground">
+                                  выплачено <span className="text-emerald-500">{formatCurrency(a.total_paid, a.currency)}</span>
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          {a.total_paid > 0 && (
+                            <div className="h-1 mt-2 rounded bg-border overflow-hidden">
+                              <div className={`h-full ${a.status === 'paid' ? 'bg-emerald-500' : 'bg-sky-500'}`} style={{ width: `${pct}%` }} />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 };
