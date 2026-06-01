@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, List
 
 class WMFinanceAPITester:
-    def __init__(self, base_url: str = "https://receipt-wizard-test.preview.emergentagent.com"):
+    def __init__(self, base_url: str = "https://wm-finance-erp.preview.emergentagent.com"):
         self.base_url = base_url
         self.api_base = f"{base_url}/api"
         self.token = None

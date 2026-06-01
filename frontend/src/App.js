@@ -28,6 +28,7 @@ import UsersPage from './pages/UsersPage';
 import ExpensePlanPage from './pages/ExpensePlanPage';
 import RecurringExpensesPage from './pages/RecurringExpensesPage';
 import SalariesPage from './pages/SalariesPage';
+import HelpSalariesFlowPage from './pages/HelpSalariesFlowPage';
 import DemoPage from './pages/DemoPage';
 import TeamPage from './pages/TeamPage';
 import InviteAcceptPage from './pages/InviteAcceptPage';
@@ -282,6 +283,11 @@ function AppRoutes() {
       <Route path="/help" element={
         <ProtectedRoute>
           <FAQPage />
+        </ProtectedRoute>
+      } />
+      <Route path="/help/salaries" element={
+        <ProtectedRoute>
+          <HelpSalariesFlowPage />
         </ProtectedRoute>
       } />
       

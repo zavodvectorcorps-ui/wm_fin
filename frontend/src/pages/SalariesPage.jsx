@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Switch } from '../components/ui/switch';
-import { Plus, Pencil, Trash2, Banknote, Users as UsersIcon, Link2, Unlink, CheckCircle2, Send, Check, ChevronsUpDown, Calendar as CalendarIcon, BadgeCheck } from 'lucide-react';
+import { Plus, Pencil, Trash2, Banknote, Users as UsersIcon, Link2, Unlink, CheckCircle2, Send, Check, ChevronsUpDown, Calendar as CalendarIcon, BadgeCheck, HelpCircle } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '../components/ui/command';
 import { Calendar as CalendarUI } from '../components/ui/calendar';
@@ -424,6 +424,12 @@ export const SalariesPage = () => {
           </h1>
           <p className="text-muted-foreground">ФОТ: расчёт начислений и сверка с фактическими выплатами</p>
         </div>
+        <Button variant="outline" size="sm" asChild data-testid="how-it-works-btn">
+          <a href="/help/salaries">
+            <HelpCircle className="h-4 w-4 mr-1.5" />
+            Как это работает
+          </a>
+        </Button>
       </div>
 
       {/* Summary card */}
