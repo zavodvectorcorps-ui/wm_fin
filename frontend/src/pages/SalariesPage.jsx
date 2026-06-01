@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Switch } from '../components/ui/switch';
-import { Plus, Pencil, Trash2, Banknote, Users as UsersIcon, Link2, Unlink, CheckCircle2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Banknote, Users as UsersIcon, Link2, Unlink, CheckCircle2, Send } from 'lucide-react';
 import { formatCurrency } from '../lib/utils';
 import { toast } from 'sonner';
 
@@ -70,21 +70,30 @@ export const SalariesPage = () => {
   const [candidates, setCandidates] = useState([]);
   const [loadingMatches, setLoadingMatches] = useState(false);
 
+  // Quick-pay dialog (create new tx from accrual)
+  const [payDialog, setPayDialog] = useState(false);
+  const [payAccrual, setPayAccrual] = useState(null);
+  const [accounts, setAccounts] = useState([]);
+  const [payForm, setPayForm] = useState({ account_id: '', amount: '', date: '' });
+  const [paySubmitting, setPaySubmitting] = useState(false);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [eRes, dRes, aRes, sRes, cRes] = await Promise.all([
+      const [eRes, dRes, aRes, sRes, cRes, accRes] = await Promise.all([
         api().get('/employees'),
         api().get('/directions'),
         api().get('/salary-accruals', { params: { month: filterMonth } }),
         api().get('/salary-accruals/summary', { params: { month: filterMonth } }),
         api().get('/contractors').catch(() => ({ data: [] })),
+        api().get('/accounts').catch(() => ({ data: [] })),
       ]);
       setEmployees(eRes.data);
       setDirections(dRes.data);
       setAccruals(aRes.data);
       setSummary(sRes.data);
       setContractors(cRes.data || []);
+      setAccounts((accRes.data || []).filter(a => a.is_active && !a.is_loan));
     } catch {
       toast.error('Ошибка загрузки');
     } finally {
@@ -276,6 +285,45 @@ export const SalariesPage = () => {
     }
   };
 
+  // Quick-pay flow: create a new expense tx from an accrual and link it
+  const openPay = (a) => {
+    setPayAccrual(a);
+    const remaining = a.remaining ?? (a.total_due - (a.total_paid || 0));
+    const today = new Date().toISOString().slice(0, 10);
+    setPayForm({
+      account_id: '',
+      amount: String(remaining > 0 ? remaining : a.total_due || ''),
+      date: today,
+    });
+    setPayDialog(true);
+  };
+  const submitPay = async () => {
+    if (!payAccrual || !payForm.account_id) {
+      toast.error('Выберите счёт');
+      return;
+    }
+    const amt = parseFloat(String(payForm.amount).replace(',', '.'));
+    if (!amt || amt <= 0) {
+      toast.error('Укажите корректную сумму');
+      return;
+    }
+    setPaySubmitting(true);
+    try {
+      await api().post(`/salary-accruals/${payAccrual.id}/create-transaction`, {
+        account_id: payForm.account_id,
+        amount: amt,
+        date: payForm.date,
+      });
+      toast.success('Операция создана и привязана');
+      setPayDialog(false);
+      fetchData();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || 'Ошибка');
+    } finally {
+      setPaySubmitting(false);
+    }
+  };
+
   return (
     <div className="p-6 md:p-8 space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -427,6 +475,12 @@ export const SalariesPage = () => {
                             <Link2 className="h-4 w-4 mr-1" />
                             {paid > 0 ? 'Ещё выплата' : 'Связать'}
                           </Button>
+                          {remaining > 0.5 && (
+                            <Button variant="default" size="sm" onClick={() => openPay(a)} data-testid={`pay-from-plan-${a.id}`} title="Создать новую расходную операцию из этого начисления">
+                              <Send className="h-4 w-4 mr-1" />
+                              В операции
+                            </Button>
+                          )}
                           <Button variant="ghost" size="icon" onClick={() => openEditAccrual(a)}>
                             <Pencil className="h-4 w-4" />
                           </Button>
@@ -801,6 +855,78 @@ export const SalariesPage = () => {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setMatchDialog(false)}>Закрыть</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Quick-Pay Dialog: create new tx straight from accrual */}
+      <Dialog open={payDialog} onOpenChange={setPayDialog}>
+        <DialogContent className="max-w-md" data-testid="pay-from-plan-dialog">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Send className="h-4 w-4 text-emerald-500" />
+              Создать расходную операцию
+            </DialogTitle>
+            <DialogDescription>
+              {payAccrual && (
+                <>
+                  {payAccrual.employee_name} · {payAccrual.month}
+                  <br />
+                  <span className="text-xs">
+                    Начислено {formatCurrency(payAccrual.total_due, payAccrual.currency)} · уже выплачено {formatCurrency(payAccrual.total_paid || 0, payAccrual.currency)} · остаток <span className="text-amber-500">{formatCurrency(payAccrual.remaining || 0, payAccrual.currency)}</span>
+                  </span>
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Счёт, с которого платим *</Label>
+              <Select value={payForm.account_id} onValueChange={(v) => setPayForm(f => ({ ...f, account_id: v }))}>
+                <SelectTrigger data-testid="pay-account-select"><SelectValue placeholder="Выберите счёт" /></SelectTrigger>
+                <SelectContent>
+                  {accounts.map(a => (
+                    <SelectItem key={a.id} value={a.id}>{a.name} <span className="text-[10px] text-muted-foreground">({a.currency})</span></SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-muted-foreground">
+                Банковский счёт — для безналичной выплаты, касса — для наличной.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Сумма</Label>
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  value={payForm.amount}
+                  onChange={(e) => setPayForm(f => ({ ...f, amount: e.target.value }))}
+                  placeholder="0"
+                  data-testid="pay-amount-input"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Дата</Label>
+                <Input
+                  type="date"
+                  value={payForm.date}
+                  onChange={(e) => setPayForm(f => ({ ...f, date: e.target.value }))}
+                  data-testid="pay-date-input"
+                />
+              </div>
+            </div>
+            {payAccrual && (
+              <p className="text-[10px] text-muted-foreground">
+                Описание: «Зарплата {payAccrual.employee_name} за {payAccrual.month}» · контрагент авто-подставится из карточки сотрудника · после создания операция автоматически привяжется к этому начислению.
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPayDialog(false)} disabled={paySubmitting}>Отмена</Button>
+            <Button onClick={submitPay} disabled={paySubmitting || !payForm.account_id} data-testid="pay-submit-btn">
+              {paySubmitting ? 'Создаём…' : 'Создать и привязать'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

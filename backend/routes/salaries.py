@@ -360,6 +360,100 @@ async def unlink_salary(
     return {"status": "unlinked", "linked_transaction_ids": ids}
 
 
+@router.post("/salary-accruals/{accrual_id}/create-transaction")
+async def create_transaction_from_accrual(
+    accrual_id: str,
+    payload: dict,
+    current_user: dict = Depends(get_current_user),
+):
+    """Create a real expense transaction directly from a planned salary accrual
+    and link it automatically.
+
+    payload:
+      - account_id (required) — which account paid
+      - amount (optional) — defaults to remaining (total_due - paid)
+      - date (optional) — defaults to today
+      - description (optional) — auto-generated if missing
+    """
+    from models import TransactionCreate
+    from routes.transactions import create_transaction
+
+    accrual = await db.salary_accruals.find_one(
+        {"id": accrual_id, "user_id": current_user["user_id"]}, {"_id": 0}
+    )
+    if not accrual:
+        raise HTTPException(status_code=404, detail="Начисление не найдено")
+
+    _norm_accrual(accrual)
+    accrual = (await _enrich_with_payments([accrual], current_user["user_id"]))[0]
+
+    account_id = payload.get("account_id")
+    if not account_id:
+        raise HTTPException(status_code=400, detail="account_id is required")
+
+    amount = payload.get("amount")
+    if amount is None or float(amount) <= 0:
+        amount = accrual.get("remaining") or accrual.get("total_due") or 0
+    amount = float(amount)
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Нечего выплачивать — остаток ≤ 0")
+
+    date_str = payload.get("date") or datetime.utcnow().strftime("%Y-%m-%d")
+
+    # Pull employee → contractor link for the new tx
+    contractor_id = None
+    employee = await db.employees.find_one(
+        {"id": accrual.get("employee_id"), "user_id": current_user["user_id"]},
+        {"_id": 0, "contractor_id": 1}
+    )
+    if employee:
+        contractor_id = employee.get("contractor_id")
+
+    description = (
+        payload.get("description")
+        or f"Зарплата {accrual.get('employee_name') or ''} за {accrual.get('month') or ''}"
+    ).strip()
+
+    # Need a direction — prefer accrual's, otherwise fallback
+    direction_id = accrual.get("direction_id")
+    if not direction_id:
+        d = await db.directions.find_one({"user_id": current_user["user_id"]}, {"_id": 0, "id": 1})
+        if d:
+            direction_id = d["id"]
+        else:
+            # Create a default direction so the call doesn't fail
+            import uuid as _uuid
+            direction_id = str(_uuid.uuid4())
+            await db.directions.insert_one({
+                "id": direction_id, "user_id": current_user["user_id"], "name": "Основное",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+
+    data = TransactionCreate(
+        type="expense",
+        amount=amount,
+        currency=accrual.get("currency", "PLN"),
+        date=date_str,
+        description=description,
+        account_id=account_id,
+        contractor_id=contractor_id,
+        direction_id=direction_id,
+        status="fact",
+    )
+    tx = await create_transaction(data, current_user)
+    tx_dict = tx.model_dump() if hasattr(tx, "model_dump") else dict(tx)
+
+    # Link the created transaction to the accrual
+    ids = list(accrual.get("linked_transaction_ids") or [])
+    ids.append(tx_dict["id"])
+    await db.salary_accruals.update_one(
+        {"id": accrual_id, "user_id": current_user["user_id"]},
+        {"$set": {"linked_transaction_ids": ids, "linked_transaction_id": ids[0]}}
+    )
+
+    return {"transaction": tx_dict, "accrual_id": accrual_id}
+
+
 # ============== Salary summary for dashboard ==============
 
 @router.get("/salary-accruals/summary")
