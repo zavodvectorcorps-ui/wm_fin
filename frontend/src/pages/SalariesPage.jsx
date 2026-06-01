@@ -10,7 +10,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Switch } from '../components/ui/switch';
-import { Plus, Pencil, Trash2, Banknote, Users as UsersIcon, Link2, Unlink, CheckCircle2, Send } from 'lucide-react';
+import { Plus, Pencil, Trash2, Banknote, Users as UsersIcon, Link2, Unlink, CheckCircle2, Send, Check, ChevronsUpDown } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '../components/ui/command';
+import { cn } from '../lib/utils';
 import { formatCurrency } from '../lib/utils';
 import { toast } from 'sonner';
 
@@ -63,6 +66,8 @@ export const SalariesPage = () => {
   const [accForm, setAccForm] = useState(blankAccrual);
 
   const [contractors, setContractors] = useState([]);
+  const [contractorPickerOpen, setContractorPickerOpen] = useState(false);
+  const [fromContractorOpen, setFromContractorOpen] = useState(false);
 
   // Match dialog
   const [matchDialog, setMatchDialog] = useState(false);
@@ -108,6 +113,20 @@ export const SalariesPage = () => {
     setEmpEditing(null);
     setEmpForm(blankEmployee);
     setEmpDialog(true);
+  };
+  const createEmployeeFromContractor = async (contractor) => {
+    setFromContractorOpen(false);
+    try {
+      const r = await api().post('/employees/from-contractor', {
+        contractor_id: contractor.id,
+      });
+      toast.success(`Сотрудник «${contractor.name}» создан и связан`);
+      await fetchData();
+      // Open edit dialog so the user can fill in salary/position right away
+      if (r.data) openEditEmployee(r.data);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Ошибка');
+    }
   };
   const openEditEmployee = (emp) => {
     setEmpEditing(emp);
@@ -540,10 +559,47 @@ export const SalariesPage = () => {
                 <CardTitle>Сотрудники</CardTitle>
                 <CardDescription>Имя, должность, оклад по умолчанию</CardDescription>
               </div>
-              <Button onClick={openNewEmployee}>
-                <Plus className="h-4 w-4 mr-2" />
-                Добавить
-              </Button>
+              <div className="flex items-center gap-2">
+                <Popover open={fromContractorOpen} onOpenChange={setFromContractorOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" data-testid="add-employee-from-contractor-btn">
+                      <UsersIcon className="h-4 w-4 mr-2" />
+                      Из контрагента
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-80 p-0" align="end">
+                    <Command>
+                      <CommandInput placeholder="Найти контрагента…" data-testid="from-contractor-search" />
+                      <CommandList>
+                        <CommandEmpty>Нет доступных контрагентов</CommandEmpty>
+                        <CommandGroup>
+                          {contractors
+                            .filter(c => !employees.some(e => e.contractor_id === c.id))
+                            .map(c => (
+                              <CommandItem
+                                key={c.id}
+                                value={`${c.name} ${c.type || ''}`}
+                                onSelect={() => createEmployeeFromContractor(c)}
+                                data-testid={`from-contractor-option-${c.id}`}
+                              >
+                                <Plus className="mr-2 h-4 w-4" />
+                                <div className="flex flex-col">
+                                  <span>{c.name}</span>
+                                  {c.type && <span className="text-[10px] text-muted-foreground">{c.type}</span>}
+                                </div>
+                              </CommandItem>
+                            ))
+                          }
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+                <Button onClick={openNewEmployee} data-testid="add-employee-btn">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Добавить
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               {loading ? (
@@ -623,13 +679,61 @@ export const SalariesPage = () => {
                 Связанный контрагент
                 <span className="text-[10px] text-muted-foreground">(для авто-привязки фактических выплат)</span>
               </Label>
-              <Select value={empForm.contractor_id || 'none'} onValueChange={(v) => setEmpForm({ ...empForm, contractor_id: v === 'none' ? '' : v })}>
-                <SelectTrigger data-testid="emp-contractor-select"><SelectValue placeholder="—" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Не связан</SelectItem>
-                  {contractors.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <Popover open={contractorPickerOpen} onOpenChange={setContractorPickerOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={contractorPickerOpen}
+                    className="w-full justify-between font-normal"
+                    data-testid="emp-contractor-select"
+                  >
+                    {empForm.contractor_id
+                      ? (contractors.find(c => c.id === empForm.contractor_id)?.name || '—')
+                      : <span className="text-muted-foreground">Не связан</span>}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Найти контрагента…" data-testid="emp-contractor-search" />
+                    <CommandList>
+                      <CommandEmpty>Не найдено.</CommandEmpty>
+                      <CommandGroup>
+                        <CommandItem
+                          value="__none__ Не связан"
+                          onSelect={() => {
+                            setEmpForm({ ...empForm, contractor_id: '' });
+                            setContractorPickerOpen(false);
+                          }}
+                          data-testid="emp-contractor-option-none"
+                        >
+                          <Check className={cn("mr-2 h-4 w-4", !empForm.contractor_id ? "opacity-100" : "opacity-0")} />
+                          <span className="text-muted-foreground">Не связан</span>
+                        </CommandItem>
+                        {contractors.map(c => (
+                          <CommandItem
+                            key={c.id}
+                            // value drives search — include name + type so search works on both
+                            value={`${c.name} ${c.type || ''}`}
+                            onSelect={() => {
+                              setEmpForm({ ...empForm, contractor_id: c.id });
+                              setContractorPickerOpen(false);
+                            }}
+                            data-testid={`emp-contractor-option-${c.id}`}
+                          >
+                            <Check className={cn("mr-2 h-4 w-4", empForm.contractor_id === c.id ? "opacity-100" : "opacity-0")} />
+                            <div className="flex flex-col">
+                              <span>{c.name}</span>
+                              {c.type && <span className="text-[10px] text-muted-foreground">{c.type}</span>}
+                            </div>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">

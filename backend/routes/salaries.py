@@ -68,6 +68,55 @@ async def delete_employee(emp_id: str, current_user: dict = Depends(get_current_
     return {"status": "deleted"}
 
 
+@router.post("/employees/from-contractor", response_model=Employee)
+async def create_employee_from_contractor(
+    payload: dict,
+    current_user: dict = Depends(get_current_user),
+):
+    """Create a new Employee record bound to an existing Contractor.
+
+    Body:
+        contractor_id (required)
+        position, default_salary, default_bonus, default_tax_rate,
+        currency, direction_id, comment — all optional overrides
+    """
+    contractor_id = payload.get("contractor_id")
+    if not contractor_id:
+        raise HTTPException(status_code=400, detail="contractor_id is required")
+
+    contractor = await db.contractors.find_one(
+        {"id": contractor_id, "user_id": current_user["user_id"]},
+        {"_id": 0},
+    )
+    if not contractor:
+        raise HTTPException(status_code=404, detail="Контрагент не найден")
+
+    # Prevent duplicates — fail loudly if this contractor is already linked.
+    existing = await db.employees.find_one(
+        {"user_id": current_user["user_id"], "contractor_id": contractor_id},
+        {"_id": 0, "id": 1, "name": 1},
+    )
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Сотрудник «{existing['name']}» уже привязан к этому контрагенту",
+        )
+
+    emp_data = EmployeeCreate(
+        name=contractor.get("name", "—"),
+        position=payload.get("position") or None,
+        default_salary=float(payload.get("default_salary") or 0),
+        default_bonus=float(payload.get("default_bonus") or 0),
+        default_tax_rate=float(payload.get("default_tax_rate") or 0),
+        currency=payload.get("currency") or "PLN",
+        direction_id=payload.get("direction_id") or None,
+        contractor_id=contractor_id,
+        is_active=True,
+        comment=payload.get("comment") or None,
+    )
+    return await create_employee(emp_data, current_user)
+
+
 def _norm_accrual(row: dict) -> dict:
     """Back-compat: ensure linked_transaction_ids is a list (migrating legacy
     single linked_transaction_id field). Adds computed `total_paid` / `remaining`
