@@ -114,6 +114,7 @@ export const SalariesPage = () => {
   const [empSheetOpen, setEmpSheetOpen] = useState(false);
   const [empSheetEmp, setEmpSheetEmp] = useState(null);
   const [empAccruals, setEmpAccruals] = useState([]);
+  const [empContractorTxs, setEmpContractorTxs] = useState([]);
   const [empSheetLoading, setEmpSheetLoading] = useState(false);
 
   const openEmployeeCard = async (emp) => {
@@ -121,10 +122,19 @@ export const SalariesPage = () => {
     setEmpSheetOpen(true);
     setEmpSheetLoading(true);
     try {
-      const r = await api().get('/salary-accruals', { params: { employee_id: emp.id } });
-      setEmpAccruals(r.data || []);
+      const calls = [api().get('/salary-accruals', { params: { employee_id: emp.id } })];
+      if (emp.contractor_id) {
+        // Include actual contractor payments — they may not be linked to any accrual yet.
+        calls.push(api().get('/transactions', {
+          params: { contractor_id: emp.contractor_id, type: 'expense', per_page: 200 }
+        }));
+      }
+      const [accRes, txRes] = await Promise.all(calls);
+      setEmpAccruals(accRes.data || []);
+      setEmpContractorTxs((txRes && txRes.data && txRes.data.items) || []);
     } catch {
       setEmpAccruals([]);
+      setEmpContractorTxs([]);
     } finally {
       setEmpSheetLoading(false);
     }
@@ -1147,21 +1157,71 @@ export const SalariesPage = () => {
                 const totalDue = empAccruals.reduce((s, a) => s + (a.total_due || 0), 0);
                 const totalPaid = empAccruals.reduce((s, a) => s + (a.total_paid || 0), 0);
                 const totalRem = empAccruals.reduce((s, a) => s + (a.remaining || 0), 0);
+                // Sum of ALL contractor payments (whether linked or not)
+                const totalContractorPaid = empContractorTxs.reduce((s, t) => s + (t.amount || 0), 0);
+                const linkedTxIds = new Set(empAccruals.flatMap(a => a.linked_transaction_ids || []));
+                const unlinkedTxs = empContractorTxs.filter(t => !linkedTxIds.has(t.id));
                 return (
-                  <div className="mt-5 grid grid-cols-3 gap-2 p-3 rounded-lg bg-muted/40 border border-border">
-                    <div>
-                      <p className="text-[10px] text-muted-foreground uppercase">Всего начислено</p>
-                      <p className="font-mono font-bold text-base">{formatCurrency(totalDue, empSheetEmp.currency)}</p>
+                  <>
+                    <div className="mt-5 grid grid-cols-3 gap-2 p-3 rounded-lg bg-muted/40 border border-border">
+                      <div>
+                        <p className="text-[10px] text-muted-foreground uppercase">Всего начислено</p>
+                        <p className="font-mono font-bold text-base">{formatCurrency(totalDue, empSheetEmp.currency)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-muted-foreground uppercase">Выплачено по плану</p>
+                        <p className="font-mono font-bold text-base text-emerald-500">{formatCurrency(totalPaid, empSheetEmp.currency)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-muted-foreground uppercase">Остаток</p>
+                        <p className={`font-mono font-bold text-base ${totalRem > 0 ? 'text-amber-500' : 'text-muted-foreground'}`}>{formatCurrency(totalRem, empSheetEmp.currency)}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-[10px] text-muted-foreground uppercase">Выплачено</p>
-                      <p className="font-mono font-bold text-base text-emerald-500">{formatCurrency(totalPaid, empSheetEmp.currency)}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-muted-foreground uppercase">Остаток</p>
-                      <p className={`font-mono font-bold text-base ${totalRem > 0 ? 'text-amber-500' : 'text-muted-foreground'}`}>{formatCurrency(totalRem, empSheetEmp.currency)}</p>
-                    </div>
-                  </div>
+
+                    {/* Contractor payments (all expenses tagged with this contractor) */}
+                    {empSheetEmp.contractor_id && (
+                      <div className="mt-5">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                            Фактические выплаты по контрагенту ({empContractorTxs.length})
+                          </p>
+                          {totalContractorPaid > 0 && (
+                            <p className="text-xs font-mono text-rose-400">
+                              −{formatCurrency(totalContractorPaid, empSheetEmp.currency)}
+                            </p>
+                          )}
+                        </div>
+                        {empContractorTxs.length === 0 ? (
+                          <p className="text-xs text-muted-foreground py-2">Выплат пока не было</p>
+                        ) : (
+                          <div className="space-y-1.5 max-h-64 overflow-y-auto" data-testid="employee-contractor-txs">
+                            {empContractorTxs.map(t => {
+                              const isLinked = linkedTxIds.has(t.id);
+                              return (
+                                <div key={t.id} className="flex items-center justify-between gap-2 p-2 rounded-md border border-border bg-card text-xs">
+                                  <div className="min-w-0 flex-1">
+                                    <p className="truncate">{t.description || '(без описания)'}</p>
+                                    <p className="text-[10px] text-muted-foreground">
+                                      {t.date} · {t.account_name || '—'}
+                                      {isLinked
+                                        ? <span className="ml-1 text-emerald-500">· привязано к начислению</span>
+                                        : <span className="ml-1 text-amber-500">· не привязано</span>}
+                                    </p>
+                                  </div>
+                                  <span className="font-mono text-rose-400 shrink-0">−{formatCurrency(t.amount, t.currency)}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {unlinkedTxs.length > 0 && (
+                          <p className="text-[10px] text-muted-foreground mt-2 italic">
+                            Не привязано к начислениям: {unlinkedTxs.length}. Создайте начисление за нужный месяц и привяжите эти операции через «Связать».
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </>
                 );
               })()}
 
