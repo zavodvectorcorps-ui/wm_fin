@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -12,17 +13,19 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '../components/ui/s
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Textarea } from '../components/ui/textarea';
 import { 
-  Plus, Search, Users, Phone, Mail, MoreHorizontal, Pencil, Trash2, Building2
+  Plus, Search, Users, Phone, Mail, MoreHorizontal, Pencil, Trash2, Building2, UserPlus, BadgeCheck
 } from 'lucide-react';
 import { formatCurrency, formatDate, getContractorTypeLabel } from '../lib/utils';
 import { toast } from 'sonner';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '../components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '../components/ui/alert-dialog';
 
 export const ContractorsPage = () => {
   const { api } = useAuth();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [contractors, setContractors] = useState([]);
+  const [employees, setEmployees] = useState([]);
   
   const [dialogOpen, setDialogOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -43,8 +46,12 @@ export const ContractorsPage = () => {
     setLoading(true);
     try {
       const params = filters.type && filters.type !== 'all' ? { type: filters.type } : {};
-      const res = await api().get('/contractors', { params });
-      setContractors(res.data);
+      const [cRes, eRes] = await Promise.all([
+        api().get('/contractors', { params }),
+        api().get('/employees').catch(() => ({ data: [] })),
+      ]);
+      setContractors(cRes.data);
+      setEmployees(eRes.data || []);
     } catch (error) {
       toast.error('Ошибка загрузки данных');
     } finally {
@@ -55,6 +62,23 @@ export const ContractorsPage = () => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const linkedContractorIds = new Set(employees.map(e => e.contractor_id).filter(Boolean));
+
+  const promoteToEmployee = async (contractor) => {
+    try {
+      await api().post('/employees/from-contractor', { contractor_id: contractor.id });
+      toast.success(`«${contractor.name}» добавлен в сотрудники`, {
+        action: {
+          label: 'К зарплатам →',
+          onClick: () => navigate('/planning/salaries'),
+        },
+      });
+      fetchData();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Ошибка');
+    }
+  };
 
   const fetchContractorDetails = async (id) => {
     try {
@@ -225,7 +249,15 @@ export const ContractorsPage = () => {
                           <Building2 className="h-5 w-5 text-muted-foreground" />
                         </div>
                         <div>
-                          <p className="font-medium">{c.name}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium">{c.name}</p>
+                            {linkedContractorIds.has(c.id) && (
+                              <Badge variant="outline" className="text-[10px] gap-1 border-emerald-500/40 text-emerald-500" data-testid={`employee-badge-${c.id}`}>
+                                <BadgeCheck className="h-3 w-3" />
+                                Сотрудник
+                              </Badge>
+                            )}
+                          </div>
                           {c.comment && <p className="text-sm text-muted-foreground truncate max-w-48">{c.comment}</p>}
                         </div>
                       </div>
@@ -264,6 +296,25 @@ export const ContractorsPage = () => {
                             <Pencil className="h-4 w-4 mr-2" />
                             Редактировать
                           </DropdownMenuItem>
+                          {!linkedContractorIds.has(c.id) && (
+                            <DropdownMenuItem
+                              onClick={(e) => { e.stopPropagation(); promoteToEmployee(c); }}
+                              data-testid={`promote-employee-${c.id}`}
+                            >
+                              <UserPlus className="h-4 w-4 mr-2 text-emerald-500" />
+                              Сделать сотрудником
+                            </DropdownMenuItem>
+                          )}
+                          {linkedContractorIds.has(c.id) && (
+                            <DropdownMenuItem
+                              onClick={(e) => { e.stopPropagation(); navigate('/planning/salaries'); }}
+                              data-testid={`open-employee-${c.id}`}
+                            >
+                              <BadgeCheck className="h-4 w-4 mr-2 text-emerald-500" />
+                              Открыть карточку сотрудника
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuSeparator />
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
                               <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-destructive">
